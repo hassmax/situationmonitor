@@ -24,6 +24,17 @@ def fetch(sources: list[dict], state: dict, health: dict) -> list[dict]:
             health[sid] = health_fail(src.get("name") or src["username"], "telegram",
                                       "Telegram secrets not set", health.get(sid))
         return []
+    problem = None
+    if not api_id.isdigit():
+        problem = "TG_API_ID must be only the numeric App api_id from my.telegram.org"
+    elif len(api_hash) != 32:
+        problem = "TG_API_HASH should be the 32-character App api_hash from my.telegram.org"
+    if problem:
+        log(f"[telegram] {problem}")
+        for src in sources:
+            sid = f"tg:{src['username']}"
+            health[sid] = health_fail(src.get("name") or src["username"], "telegram", problem, health.get(sid))
+        return []
     try:
         return asyncio.run(_fetch(sources, state, health, int(api_id), api_hash, session))
     except Exception as exc:  # noqa: BLE001
