@@ -17,7 +17,8 @@ def fetch(sources: list[dict], state: dict, health: dict) -> list[dict]:
         return []
     api_id = os.environ.get("TG_API_ID", "").strip()
     api_hash = os.environ.get("TG_API_HASH", "").strip()
-    session = os.environ.get("TG_SESSION", "").strip()
+    # Session strings are base64 and never contain whitespace; copying from a terminal can add some.
+    session = "".join(os.environ.get("TG_SESSION", "").split()).strip("'\"")
     if not (api_id and api_hash and session):
         for src in sources:
             sid = f"tg:{src['username']}"
@@ -29,9 +30,9 @@ def fetch(sources: list[dict], state: dict, health: dict) -> list[dict]:
         problem = "TG_API_ID must be only the numeric App api_id from my.telegram.org"
     elif len(api_hash) != 32:
         problem = "TG_API_HASH should be the 32-character App api_hash from my.telegram.org"
-    elif not session.startswith("1") or len(session) < 200 or any(c.isspace() for c in session):
-        problem = (f"TG_SESSION looks wrong (starts with {session[:1]!r}, {len(session)} characters); "
-                   "it should be one unbroken line of about 350 characters starting with 1")
+    elif not session.startswith("1") or not 300 <= len(session) <= 420:
+        problem = (f"TG_SESSION looks wrong ({len(session)} characters after removing spaces); "
+                   "it should be the single line of about 350 characters starting with 1")
     if problem:
         log(f"[telegram] {problem}")
         for src in sources:

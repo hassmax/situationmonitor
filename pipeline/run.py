@@ -4,8 +4,8 @@
 Usage (GitHub Actions runs this every 15 minutes):
     python pipeline/run.py --state state --out out
 
-Locally, set MODELS_TOKEN to a GitHub personal access token with the "Models: read"
-permission to test extraction. Add --no-llm to test fetching only.
+Locally, set LLM_API_KEY to your Gemini API key to test extraction.
+Add --no-llm to test fetching only.
 """
 from __future__ import annotations
 

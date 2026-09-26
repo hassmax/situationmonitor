@@ -17,9 +17,13 @@
 #   disabled   true = skip this source without deleting it
 
 settings:
-  model: openai/gpt-4.1-mini
-  daily_llm_calls: 140
-  max_calls_per_run: 4
+  # Free Gemini API through its OpenAI-compatible endpoint. Candidate models are tried
+  # in order and the first that answers is used. Any OpenAI-compatible provider works:
+  # change llm_url and llm_models, and put that provider's key in the GEMINI_API_KEY secret.
+  llm_url: https://generativelanguage.googleapis.com/v1beta/openai/chat/completions
+  llm_models: [gemini-3.5-flash-lite, gemini-flash-lite-latest, gemini-3.1-flash-lite, gemini-3.1-flash-lite-preview, gemini-2.5-flash-lite]
+  daily_llm_calls: 400
+  max_calls_per_run: 6
 
 bluesky:
   # Handles below were taken from public profile listings. The Sources panel

@@ -1,9 +1,10 @@
-"""Turn raw posts into structured events with a free GitHub Models LLM.
+"""Turn raw posts into structured events with a free LLM.
 
-Runs inside GitHub Actions using the workflow's own GITHUB_TOKEN (permission `models: read`),
-so there is no API key and no bill. The free tier allows roughly 150 requests a day on
-low-tier models, so posts are batched (~18 per request) and a daily budget is spread
-evenly across the day's runs. Posts that do not fit in this run wait in a queue.
+Default provider: Google's Gemini API free tier (key from https://aistudio.google.com),
+called through its OpenAI-compatible endpoint. The key comes from the LLM_API_KEY
+environment variable (the GEMINI_API_KEY repository secret in GitHub Actions).
+Posts are batched (~25 per request) and a daily budget is spread evenly across the
+day's runs. Posts that do not fit in this run wait in a queue.
 """
 from __future__ import annotations
 
@@ -11,6 +12,7 @@ import json
 import math
 import os
 import re
+import time
 from datetime import datetime, timedelta
 from urllib.parse import urljoin
 
@@ -18,11 +20,6 @@ import requests
 
 from common import hours_since, iso, log, parse_time
 
-# Tried in order until one returns a real chat completion; the winner is remembered for a day.
-ENDPOINTS = [
-    ("github", "https://models.github.ai/inference/chat/completions"),
-    ("azure-legacy", "https://models.inference.ai.azure.com/chat/completions"),
-]
 
 EVENT_TYPES = {
     "airstrike": "strike by aircraft",
@@ -199,38 +196,33 @@ def _headers(token: str) -> dict:
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
         "Accept": "application/json",
-        "X-GitHub-Api-Version": "2022-11-28",
     }
 
 
 def _post(url: str, body: dict, token: str) -> requests.Response:
     """POST without letting a redirect silently turn the request into a GET."""
-    r = requests.post(url, headers=_headers(token), json=body, timeout=120, allow_redirects=False)
+    r = requests.post(url, headers=_headers(token), json=body, timeout=180, allow_redirects=False)
     hops = 0
     while r.status_code in (301, 302, 303, 307, 308) and r.headers.get("location") and hops < 3:
         url = urljoin(url, r.headers["location"])
         log(f"[extract] redirected (HTTP {r.status_code}) to {url}; re-sending as POST")
-        r = requests.post(url, headers=_headers(token), json=body, timeout=120, allow_redirects=False)
+        r = requests.post(url, headers=_headers(token), json=body, timeout=180, allow_redirects=False)
         hops += 1
     return r
 
 
 def _describe(r: requests.Response) -> str:
-    return f"HTTP {r.status_code} {r.headers.get('content-type', '?')} from {r.url}: {(r.text or '')[:160]!r}"
+    return f"HTTP {r.status_code} {r.headers.get('content-type', '?')}: {(r.text or '')[:200]!r}"
 
 
-def _model_id(endpoint_name: str, model: str) -> str:
-    # The older endpoint uses bare names ("gpt-4.1-mini") instead of "openai/gpt-4.1-mini".
-    return model.split("/", 1)[1] if endpoint_name == "azure-legacy" and "/" in model else model
-
-
-def _find_endpoint(token: str, model: str, state: dict) -> dict | None:
-    """Send a tiny request to each endpoint variant and keep the first that really answers."""
-    for name, url in ENDPOINTS:
+def _find_model(token: str, settings: dict, state: dict) -> dict | None:
+    """Send a tiny request with each candidate model and keep the first that really answers."""
+    url = settings["llm_url"]
+    for model in settings["llm_models"]:
         for json_mode in (True, False):
             body = {
-                "model": _model_id(name, model),
-                "max_tokens": 20,
+                "model": model,
+                "max_tokens": 200,
                 "temperature": 0,
                 "messages": [{"role": "user", "content": 'Reply with the JSON object {"ok": true} and nothing else.'}],
             }
@@ -240,41 +232,47 @@ def _find_endpoint(token: str, model: str, state: dict) -> dict | None:
             try:
                 r = _post(url, body, token)
             except Exception as exc:  # noqa: BLE001
-                log(f"[extract] probe {name}: {exc}")
+                log(f"[extract] probe {model}: {exc}")
                 break
             if r.status_code == 429:
                 raise RateLimited(r.text[:200])
             try:
                 works = bool(r.json().get("choices"))
-            except ValueError:
+            except (ValueError, AttributeError):
                 works = False
-            log(f"[extract] probe {name} json_mode={json_mode}: {_describe(r)}")
+            log(f"[extract] probe {model} json_mode={json_mode}: {_describe(r)}")
             if works:
-                found = {"name": name, "url": url, "json_mode": json_mode, "checked": iso(datetime.now().astimezone())}
-                state["llm_endpoint"] = found
-                log(f"[extract] using {name} (json_mode={json_mode})")
+                found = {"url": url, "model": model, "json_mode": json_mode,
+                         "checked": iso(datetime.now().astimezone())}
+                state["llm_model"] = found
+                log(f"[extract] using {model} (json_mode={json_mode})")
                 return found
+            if r.status_code in (401, 403):
+                log("[extract] the API key was rejected; check the GEMINI_API_KEY secret")
+                return None
+            if r.status_code == 404 or "not found" in (r.text or "").lower():
+                break  # unknown model name: try the next one
     return None
 
 
-def _call_model(batch: list[dict], model: str, token: str, endpoint: dict) -> dict:
+def _call_model(batch: list[dict], token: str, chosen: dict, settings: dict) -> dict:
     payload = [
         {"i": n, "source": it["source"], "platform": it["platform"], "posted": it["time"], "text": it["text"][:700]}
         for n, it in enumerate(batch)
     ]
     body = {
-        "model": _model_id(endpoint["name"], model),
+        "model": chosen["model"],
         "temperature": 0.1,
-        "max_tokens": 3500,
+        "max_tokens": int(settings["max_output_tokens"]),
         "stream": False,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": json.dumps({"items": payload}, ensure_ascii=False)},
         ],
     }
-    if endpoint.get("json_mode", True):
+    if chosen.get("json_mode", True):
         body["response_format"] = {"type": "json_object"}
-    r = _post(endpoint["url"], body, token)
+    r = _post(chosen["url"], body, token)
     if r.status_code == 429:
         raise RateLimited(r.text[:200])
     if r.status_code >= 400:
@@ -338,10 +336,10 @@ def _clean_record(obj: dict, item: dict) -> dict | None:
 
 def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled: bool = False):
     """Returns (records, leftover_queue, calls_used)."""
-    token = os.environ.get("MODELS_TOKEN") or os.environ.get("GITHUB_TOKEN")
+    token = os.environ.get("LLM_API_KEY", "").strip()
     if disabled or not token:
         if not token:
-            log("[extract] no GITHUB_TOKEN/MODELS_TOKEN; skipping extraction")
+            log("[extract] LLM_API_KEY is not set; add the GEMINI_API_KEY repository secret (see README)")
         return [], queue, 0
     allowed = calls_allowed(state, settings, now)
     batches = make_batches(queue, settings)
@@ -349,17 +347,19 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
     if not allowed or not batches:
         return [], queue, 0
 
-    endpoint = state.get("llm_endpoint")
-    checked = parse_time(endpoint.get("checked")) if endpoint else None
-    if not endpoint or not checked or now - checked > timedelta(hours=24):
+    chosen = state.get("llm_model")
+    checked = parse_time(chosen.get("checked")) if chosen else None
+    stale = (not chosen or not checked or now - checked > timedelta(hours=24)
+             or chosen.get("url") != settings["llm_url"] or chosen.get("model") not in settings["llm_models"])
+    if stale:
         before = state["llm_calls"]["count"]
         try:
-            endpoint = _find_endpoint(token, settings["model"], state)
+            chosen = _find_model(token, settings, state)
         except RateLimited as exc:
-            log(f"[extract] rate limited during endpoint check: {exc}")
+            log(f"[extract] rate limited while checking models: {exc}")
             return [], queue, state["llm_calls"]["count"] - before
-        if endpoint is None:
-            log("[extract] no model endpoint returned a usable answer; see the probe lines above")
+        if chosen is None:
+            log("[extract] no model returned a usable answer; see the probe lines above")
             return [], queue, state["llm_calls"]["count"] - before
         allowed = max(0, allowed - (state["llm_calls"]["count"] - before))
 
@@ -367,11 +367,13 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
     done: set[str] = set()
     used = 0
     failures = 0
-    for batch in batches[:allowed]:
+    for n, batch in enumerate(batches[:allowed]):
+        if n:
+            time.sleep(float(settings.get("seconds_between_calls", 0)))  # stay under the per-minute limit
         used += 1
         state["llm_calls"]["count"] += 1
         try:
-            out = _call_model(batch, settings["model"], token, endpoint)
+            out = _call_model(batch, token, chosen, settings)
         except RateLimited as exc:
             log(f"[extract] rate limited, stopping for this run: {exc}")
             break
@@ -381,7 +383,7 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
                 it["attempts"] = int(it.get("attempts", 0)) + 1
             failures += 1
             if failures >= 2:
-                state.pop("llm_endpoint", None)  # re-check endpoints next run
+                state.pop("llm_model", None)  # re-check models next run
                 log("[extract] two failures in a row; stopping for this run to save the daily budget")
                 break
             continue

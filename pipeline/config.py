@@ -9,13 +9,23 @@ import yaml
 CONFIG_DIR = Path(__file__).parent / "config"
 
 DEFAULT_SETTINGS = {
-    # GitHub Models model id. Low-tier models get the most free requests per day.
-    "model": "openai/gpt-4.1-mini",
-    # Free tier is ~150 requests/day on low-tier models; keep headroom.
-    "daily_llm_calls": 140,
-    "max_calls_per_run": 4,
-    "batch_max_items": 18,
-    "batch_token_budget": 5200,
+    # Any OpenAI-compatible chat endpoint works. Default: Google's free Gemini API.
+    "llm_url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+    # Tried in order until one answers; the winner is remembered for a day.
+    "llm_models": [
+        "gemini-3.5-flash-lite",
+        "gemini-flash-lite-latest",
+        "gemini-3.1-flash-lite",
+        "gemini-3.1-flash-lite-preview",
+        "gemini-2.5-flash-lite",
+    ],
+    # Gemini's free Flash-Lite quota is about 500 requests/day; keep headroom.
+    "daily_llm_calls": 400,
+    "max_calls_per_run": 6,
+    "seconds_between_calls": 7,
+    "batch_max_items": 25,
+    "batch_token_budget": 10000,
+    "max_output_tokens": 6000,
     "max_item_age_hours": 36,
     "pending_max": 400,
     "geocode_per_run": 45,
