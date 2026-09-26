@@ -11,13 +11,18 @@ import json
 import math
 import os
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
+from urllib.parse import urljoin
 
 import requests
 
-from common import hours_since, log, parse_time
+from common import hours_since, iso, log, parse_time
 
-ENDPOINT = "https://models.github.ai/inference/chat/completions"
+# Tried in order until one returns a real chat completion; the winner is remembered for a day.
+ENDPOINTS = [
+    ("github", "https://models.github.ai/inference/chat/completions"),
+    ("azure-legacy", "https://models.inference.ai.azure.com/chat/completions"),
+]
 
 EVENT_TYPES = {
     "airstrike": "strike by aircraft",
@@ -189,33 +194,91 @@ def _content_from_response(r: requests.Response) -> str:
     return content
 
 
-def _call_model(batch: list[dict], model: str, token: str) -> dict:
+def _headers(token: str) -> dict:
+    return {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-GitHub-Api-Version": "2022-11-28",
+    }
+
+
+def _post(url: str, body: dict, token: str) -> requests.Response:
+    """POST without letting a redirect silently turn the request into a GET."""
+    r = requests.post(url, headers=_headers(token), json=body, timeout=120, allow_redirects=False)
+    hops = 0
+    while r.status_code in (301, 302, 303, 307, 308) and r.headers.get("location") and hops < 3:
+        url = urljoin(url, r.headers["location"])
+        log(f"[extract] redirected (HTTP {r.status_code}) to {url}; re-sending as POST")
+        r = requests.post(url, headers=_headers(token), json=body, timeout=120, allow_redirects=False)
+        hops += 1
+    return r
+
+
+def _describe(r: requests.Response) -> str:
+    return f"HTTP {r.status_code} {r.headers.get('content-type', '?')} from {r.url}: {(r.text or '')[:160]!r}"
+
+
+def _model_id(endpoint_name: str, model: str) -> str:
+    # The older endpoint uses bare names ("gpt-4.1-mini") instead of "openai/gpt-4.1-mini".
+    return model.split("/", 1)[1] if endpoint_name == "azure-legacy" and "/" in model else model
+
+
+def _find_endpoint(token: str, model: str, state: dict) -> dict | None:
+    """Send a tiny request to each endpoint variant and keep the first that really answers."""
+    for name, url in ENDPOINTS:
+        for json_mode in (True, False):
+            body = {
+                "model": _model_id(name, model),
+                "max_tokens": 20,
+                "temperature": 0,
+                "messages": [{"role": "user", "content": 'Reply with the JSON object {"ok": true} and nothing else.'}],
+            }
+            if json_mode:
+                body["response_format"] = {"type": "json_object"}
+            state["llm_calls"]["count"] += 1
+            try:
+                r = _post(url, body, token)
+            except Exception as exc:  # noqa: BLE001
+                log(f"[extract] probe {name}: {exc}")
+                break
+            if r.status_code == 429:
+                raise RateLimited(r.text[:200])
+            try:
+                works = bool(r.json().get("choices"))
+            except ValueError:
+                works = False
+            log(f"[extract] probe {name} json_mode={json_mode}: {_describe(r)}")
+            if works:
+                found = {"name": name, "url": url, "json_mode": json_mode, "checked": iso(datetime.now().astimezone())}
+                state["llm_endpoint"] = found
+                log(f"[extract] using {name} (json_mode={json_mode})")
+                return found
+    return None
+
+
+def _call_model(batch: list[dict], model: str, token: str, endpoint: dict) -> dict:
     payload = [
         {"i": n, "source": it["source"], "platform": it["platform"], "posted": it["time"], "text": it["text"][:700]}
         for n, it in enumerate(batch)
     ]
     body = {
-        "model": model,
+        "model": _model_id(endpoint["name"], model),
         "temperature": 0.1,
         "max_tokens": 3500,
         "stream": False,
-        "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": json.dumps({"items": payload}, ensure_ascii=False)},
         ],
     }
-    r = requests.post(
-        ENDPOINT,
-        headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
-                 "Accept": "application/vnd.github+json"},
-        json=body,
-        timeout=120,
-    )
+    if endpoint.get("json_mode", True):
+        body["response_format"] = {"type": "json_object"}
+    r = _post(endpoint["url"], body, token)
     if r.status_code == 429:
         raise RateLimited(r.text[:200])
     if r.status_code >= 400:
-        raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
+        raise RuntimeError(_describe(r))
     content = _content_from_response(r)
     parsed = _parse_json_object(content)
     if parsed is None:
@@ -283,6 +346,23 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
     allowed = calls_allowed(state, settings, now)
     batches = make_batches(queue, settings)
     log(f"[extract] queue={len(queue)} batches={len(batches)} allowed_calls={allowed}")
+    if not allowed or not batches:
+        return [], queue, 0
+
+    endpoint = state.get("llm_endpoint")
+    checked = parse_time(endpoint.get("checked")) if endpoint else None
+    if not endpoint or not checked or now - checked > timedelta(hours=24):
+        before = state["llm_calls"]["count"]
+        try:
+            endpoint = _find_endpoint(token, settings["model"], state)
+        except RateLimited as exc:
+            log(f"[extract] rate limited during endpoint check: {exc}")
+            return [], queue, state["llm_calls"]["count"] - before
+        if endpoint is None:
+            log("[extract] no model endpoint returned a usable answer; see the probe lines above")
+            return [], queue, state["llm_calls"]["count"] - before
+        allowed = max(0, allowed - (state["llm_calls"]["count"] - before))
+
     records: list[dict] = []
     done: set[str] = set()
     used = 0
@@ -291,7 +371,7 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
         used += 1
         state["llm_calls"]["count"] += 1
         try:
-            out = _call_model(batch, settings["model"], token)
+            out = _call_model(batch, settings["model"], token, endpoint)
         except RateLimited as exc:
             log(f"[extract] rate limited, stopping for this run: {exc}")
             break
@@ -301,6 +381,7 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
                 it["attempts"] = int(it.get("attempts", 0)) + 1
             failures += 1
             if failures >= 2:
+                state.pop("llm_endpoint", None)  # re-check endpoints next run
                 log("[extract] two failures in a row; stopping for this run to save the daily budget")
                 break
             continue
