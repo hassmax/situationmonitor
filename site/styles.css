@@ -262,6 +262,7 @@ h2 {
   clip-path: polygon(25% 5%, 75% 5%, 100% 50%, 75% 95%, 25% 95%, 0% 50%);
 }
 .swatch-arc { width: 16px; height: 14px; color: var(--corroborated); }
+.swatch-diplo { width: 14px; height: 6px; border-radius: 50%; background: var(--ink-2); opacity: 0.8; }
 
 .linkish {
   border: 0; background: none; padding: 0;

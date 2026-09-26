@@ -35,7 +35,10 @@
     naval: "Naval incident",
     explosion: "Explosion",
     deployment: "Deployment or exercise",
-    ceasefire: "Ceasefire or escalation",
+    diplomacy: "Diplomacy",
+    ceasefire: "Diplomacy",
+    hybrid: "Hybrid attack",
+    incursion: "Airspace or border incursion",
   };
   const PLATFORM = { bluesky: "Bluesky", telegram: "Telegram", rss: "News feed", gdelt: "GDELT" };
   const KIND = { official: "Official", partisan: "Partisan", osint: "OSINT", news: "News" };
@@ -43,11 +46,11 @@
   const NEWS_RGB = [63, 193, 201];
   const FALLBACK_THEATERS = [
     { id: "ukraine", name: "Russia–Ukraine", camera: { lat: 48.5, lng: 34, altitude: 0.85 }, highlight: ["804"] },
+    { id: "nato_east", name: "NATO flank and hybrid", camera: { lat: 56, lng: 22, altitude: 1.1 }, highlight: ["233", "428", "440", "246", "616"] },
     { id: "mideast", name: "Middle East", camera: { lat: 28.5, lng: 45, altitude: 1.25 }, highlight: [] },
     { id: "horn", name: "Sudan and the Horn of Africa", camera: { lat: 11, lng: 36, altitude: 1.2 }, highlight: [] },
     { id: "drc_sahel", name: "Eastern DRC and the Sahel", camera: { lat: 8, lng: 10, altitude: 1.6 }, highlight: [] },
     { id: "indopac", name: "Indo-Pacific", camera: { lat: 22, lng: 118, altitude: 1.5 }, highlight: [] },
-    { id: "other", name: "Other US or China activity", camera: null, highlight: [] },
   ];
 
   const rgba = (c, a = 1) => `rgba(${c[0]},${c[1]},${c[2]},${a})`;
@@ -74,8 +77,7 @@
     windowH: 24,
     theaterOn: new Set(FALLBACK_THEATERS.map((t) => t.id)),
     statusOn: new Set(Object.keys(STATUS)),
-    forces: { us: false, cn: false },
-    layers: { heat: true, arcs: true },
+    layers: { heat: true, arcs: true, diplomacy: true },
     query: "",
     selectedId: null,
     hot: new Set(),
@@ -141,7 +143,8 @@
 
   // Keep markers a similar size on screen as the camera zooms in and out.
   let zoomK = 1.6;
-  const pointRadius = (e) => (0.1 + e.severity * 0.055) * zoomK * (e.id === S.selectedId ? 1.7 : 1);
+  const isDiplomacy = (e) => e.type === "diplomacy" || e.type === "ceasefire";
+  const pointRadius = (e) => (0.1 + e.severity * 0.055) * zoomK * (e.id === S.selectedId ? 1.7 : 1) * (isDiplomacy(e) ? 1.5 : 1);
   world.onZoom(({ altitude }) => {
     const k = Math.max(0.4, Math.min(2.6, altitude)) / 1.3;
     if (Math.abs(k - zoomK) / zoomK > 0.12) {
@@ -162,7 +165,7 @@
   world
     .pointLat("lat")
     .pointLng("lon")
-    .pointAltitude((e) => 0.01 + e.severity * 0.016)
+    .pointAltitude((e) => (isDiplomacy(e) ? 0.003 : 0.01 + e.severity * 0.016))
     .pointRadius((e) => pointRadius(e))
     .pointColor((e) => rgba(STATUS[e.status].rgb, e.status === "unconfirmed" ? 0.72 : 0.95))
     .pointResolution(10)
@@ -293,7 +296,7 @@
     if (e._t < Date.now() - S.windowH * 3600e3) return false;
     if (!ignoreTheater && !S.theaterOn.has(e.theater)) return false;
     if (!S.statusOn.has(e.status)) return false;
-    if ((S.forces.us || S.forces.cn) && !((S.forces.us && e.us) || (S.forces.cn && e.cn))) return false;
+    if (!S.layers.diplomacy && isDiplomacy(e)) return false;
     const q = S.query.trim().toLowerCase();
     if (q && !e._search.includes(q)) return false;
     return true;
@@ -306,8 +309,7 @@
   function visibleHeat() {
     if (!S.data || !S.layers.heat) return [];
     const since = Date.now() - S.windowH * 3600e3;
-    return S.data.heat.filter((c) => c._t >= since && S.theaterOn.has(c.theater)
-      && (!(S.forces.us || S.forces.cn) || (S.forces.us && c.us) || (S.forces.cn && c.cn)));
+    return S.data.heat.filter((c) => c._t >= since && S.theaterOn.has(c.theater));
   }
 
   // ------------------------------------------------------------------ render
@@ -370,8 +372,6 @@
             <span class="sr">${esc(STATUS[e.status].label)}.</span>
             <span>${esc(name[e.theater] || e.theater)}</span>
             <span>${e.sources_count} ${e.sources_count === 1 ? "source" : "sources"}</span>
-            ${e.us ? '<span class="force" title="US military involved">US</span>' : ""}
-            ${e.cn ? '<span class="force" title="Chinese military involved">PLA</span>' : ""}
           </span>
         </span>
       </button></li>`).join("");
@@ -473,8 +473,6 @@
     const facts = [];
     if (e.killed != null) facts.push(`<span>Killed <b>${e.killed}</b> (reported)</span>`);
     if (e.injured != null) facts.push(`<span>Injured <b>${e.injured}</b> (reported)</span>`);
-    if (e.us) facts.push("<span><b>US</b> military involved</span>");
-    if (e.cn) facts.push("<span><b>Chinese</b> military involved</span>");
     if (e.origin) facts.push(`<span>Launched from <b>${esc(e.origin.place || "an unnamed location")}</b></span>`);
     const news = nearbyNews(e);
     const reports = (e.reports || []).slice().sort((a, b) => Date.parse(b.time) - Date.parse(a.time));
@@ -533,10 +531,6 @@
         <span class="count" data-status-count="${id}"></span>
       </label></li>`).join("");
 
-    $("#forceChips").innerHTML = `
-      <button class="chip" type="button" data-force="us" aria-pressed="false">US military</button>
-      <button class="chip" type="button" data-force="cn" aria-pressed="false">Chinese military</button>`;
-
     $("#layerList").innerHTML = `
       <li><label class="check">
         <input type="checkbox" data-layer="heat" checked>
@@ -547,6 +541,11 @@
         <input type="checkbox" data-layer="arcs" checked>
         <svg class="swatch-arc" viewBox="0 0 16 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.5 2" aria-hidden="true"><path d="M1.5 12.5C3 4 13 4 14.5 12.5"/></svg>
         <span class="label">Launch paths</span><span class="count"></span>
+      </label></li>
+      <li><label class="check">
+        <input type="checkbox" data-layer="diplomacy" checked>
+        <span class="swatch-diplo" aria-hidden="true"></span>
+        <span class="label">Diplomacy</span><span class="count"></span>
       </label></li>`;
   }
 
@@ -577,13 +576,6 @@
           if (window.innerWidth < 860) toggleFilters(false);
         }
         return;
-      }
-      const chip = ev.target.closest("[data-force]");
-      if (chip) {
-        const k = chip.dataset.force;
-        S.forces[k] = !S.forces[k];
-        chip.setAttribute("aria-pressed", String(S.forces[k]));
-        render();
       }
     });
 

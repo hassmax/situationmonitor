@@ -24,6 +24,21 @@ theaters:
       - [40.8, 27.5, 47.2, 41.8]   # Black Sea and Sea of Azov
     highlight: [UA]
 
+  - id: nato_east
+    name: NATO flank and hybrid
+    camera: {lat: 56.0, lng: 22.0, altitude: 1.1}
+    # Russia and Belarus versus NATO/EU outside Ukraine: the Baltic states, Finland, Poland,
+    # Romania, the Baltic Sea, plus Russian-linked sabotage and hybrid attacks across Europe.
+    iso2: [EE, LV, LT, FI, PL, RO, NO, SE, DK, DE, NL, BE, FR, GB, CZ, SK, BG, IE, AT, IT, ES]
+    fips: [EN, LG, LH, FI, PL, RO, NO, SW, DA, GM, NL, BE, FR, UK, EZ, LO, BU, EI, AU, IT, SP]
+    sea:
+      - [53.5, 9.5, 66.0, 30.5]    # Baltic Sea
+      - [51.0, -4.0, 61.0, 9.5]    # North Sea
+    # GDELT only: keep events in this theater only when a Russian actor is involved,
+    # so ordinary crime in Western Europe doesn't flood the heat layer.
+    gdelt_require_actor: RUS
+    highlight: [EE, LV, LT, FI, PL]
+
   - id: mideast
     name: Middle East
     camera: {lat: 28.5, lng: 45.0, altitude: 1.25}

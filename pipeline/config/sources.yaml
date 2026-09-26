@@ -197,7 +197,37 @@ rss:
     kind: news
     group: google-news
   - id: gnews-indopac
-    name: Google News (PLA and US forces in Asia)
+    name: Google News (Indo-Pacific military activity)
     url: https://news.google.com/rss/search?q=%28PLA+OR+%22Chinese+navy%22+OR+%22coast+guard%22+OR+%22US+Navy%22+OR+%22Seventh+Fleet%22%29+%28Taiwan+OR+%22South+China+Sea%22+OR+Philippines+OR+Japan+OR+Korea%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
     kind: news
     group: google-news
+  - id: gnews-hybrid
+    name: Google News (Russian sabotage and hybrid attacks)
+    url: https://news.google.com/rss/search?q=%28sabotage+OR+arson+OR+%22undersea+cable%22+OR+%22GPS+jamming%22+OR+%22drone+incursion%22+OR+%22airspace+violation%22+OR+%22hybrid+attack%22%29+%28Russia+OR+Russian%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+    weight: 2
+  - id: gnews-nato-east
+    name: Google News (Baltics, Finland, Poland borders)
+    url: https://news.google.com/rss/search?q=%28Latvia+OR+Estonia+OR+Lithuania+OR+Finland+OR+Poland+OR+Romania+OR+Kaliningrad%29+%28Russia+OR+Belarus%29+%28border+OR+airspace+OR+drone+OR+incursion+OR+provocation+OR+military%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+    weight: 2
+  - id: gnews-levant
+    name: Google News (Israel, Gaza, Lebanon, Syria)
+    url: https://news.google.com/rss/search?q=%28Israel+OR+IDF+OR+Gaza+OR+Lebanon+OR+Hezbollah+OR+Syria+OR+%22West+Bank%22%29+%28strike+OR+attack+OR+killed+OR+rocket+OR+drone+OR+raid%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+    weight: 2
+  - id: gnews-iran-gulf
+    name: Google News (Iran, Gulf, Yemen, Red Sea)
+    url: https://news.google.com/rss/search?q=%28Iran+OR+IRGC+OR+Houthi+OR+Yemen+OR+Hormuz+OR+%22Red+Sea%22+OR+Iraq%29+%28strike+OR+attack+OR+missile+OR+drone+OR+blockade+OR+seized%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+    weight: 2
+  - id: gnews-diplomacy
+    name: Google News (ceasefires, talks, alliances)
+    url: https://news.google.com/rss/search?q=%28ceasefire+OR+%22peace+talks%22+OR+negotiations+OR+%22defense+pact%22+OR+%22Mecca+agreement%22+OR+summit+OR+%22Security+Council%22+OR+%22Article+4%22%29+%28Iran+OR+Israel+OR+Gaza+OR+Lebanon+OR+Yemen+OR+Houthi+OR+Saudi+OR+Sudan+OR+Ukraine+OR+Russia+OR+NATO+OR+Tigray+OR+Congo+OR+Taiwan%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+    weight: 2

@@ -17,9 +17,11 @@ from sources.gdelt import CellIndex, news_domains_near
 FAMILY = {
     "airstrike": "strike", "missile_drone": "strike", "air_defense": "strike", "explosion": "strike",
     "artillery": "ground", "ground": "ground", "territory": "ground",
-    "naval": "naval", "deployment": "deployment", "ceasefire": "ceasefire",
+    "naval": "naval", "deployment": "deployment", "diplomacy": "diplomacy", "ceasefire": "diplomacy",
+    "hybrid": "hybrid", "incursion": "incursion",
 }
-RADIUS_KM = {"strike": 30, "ground": 30, "naval": 150, "deployment": 120, "ceasefire": 400}
+RADIUS_KM = {"strike": 30, "ground": 30, "naval": 150, "deployment": 120, "diplomacy": 400,
+             "hybrid": 50, "incursion": 150}
 WINDOW = timedelta(hours=12)
 
 
@@ -50,7 +52,7 @@ def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
                 "theater": cand["theater"], "type": cand["type"], "summary": cand["summary"],
                 "place": cand["place"], "country": cand["country"],
                 "lat": cand["lat"], "lon": cand["lon"], "approx": cand["approx"], "origin": cand["origin"],
-                "severity": cand["severity"], "us": cand["us"], "cn": cand["cn"],
+                "severity": cand["severity"],
                 "killed": cand["killed"], "injured": cand["injured"],
                 "time": cand["time"], "updated": cand["time"], "reports": [rep],
             })
@@ -61,8 +63,6 @@ def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
         match["time"] = min(match["time"], cand["time"])
         match["updated"] = max(match["updated"], cand["time"])
         match["severity"] = max(match["severity"], cand["severity"])
-        match["us"] = match["us"] or cand["us"]
-        match["cn"] = match["cn"] or cand["cn"]
         for k in ("killed", "injured"):
             vals = [v for v in (match.get(k), cand[k]) if v is not None]
             match[k] = max(vals) if vals else None
@@ -114,7 +114,7 @@ def prune(events: list[dict], now: datetime, retention_days: int, max_events: in
 
 def public_event(e: dict) -> dict:
     """Strip internal fields before publishing."""
-    out = {k: v for k, v in e.items() if k != "reports"}
+    out = {k: v for k, v in e.items() if k not in ("reports", "us", "cn")}
     out["reports"] = [
         {k: r.get(k) for k in ("source", "platform", "kind", "side", "claim", "url", "time", "summary")}
         for r in sorted(e["reports"], key=lambda r: r["time"])

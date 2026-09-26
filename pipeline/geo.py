@@ -15,6 +15,7 @@ NOMINATIM = "https://nominatim.openstreetmap.org/search"
 # ISO alpha-2 -> ISO numeric (the ids used by the globe's country shapes).
 ISO_NUMERIC = {
     "UA": "804", "RU": "643", "BY": "112", "MD": "498",
+    "EE": "233", "LV": "428", "LT": "440", "FI": "246", "PL": "616", "RO": "642",
     "IL": "376", "PS": "275", "LB": "422", "SY": "760", "IQ": "368", "IR": "364", "YE": "887",
     "SA": "682", "JO": "400", "KW": "414", "BH": "048", "QA": "634", "AE": "784", "OM": "512",
     "SD": "729", "SS": "728", "ET": "231", "ER": "232", "SO": "706", "DJ": "262",
@@ -119,9 +120,7 @@ def place_record(rec: dict, geocoder: Geocoder, theaters: list[dict]) -> dict | 
     if theater is None:
         theater = theater_for_iso(lat, lon, rec["country"], theaters)
     if theater is None:
-        if not (rec["us"] or rec["cn"]):
-            return None
-        theater = "other"
+        return None
 
     origin = None
     if rec["origin_lat"] is not None and rec["origin_lon"] is not None:
@@ -139,8 +138,6 @@ def place_record(rec: dict, geocoder: Geocoder, theaters: list[dict]) -> dict | 
         "approx": approx,
         "origin": origin,
         "severity": rec["severity"],
-        "us": rec["us"],
-        "cn": rec["cn"],
         "killed": rec["killed"],
         "injured": rec["injured"],
         "time": item["time"],

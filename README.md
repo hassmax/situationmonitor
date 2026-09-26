@@ -2,7 +2,7 @@
 
 A self-updating 3D globe of armed-conflict events, built from public OSINT posts and news feeds. It runs entirely on free services: GitHub Actions fetches and processes new reports every 15 minutes, Google's free Gemini API turns posts into structured events, and GitHub Pages hosts the site.
 
-Coverage: Russia–Ukraine, the Middle East (Iran, Israel, Gaza, Lebanon, Yemen, Red Sea, Hormuz), Sudan and the Horn of Africa (including Ethiopia–Tigray), eastern DRC and the Sahel, the Indo-Pacific, and any US or Chinese military activity elsewhere.
+Coverage: Russia–Ukraine, NATO's eastern flank and Russian-linked hybrid attacks in Europe (sabotage, cable cuts, GPS jamming, drone and airspace incursions), the Middle East (Iran, Israel, Gaza, Lebanon, Yemen, Red Sea, Hormuz), Sudan and the Horn of Africa (including Ethiopia–Tigray), eastern DRC and the Sahel, and the Indo-Pacific. Major diplomatic developments about these conflicts (ceasefires, peace talks, agreements, alliance and defense-pact meetings, Security Council action) are tracked too, and appear as flat discs you can hide with the Diplomacy layer.
 
 Preview the layout with sample data before any real data exists: open `site/index.html?demo` through a local server (see "Run it locally") or `https://<you>.github.io/<repo>/?demo` once deployed.
 
@@ -38,7 +38,7 @@ every 15 min (GitHub Actions)
 state (seen posts, queue, caches, events) is kept on the `data` branch, overwritten each run
 ```
 
-- **Extraction.** Posts are sent to the model in batches of about 25. It decides whether each describes a concrete, recent military event, then returns a type, a 25-word summary in its own words (translated when needed), a place, and flags for US or Chinese military involvement. Only these summaries and links to the originals are published, never the full posts.
+- **Extraction.** Posts are sent to the model in batches of about 25. It decides whether each describes a concrete, recent military event, then returns a type, a 25-word summary in its own words (translated when needed), and a place. Only these summaries and links to the originals are published, never the full posts.
 - **Budget.** Gemini's free Flash-Lite quota is currently about 500 requests a day (Google adjusts it; AI Studio shows your live limit). The pipeline spreads 400 across the day and queues the rest, so bursts show up with a delay rather than getting dropped. Candidate model names are tried in order and the first that answers is used, so a renamed model doesn't break the pipeline.
 - **Geocoding.** The model's place name is checked against OpenStreetMap. If the two disagree by more than 300 km, the model's estimate is kept and the event is marked approximate.
 - **Merging.** Reports of the same kind of event within 30 km and 12 hours of each other are merged into one event with several sources (wider radius for naval and deployment reports).

@@ -21,8 +21,8 @@ MAX_FILES_PER_RUN = 8
 
 # CAMEO codes kept: all "fight" (19x) and "mass violence" (20x), plus bombings and assassinations.
 VIOLENCE_EXACT = {"183", "1831", "1832", "1833", "1834", "185", "186"}
-# Military posture (demonstrations of force, raised alert, mobilisation): kept only when a
-# military actor is involved, which catches exercises and deployments in the Indo-Pacific.
+# Military posture (demonstrations of force, raised alert, mobilisation): kept only in the
+# Indo-Pacific and only when a military actor is involved, to catch exercises and deployments.
 POSTURE = {"150", "152", "154"}
 
 CAMEO_LABELS = {
@@ -81,14 +81,13 @@ def _parse_row(cols: list[str], theaters: list[dict]) -> dict | None:
         lat, lon = float(cols[C["lat"]]), float(cols[C["lon"]])
     except ValueError:
         return None
-    us = mil and "USA" in (cols[C["a1_country"]], cols[C["a2_country"]])
-    cn = mil and "CHN" in (cols[C["a1_country"]], cols[C["a2_country"]])
     theater = theater_for_fips(lat, lon, cols[C["geo_country"]], theaters)
+    required = next((t.get("gdelt_require_actor") for t in theaters if t["id"] == theater), None)
+    if required and required not in (cols[C["a1_country"]], cols[C["a2_country"]]):
+        theater = None
     if theater is None:
-        if not (us or cn) or not violent:
-            return None
-        theater = "other"
-    if posture and theater != "indopac" and not (us or cn):
+        return None
+    if posture and theater != "indopac":
         return None
     url = cols[C["url"]]
     domain = urlparse(url).netloc.lower().removeprefix("www.")
@@ -100,7 +99,7 @@ def _parse_row(cols: list[str], theaters: list[dict]) -> dict | None:
     return {
         "lat": round(lat, 3), "lon": round(lon, 3), "name": cols[C["geo_name"]],
         "feature": cols[C["feature"]] or f"{lat:.1f},{lon:.1f}", "theater": theater,
-        "label": label, "url": url, "domain": domain, "time": iso(added), "us": us, "cn": cn,
+        "label": label, "url": url, "domain": domain, "time": iso(added),
     }
 
 
@@ -145,7 +144,7 @@ def update_cells(cells: list[dict], rows: list[dict], now: datetime, retention_h
             c = by_key[key] = {
                 "key": key, "lat": r["lat"], "lon": r["lon"], "name": r["name"],
                 "theater": r["theater"], "first": r["time"], "last": r["time"],
-                "events": 0, "domains": [], "urls": [], "labels": {}, "us": False, "cn": False,
+                "events": 0, "domains": [], "urls": [], "labels": {},
             }
         c["events"] += 1
         c["first"] = min(c["first"], r["time"])
@@ -156,8 +155,6 @@ def update_cells(cells: list[dict], rows: list[dict], now: datetime, retention_h
         if r["url"] not in c["urls"]:
             c["urls"] = ([r["url"]] + c["urls"])[:5]
         c["labels"][r["label"]] = c["labels"].get(r["label"], 0) + 1
-        c["us"] = c["us"] or r["us"]
-        c["cn"] = c["cn"] or r["cn"]
     cutoff = iso(now - timedelta(hours=retention_hours))
     kept = [c for c in by_key.values() if c["last"] >= cutoff]
     kept.sort(key=lambda c: (len(c["domains"]), c["last"]), reverse=True)

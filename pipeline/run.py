@@ -36,7 +36,7 @@ def public_cells(cells: list[dict]) -> list[dict]:
         out.append({
             "lat": c["lat"], "lon": c["lon"], "name": c["name"], "theater": c["theater"],
             "first": c["first"], "last": c["last"], "w": len(c["domains"]), "events": c["events"],
-            "label": labels[0][0] if labels else None, "us": c["us"], "cn": c["cn"], "urls": c["urls"][:3],
+            "label": labels[0][0] if labels else None, "urls": c["urls"][:3],
         })
     return out
 
@@ -46,7 +46,6 @@ def theaters_meta(theaters: list[dict]) -> list[dict]:
         "id": t["id"], "name": t["name"], "camera": t.get("camera"),
         "highlight": [geo.ISO_NUMERIC[c] for c in t.get("highlight", []) if c in geo.ISO_NUMERIC],
     } for t in theaters]
-    meta.append({"id": "other", "name": "Other US or China activity", "camera": None, "highlight": []})
     return meta
 
 
@@ -67,8 +66,9 @@ def main() -> int:
     for k, v in default_state().items():
         state.setdefault(k, v)
     stored = load_json(state_dir / "events.json", {})
-    events: list[dict] = stored.get("events", [])
-    cells: list[dict] = stored.get("cells", [])
+    # Anything filed under a theater that is no longer configured is dropped.
+    events: list[dict] = [e for e in stored.get("events", []) if e.get("theater") in cfg.theater_ids]
+    cells: list[dict] = [c for c in stored.get("cells", []) if c.get("theater") in cfg.theater_ids]
 
     session = http_session()
     health: dict = state["health"]
