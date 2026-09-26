@@ -126,6 +126,7 @@ rss:
     kind: news
     group: guardian
   - id: timesofisrael
+    disabled: true   # blocks GitHub's servers
     name: The Times of Israel
     url: https://www.timesofisrael.com/feed/
     kind: news
@@ -136,16 +137,19 @@ rss:
     kind: news
     group: longwarjournal
   - id: sudantribune
+    disabled: true   # blocks GitHub's servers
     name: Sudan Tribune
     url: https://sudantribune.com/feed/
     kind: news
     group: sudantribune
   - id: addisstandard
+    disabled: true   # blocks GitHub's servers
     name: Addis Standard
     url: https://addisstandard.com/feed/
     kind: news
     group: addisstandard
   - id: defensepost
+    disabled: true   # blocks GitHub's servers
     name: The Defense Post
     url: https://thedefensepost.com/feed/
     kind: news
@@ -176,3 +180,20 @@ rss:
     url: https://news.un.org/feed/subscribe/en/news/topic/peace-and-security/feed/rss.xml
     kind: news
     group: un
+  # Google News searches stand in for regional outlets that block GitHub's servers.
+  # Each result links to the original outlet's article.
+  - id: gnews-horn
+    name: Google News (Sudan, Ethiopia, Somalia)
+    url: https://news.google.com/rss/search?q=%28Sudan+OR+RSF+OR+%22El+Fasher%22+OR+Tigray+OR+Ethiopia+OR+Somalia+OR+al-Shabaab%29+%28attack+OR+strike+OR+drone+OR+fighting+OR+killed%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+  - id: gnews-drc-sahel
+    name: Google News (eastern DRC and the Sahel)
+    url: https://news.google.com/rss/search?q=%28M23+OR+Goma+OR+%22eastern+Congo%22+OR+Mali+OR+%22Burkina+Faso%22+OR+Niger+OR+JNIM+OR+%22Boko+Haram%22%29+%28attack+OR+strike+OR+drone+OR+fighting+OR+killed%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+  - id: gnews-indopac
+    name: Google News (PLA and US forces in Asia)
+    url: https://news.google.com/rss/search?q=%28PLA+OR+%22Chinese+navy%22+OR+%22coast+guard%22+OR+%22US+Navy%22+OR+%22Seventh+Fleet%22%29+%28Taiwan+OR+%22South+China+Sea%22+OR+Philippines+OR+Japan+OR+Korea%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
