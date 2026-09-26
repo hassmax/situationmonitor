@@ -1,0 +1,67 @@
+# Theaters the dashboard tracks.
+#
+#   id        short id used everywhere (keep it stable once you have data)
+#   name      label shown on the dashboard
+#   camera    where "fly to" points the globe (altitude: 0.5 = close, 2.5 = whole hemisphere)
+#   iso2      countries whose events belong to this theater (ISO 3166-1 alpha-2, used for posts/news)
+#   fips      the same countries as FIPS 10-4 codes (GDELT uses these)
+#   bbox      optional [south, west, north, east] boxes; an event must also fall inside one of them
+#   sea       [south, west, north, east] boxes for water areas with no country
+#   highlight countries tinted brighter on the globe (ISO alpha-2)
+#
+# The extraction prompt in pipeline/extract.py describes these theaters in words.
+# If you add or rename one, update that prompt too.
+
+theaters:
+  - id: ukraine
+    name: Russia–Ukraine
+    camera: {lat: 48.5, lng: 34.0, altitude: 0.85}
+    iso2: [UA, RU, BY, MD]
+    fips: [UP, RS, BO, MD]
+    bbox:
+      - [43.0, 21.0, 58.5, 50.0]
+    sea:
+      - [40.8, 27.5, 47.2, 41.8]   # Black Sea and Sea of Azov
+    highlight: [UA]
+
+  - id: mideast
+    name: Middle East
+    camera: {lat: 28.5, lng: 45.0, altitude: 1.25}
+    iso2: [IL, PS, LB, SY, IQ, IR, YE, SA, JO, KW, BH, QA, AE, OM]
+    fips: [IS, WE, GZ, LE, SY, IZ, IR, YM, SA, JO, KU, BA, QA, AE, MU]
+    sea:
+      - [12.0, 32.0, 30.0, 44.0]   # Red Sea
+      - [10.5, 43.0, 16.5, 52.5]   # Gulf of Aden
+      - [23.0, 47.5, 30.5, 57.5]   # Persian Gulf and Strait of Hormuz
+      - [19.0, 56.5, 26.5, 63.0]   # Gulf of Oman
+      - [31.0, 32.0, 36.5, 36.0]   # Eastern Mediterranean coast
+    highlight: [IL, PS, LB, SY, IQ, IR, YE]
+
+  - id: horn
+    name: Sudan and the Horn of Africa
+    camera: {lat: 11.0, lng: 36.0, altitude: 1.2}
+    iso2: [SD, SS, ET, ER, SO, DJ]
+    fips: [SU, OD, ET, ER, SO, DJ]
+    highlight: [SD, SS, ET, ER, SO]
+
+  - id: drc_sahel
+    name: Eastern DRC and the Sahel
+    camera: {lat: 8.0, lng: 10.0, altitude: 1.6}
+    iso2: [CD, RW, BI, UG, ML, BF, NE, NG, TD, MR]
+    fips: [CG, RW, BY, UG, ML, UV, NG, NI, CD, MR]
+    bbox:
+      - [9.0, -17.5, 25.0, 24.5]   # Sahel belt
+      - [-12.0, 25.0, 4.5, 35.0]   # Eastern DRC and the Great Lakes
+    highlight: [CD, RW, BI, ML, BF, NE, TD]
+
+  - id: indopac
+    name: Indo-Pacific
+    camera: {lat: 22.0, lng: 118.0, altitude: 1.5}
+    iso2: [CN, TW, JP, KP, KR, PH, VN, MM, TH, KH, IN, PK]
+    fips: [CH, TW, JA, KN, KS, RP, VM, BM, TH, CB, IN, PK]
+    sea:
+      - [0.0, 105.0, 23.0, 121.5]  # South China Sea
+      - [22.0, 117.0, 33.5, 131.0] # Taiwan Strait and East China Sea
+      - [33.0, 127.5, 46.0, 142.0] # Sea of Japan
+      - [8.0, 121.5, 27.0, 145.0]  # Philippine Sea
+    highlight: [TW, PH, KP, KR, MM]

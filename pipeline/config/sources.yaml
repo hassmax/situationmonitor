@@ -1,0 +1,178 @@
+# Where the pipeline looks for new events. Edit freely; the dashboard's "Sources"
+# panel shows which ones are reporting and which are failing after each run.
+#
+# Fields
+#   name       label shown on the dashboard
+#   kind       osint     independent open-source analysts
+#              news      news outlets
+#              official  a government, military, or armed group
+#              partisan  openly aligned with one side
+#   side       set this for any source aligned with a party to the conflict (UA, RU, IL, IR, ...).
+#              Reports from sources on the same side never corroborate each other.
+#   group      sources sharing a group count as one when checking corroboration
+#              (e.g. an outlet's feed and its journalists' accounts)
+#   weight     1-3. Higher = processed first when the queue is long, and preferred for the headline summary.
+#   prefilter  false = send every post to the model. Use it for channels that only post about the war.
+#              true (default) = only posts matching conflict keywords are sent.
+#   disabled   true = skip this source without deleting it
+
+settings:
+  model: openai/gpt-4.1-mini
+  daily_llm_calls: 140
+  max_calls_per_run: 4
+
+bluesky:
+  # Handles below were taken from public profile listings. The Sources panel
+  # flags any that stop resolving. Coverage is thinnest for the Middle East,
+  # Africa, and the Indo-Pacific; add accounts you trust there.
+  - handle: thestudyofwar.bsky.social
+    name: Institute for the Study of War
+    kind: osint
+    group: isw
+    weight: 3
+  - handle: auroraintel.bsky.social
+    name: Aurora Intel
+    kind: osint
+    group: aurora
+    weight: 2
+  - handle: blackbirdgroup.bsky.social
+    name: Black Bird Group
+    kind: osint
+    group: blackbird
+    weight: 2
+  - handle: casusbelli.bsky.social
+    name: Casus Belli
+    kind: osint
+    group: casusbelli
+    weight: 2
+  - handle: kyivindependent.com
+    name: The Kyiv Independent
+    kind: news
+    group: kyivindependent
+    weight: 2
+  - handle: militarnyi.com
+    name: Militarnyi
+    kind: news
+    side: UA
+    group: militarnyi
+  - handle: christopherjm.ft.com
+    name: Christopher Miller (FT)
+    kind: news
+    group: ft
+  - handle: shayan86.bsky.social
+    name: Shayan Sardarizadeh (BBC Verify)
+    kind: osint
+    group: bbc
+  - handle: spectrecrouton.bsky.social
+    name: Spectre Crouton (Russian Navy tracking)
+    kind: osint
+    group: spectrecrouton
+  - handle: flattopfiesta.bsky.social
+    name: Flattop Fiesta (ship imagery)
+    kind: osint
+    group: flattopfiesta
+  - handle: shipwreck75.bsky.social
+    name: Shipwreck (naval intelligence analyst)
+    kind: osint
+    group: shipwreck
+
+telegram:
+  # Needs the TG_API_ID, TG_API_HASH and TG_SESSION secrets (see README).
+  # This starter list is Ukraine-heavy on purpose: Middle East and Africa Telegram
+  # channels are mostly run by the parties themselves. Add them deliberately,
+  # with kind: official or partisan and the right side.
+  - username: DeepStateUA
+    name: DeepState (Ukrainian mapping project)
+    kind: osint
+    side: UA
+    group: deepstate
+    weight: 3
+    prefilter: false
+  - username: kpszsu
+    name: Ukrainian Air Force (official)
+    kind: official
+    side: UA
+    group: ua-military
+    prefilter: false
+  - username: mod_russia
+    name: Russian Ministry of Defence (official)
+    kind: official
+    side: RU
+    group: ru-military
+    prefilter: false
+  - username: rybar
+    name: Rybar (pro-Kremlin military blog)
+    kind: partisan
+    side: RU
+    group: ru-milbloggers
+    prefilter: false
+
+rss:
+  - id: aljazeera
+    name: Al Jazeera
+    url: https://www.aljazeera.com/xml/rss/all.xml
+    kind: news
+    group: aljazeera
+    weight: 2
+  - id: bbc-world
+    name: BBC World
+    url: https://feeds.bbci.co.uk/news/world/rss.xml
+    kind: news
+    group: bbc
+    weight: 2
+  - id: guardian-world
+    name: The Guardian (world)
+    url: https://www.theguardian.com/world/rss
+    kind: news
+    group: guardian
+  - id: timesofisrael
+    name: The Times of Israel
+    url: https://www.timesofisrael.com/feed/
+    kind: news
+    group: timesofisrael
+  - id: longwarjournal
+    name: FDD's Long War Journal
+    url: https://www.longwarjournal.org/feed
+    kind: news
+    group: longwarjournal
+  - id: sudantribune
+    name: Sudan Tribune
+    url: https://sudantribune.com/feed/
+    kind: news
+    group: sudantribune
+  - id: addisstandard
+    name: Addis Standard
+    url: https://addisstandard.com/feed/
+    kind: news
+    group: addisstandard
+  - id: defensepost
+    name: The Defense Post
+    url: https://thedefensepost.com/feed/
+    kind: news
+    group: defensepost
+  - id: usni
+    name: USNI News
+    url: https://news.usni.org/feed
+    kind: news
+    group: usni
+    weight: 2
+  - id: defensenews
+    name: Defense News
+    url: https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml
+    kind: news
+    group: defensenews
+  - id: taipeitimes
+    name: Taipei Times
+    url: https://www.taipeitimes.com/xml/index.rss
+    kind: news
+    group: taipeitimes
+  - id: thediplomat
+    name: The Diplomat
+    url: https://thediplomat.com/feed/
+    kind: news
+    group: thediplomat
+  - id: un-peace
+    name: UN News (peace and security)
+    url: https://news.un.org/feed/subscribe/en/news/topic/peace-and-security/feed/rss.xml
+    kind: news
+    group: un
