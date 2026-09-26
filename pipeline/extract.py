@@ -137,6 +137,58 @@ def make_batches(queue: list[dict], settings: dict) -> list[list[dict]]:
     return batches
 
 
+def _parse_json_object(content: str) -> dict | None:
+    """Parse the model's reply, tolerating code fences or stray text around the JSON."""
+    text = re.sub(r"^```(?:json)?\s*|\s*```$", "", (content or "").strip()).strip()
+    for candidate in (text, text[text.find("{"): text.rfind("}") + 1] if "{" in text else ""):
+        if not candidate:
+            continue
+        try:
+            value = json.loads(candidate)
+        except ValueError:
+            continue
+        if isinstance(value, dict):
+            return value
+        if isinstance(value, list):
+            return {"events": value}
+    return None
+
+
+def _content_from_response(r: requests.Response) -> str:
+    """Return the assistant text from a normal JSON reply or a streamed (SSE) reply."""
+    body = r.text or ""
+    if body.lstrip().startswith("data:"):
+        parts = []
+        for line in body.splitlines():
+            line = line.strip()
+            if not line.startswith("data:") or line == "data: [DONE]":
+                continue
+            try:
+                chunk = json.loads(line[5:].strip())
+                delta = chunk["choices"][0].get("delta") or chunk["choices"][0].get("message") or {}
+                parts.append(delta.get("content") or "")
+            except (ValueError, KeyError, IndexError, TypeError):
+                continue
+        return "".join(parts)
+    try:
+        data = r.json()
+    except ValueError:
+        raise RuntimeError(
+            f"non-JSON reply (HTTP {r.status_code}, {r.headers.get('content-type')}): {body[:300]!r}"
+        ) from None
+    try:
+        message = data["choices"][0]["message"]
+    except (KeyError, IndexError, TypeError):
+        raise RuntimeError(f"unexpected reply shape: {str(data)[:300]}") from None
+    content = message.get("content") or ""
+    if isinstance(content, list):
+        content = "".join(p.get("text", "") for p in content if isinstance(p, dict))
+    if not content:
+        finish = (data["choices"][0] or {}).get("finish_reason")
+        raise RuntimeError(f"empty reply (finish_reason={finish}); refusal={message.get('refusal')!r}")
+    return content
+
+
 def _call_model(batch: list[dict], model: str, token: str) -> dict:
     payload = [
         {"i": n, "source": it["source"], "platform": it["platform"], "posted": it["time"], "text": it["text"][:700]}
@@ -146,6 +198,7 @@ def _call_model(batch: list[dict], model: str, token: str) -> dict:
         "model": model,
         "temperature": 0.1,
         "max_tokens": 3500,
+        "stream": False,
         "response_format": {"type": "json_object"},
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -155,7 +208,7 @@ def _call_model(batch: list[dict], model: str, token: str) -> dict:
     r = requests.post(
         ENDPOINT,
         headers={"Authorization": f"Bearer {token}", "Content-Type": "application/json",
-                 "Accept": "application/json"},
+                 "Accept": "application/vnd.github+json"},
         json=body,
         timeout=120,
     )
@@ -163,9 +216,11 @@ def _call_model(batch: list[dict], model: str, token: str) -> dict:
         raise RateLimited(r.text[:200])
     if r.status_code >= 400:
         raise RuntimeError(f"HTTP {r.status_code}: {r.text[:300]}")
-    content = r.json()["choices"][0]["message"]["content"] or "{}"
-    content = re.sub(r"^```(?:json)?|```$", "", content.strip()).strip()
-    return json.loads(content)
+    content = _content_from_response(r)
+    parsed = _parse_json_object(content)
+    if parsed is None:
+        raise RuntimeError(f"model reply was not JSON: {content[:300]!r}")
+    return parsed
 
 
 def _num(v, lo, hi):
@@ -231,6 +286,7 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
     records: list[dict] = []
     done: set[str] = set()
     used = 0
+    failures = 0
     for batch in batches[:allowed]:
         used += 1
         state["llm_calls"]["count"] += 1
@@ -243,7 +299,12 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
             log(f"[extract] batch failed: {exc}")
             for it in batch:
                 it["attempts"] = int(it.get("attempts", 0)) + 1
+            failures += 1
+            if failures >= 2:
+                log("[extract] two failures in a row; stopping for this run to save the daily budget")
+                break
             continue
+        failures = 0
         for it in batch:
             done.add(it["id"])
         for obj in out.get("events", []) if isinstance(out, dict) else []:
