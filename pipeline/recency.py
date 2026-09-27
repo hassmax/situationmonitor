@@ -5,7 +5,8 @@ republished or updated it), and a bare headline like "US submarine sinks Iranian
 extraction model no way to tell. So every event built only from news feeds is checked once:
 
   1. Search Google News for the event's key words, limited to articles published at least
-     AGE_DAYS before the event.
+     AGE_DAYS before the event. A story still being reported a few days on is ongoing news,
+     so only coverage from weeks earlier counts.
   2. No older coverage: the event is new.
   3. Older coverage found: the model sees the event and the dated older headlines and says
      whether one of them reports the same specific incident. A similar but new incident
@@ -14,6 +15,8 @@ extraction model no way to tell. So every event built only from news feeds is ch
      is logged with that headline.
 
 Searches or model calls that fail leave the event on the map and are retried on later runs.
+Dropped events are kept in state; if the rule changes so that one no longer qualifies, it is
+put back on the next run.
 """
 from __future__ import annotations
 
@@ -27,7 +30,7 @@ import feedparser
 from common import clean_text, iso, log, parse_time
 from sources.rss import _entry_time
 
-AGE_DAYS = 3
+AGE_DAYS = 14
 CHECKS_PER_RUN = 15
 MAX_TRIES = 3
 MAX_OLDER = 8
@@ -40,7 +43,7 @@ PROMPT = """You check whether news reports on a live conflict map are old storie
 For each case you get a report (its summary, place, and the date it was listed) and older news headlines, each with its date, found by a search for the same key words.
 
 Answer "old": true only if one of the older headlines reports the same specific incident or statement as the report: the same sinking, the same strike, the same warning, the same meeting. The report is then old news, unless it adds significant new facts about that incident (new casualty figures, a new attribution, a new official response).
-Answer "old": false when the report describes a new incident that merely resembles older ones (another strike on the same city, another round of talks, another drone incursion), when the older headlines are about something else, or when you are unsure.
+Answer "old": false when the story is still developing or being followed up, when the report describes a new incident that merely resembles older ones (another strike on the same city, another round of talks, another drone incursion), when the older headlines are about something else, or when you are unsure.
 
 Reply with one JSON object and nothing else:
 {"results": [{"i": <case number>, "old": true or false, "match": <number of the matching older headline, or null>}]}"""
@@ -83,8 +86,25 @@ def _needs_check(e: dict) -> bool:
             and bool(e.get("reports")) and all(r.get("platform") == "rss" for r in e["reports"]))
 
 
+def _restore(events: list[dict], state: dict) -> list[dict]:
+    """Put back dropped events that the current rule would keep (their match is too recent)."""
+    kept, back = [], []
+    have = {e["id"] for e in events}
+    for d in state.get("dropped_as_old", []):
+        listed, match = parse_time(d.get("listed")), parse_time(d.get("match_date"))
+        if d.get("event") and listed and match and match >= listed - timedelta(days=AGE_DAYS):
+            if d["event"]["id"] not in have:
+                back.append(d["event"])
+                log(f"[recency] restored: {d['summary']!r} (matched coverage from {d['match_date']} is too recent to count)")
+            continue
+        kept.append(d)
+    state["dropped_as_old"] = kept
+    return events + back
+
+
 def check(events: list[dict], new_ids: set[str], session, ask, state: dict, settings: dict, now) -> list[dict]:
     """Return events without the ones shown to be old news. `ask` is extract.ask_json."""
+    events = _restore(events, state)
     todo = [e for e in events if _needs_check(e)]
     todo.sort(key=lambda e: e.get("time") or "", reverse=True)
     todo = sorted(todo, key=lambda e: e["id"] not in new_ids)[:CHECKS_PER_RUN]  # this run's events, then newest
@@ -125,6 +145,6 @@ def check(events: list[dict], new_ids: set[str], session, ask, state: dict, sett
             log(f"[recency] old news, dropped: {e['summary']!r} matches {older[m]['title']!r} ({older[m]['date']})")
             state.setdefault("dropped_as_old", []).append({
                 "summary": e["summary"], "listed": e.get("time"), "match": older[m]["title"],
-                "match_date": older[m]["date"], "at": iso(now)})
+                "match_date": older[m]["date"], "at": iso(now), "event": e})
     state["dropped_as_old"] = state.get("dropped_as_old", [])[-100:]
     return [e for e in events if e["id"] not in drop]
