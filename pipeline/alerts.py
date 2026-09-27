@@ -27,7 +27,8 @@ TYPES = {
     "incursion": "Airspace or border incursion", "arms_transfer": "Arms transfer", "legal": "Legal step",
 }
 CONFIDENCE = {"corroborated": "Corroborated", "unconfirmed": "Single source", "claimed": "One side's claim"}
-REASON = {"major": "major corroborated event", "wave": "large attack wave", "legal": "new legal step"}
+REASON = {"major": "major corroborated event", "wave": "large attack wave", "legal": "new legal step",
+          "tg_pair": "reported by two OSINT Telegram channels"}
 KEEP_DAYS = 30
 
 
@@ -58,6 +59,13 @@ def event_matches(e: dict, rules: dict) -> list[str]:
         hits.append("wave")
     if _rule(rules, "legal") and e.get("type") == "legal":
         hits.append("legal")
+    pair = _rule(rules, "telegram_osint_pair")
+    if pair and (e.get("severity") or 0) >= int(pair.get("min_severity", 1)):
+        prefix = f"https://t.me/{str(pair.get('channel', '')).lstrip('@').lower()}/"
+        osint = [r for r in e.get("reports") or [] if r.get("platform") == "telegram" and r.get("kind") == "osint"]
+        if (any(r.get("url", "").lower().startswith(prefix) for r in osint)
+                and any(not r.get("url", "").lower().startswith(prefix) for r in osint)):
+            hits.append("tg_pair")
     return hits
 
 

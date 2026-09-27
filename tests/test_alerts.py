@@ -147,3 +147,17 @@ def test_token_never_logged(monkeypatch, capsys):
     monkeypatch.setattr(requests, "post", boom)
     assert alerts.send_telegram("123:SECRET", "42", "hi") is False
     assert "SECRET" not in capsys.readouterr().out
+
+
+def test_shin_plus_another_osint_telegram_channel():
+    def rep(url, platform="telegram", kind="osint"):
+        return {"url": url, "platform": platform, "kind": kind}
+    base = dict(status="unconfirmed", severity=1)
+    shin = rep("https://t.me/shin_persian/101")
+    assert "tg_pair" in alerts.event_matches(ev("p", reports=[shin, rep("https://t.me/DeepStateUA/55")], **base), RULES)
+    assert alerts.event_matches(ev("q", reports=[shin], **base), RULES) == []                     # Shin alone
+    assert alerts.event_matches(ev("r", reports=[shin, rep("https://t.me/shin_persian/102")], **base), RULES) == []
+    assert alerts.event_matches(ev("s", reports=[shin, rep("https://t.me/kpszsu/9", kind="official")], **base), RULES) == []
+    assert alerts.event_matches(ev("t", reports=[shin, rep("https://x.com/a", platform="bluesky")], **base), RULES) == []
+    msg = run(started(), [ev("p", reports=[shin, rep("https://t.me/DeepStateUA/55")], **base)])[0]
+    assert "reported by two OSINT Telegram channels" in msg
