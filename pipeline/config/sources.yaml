@@ -235,6 +235,12 @@ rss:
     kind: news
     group: google-news
     weight: 2
+  - id: gnews-leaders
+    name: Google News (leaders' visits and meetings)
+    url: https://news.google.com/rss/search?q=%28Netanyahu+OR+Putin+OR+Zelensky+OR+Pezeshkian+OR+Khamenei+OR+Araghchi+OR+%22Xi+Jinping%22+OR+%22bin+Salman%22+OR+%22bin+Zayed%22+OR+Erdogan+OR+Lukashenko+OR+%22Kim+Jong+Un%22+OR+Modi+OR+%22Shehbaz+Sharif%22+OR+Burhan+OR+Kagame+OR+Tshisekedi+OR+Maduro%29+%28visit+OR+visits+OR+visited+OR+trip+OR+%22met+with%22+OR+meets+OR+hosts+OR+hosted%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+    weight: 2
   - id: gnews-latam-us
     name: Google News (US military in Latin America)
     url: https://news.google.com/rss/search?q=%28%22Southern+Command%22+OR+SOUTHCOM+OR+%22Southern+Spear%22+OR+Pentagon+OR+%22US+military%22+OR+%22U.S.+strike%22%29+%28Cuba+OR+Venezuela+OR+Caribbean+OR+Colombia+OR+Ecuador+OR+Mexico+OR+Haiti%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
