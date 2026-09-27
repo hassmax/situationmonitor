@@ -9,6 +9,10 @@
   const HOUR = 3600e3, DAY = 86400e3;
   const LIVE_MS = 6 * HOUR;          // events this recent animate
   const MAX_ANIMATED = 20;           // but only this many at once, newest first, so busy nights stay smooth
+  // Phones get lighter limits: fewer markers and animations, and a lower render resolution.
+  const PHONE = window.matchMedia("(max-width: 859px), (pointer: coarse)").matches;
+  const MAX_MARKERS = PHONE ? 160 : 320;
+  const MAX_ANIMATED_NOW = PHONE ? 8 : MAX_ANIMATED;
   const SUPPLY_DAYS = 30;
   const isMobile = () => window.innerWidth < 860;
 
@@ -202,7 +206,25 @@
   controls.autoRotate = false;
   controls.minDistance = 150;
   controls.maxDistance = 650;
-  controls.addEventListener("start", () => { if (typeof hideTip === "function") hideTip(); });
+  if (PHONE) world.renderer().setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
+  // While the globe is being dragged or pinched, markers stop sliding into place and heavier
+  // updates wait until the gesture ends (the camera keeps easing briefly after release).
+  let moving = false, settleTimer = null;
+  controls.addEventListener("start", () => {
+    if (typeof hideTip === "function") hideTip();
+    clearTimeout(settleTimer);
+    moving = true;
+    document.body.classList.add("moving");
+  });
+  controls.addEventListener("end", () => {
+    clearTimeout(settleTimer);
+    settleTimer = setTimeout(() => {
+      moving = false;
+      document.body.classList.remove("moving");
+      applyZoomScale();
+      queueDeclutter();
+    }, 350);
+  });
 
   // ------------------------------------------------------------------ land, borders, country centers
   const centers = new Map();
@@ -235,6 +257,7 @@
       for (const f of land) for (const poly of f.geometry.coordinates) for (const ring of poly) borders.push({ fid: f.id, pts: ring });
       world
         .hexPolygonsData(land).hexPolygonResolution(3).hexPolygonMargin(0.3).hexPolygonUseDots(true).hexPolygonAltitude(0.002)
+        .hexPolygonDotResolution(PHONE ? 6 : 12)
         .hexPolygonColor((f) => landColor(f))
         .pathsData(borders).pathPoints("pts").pathPointLat((p) => p[1]).pathPointLng((p) => p[0]).pathPointAlt(0.0045)
         .pathTransitionDuration(0).pathColor((p) => borderColor(p.fid));
@@ -277,13 +300,17 @@
     .onArcHover((a) => { globeEl.style.cursor = a ? "pointer" : ""; })
     .onArcClick((a) => { if (a.carrier) selectCarrier(a.carrier.hull, true); else if (a.flow) selectFlow(a.flow.key); else if (a.ref) select(a.ref.id, true); });
 
-  world.onZoom(({ altitude }) => {
-    const k = clamp(altitude, 0.9, 2.6) / 1.1;
+  // Dot and ring sizes follow the zoom, but are only rebuilt once a gesture ends.
+  function applyZoomScale() {
+    const k = clamp(world.pointOfView().altitude, 0.9, 2.6) / 1.1;
     if (Math.abs(k - zoomK) / zoomK > 0.12) {
       zoomK = k;
       world.pointRadius((d) => (d.alert ? 0.09 : 0.13) * zoomK);
       world.ringMaxRadius((r) => r.max * zoomK);
     }
+  }
+  world.onZoom(() => {
+    if (!moving) applyZoomScale();
     queueDeclutter();
   });
 
@@ -365,11 +392,14 @@
 
   // ------------------------------------------------------------------ declutter
   // Markers that land within ~20 px of each other fan out in a ring around the spot.
-  let declutterQueued = false;
+  // During a gesture the layout runs at most every 60 ms (180 ms on phones) instead of every frame.
+  let declutterQueued = false, lastDeclutter = 0;
   function queueDeclutter() {
     if (declutterQueued) return;
     declutterQueued = true;
-    requestAnimationFrame(() => { declutterQueued = false; declutter(); });
+    const wait = moving ? Math.max(0, lastDeclutter + (PHONE ? 180 : 60) - performance.now()) : 0;
+    const run = () => requestAnimationFrame(() => { declutterQueued = false; lastDeclutter = performance.now(); declutter(); });
+    if (wait) setTimeout(run, wait); else run();
   }
   function setOffset(d, dx, dy) {
     const spread = Math.abs(dx) + Math.abs(dy) > 0.5;
@@ -396,12 +426,14 @@
 
   // Whole-globe view: 3+ events on one spot become the most important one's icon with a count.
   // Closer in (or for 2 events): they fan out around the spot instead.
+  let clusterMode = false;
   function declutter() {
     if (!S.html.length) return;
     const pov = world.pointOfView();
     const horizon = (Math.acos(1 / (1 + pov.altitude)) * 180) / Math.PI - 1;
     const R = isMobile() ? 30 : 27; // about one marker width
-    const clusterMode = pov.altitude > 1.4;
+    // Count bubbles appear above 1.5 and go away below 1.3, so a pinch near the line doesn't flicker.
+    clusterMode = clusterMode ? pov.altitude > 1.3 : pov.altitude > 1.5;
     const vis = [];
     for (const d of S.html) {
       if (!d.el) continue;
@@ -818,13 +850,13 @@
   function render() {
     if (!S.data) return;
     const events = visibleEvents();
-    const mapEvents = events.filter(onMap).slice(0, 320);
+    const mapEvents = events.filter(onMap).slice(0, MAX_MARKERS);
     S.supply = buildSupply();
 
     // HTML markers: events (labels on the most important, and on alert groups), carriers
     const labelled = new Set(mapEvents.filter((e) => e.severity >= 3 || e.wave).sort((a, b) => b.severity - a.severity || b._t - a._t).slice(0, 5).map((e) => e.id));
     mapEvents.forEach((e) => { if (e.alert) labelled.add(e.id); });
-    const animated = new Set(mapEvents.filter((e) => isLive(e) && catOf(e)[2]).slice(0, MAX_ANIMATED).map((e) => e.id));
+    const animated = new Set(mapEvents.filter((e) => isLive(e) && catOf(e)[2]).slice(0, MAX_ANIMATED_NOW).map((e) => e.id));
     const html = mapEvents.map((e) => eventMarker(e, labelled.has(e.id), animated.has(e.id)));
     S.fleet.filter(carrierOnMap).forEach((c) => html.push(carrierMarker(c)));
     S.html = html;
