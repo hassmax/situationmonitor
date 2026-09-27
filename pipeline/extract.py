@@ -57,7 +57,7 @@ Event types:
 Output: {{"events": [one object per input item, in any order]}}
 Irrelevant item: {{"i": <n>, "relevant": false}}
 Relevant item:
-{{"i": <n>, "relevant": true, "type": "<event type id>", "happened": "<when the event itself happened: YYYY-MM-DD or YYYY-MM-DDTHH:MM in UTC>" or null, "summary": "<max 25 words>", "place": "<most specific place named, English spelling>" or null, "admin1": "<province, oblast, or state>" or null, "country": "<ISO 3166-1 alpha-2>" or null, "lat": <number> or null, "lon": <number> or null, "attacker": "<ISO alpha-2 of the country whose forces carried it out>" or null, "origins": [{{"place": "<launch or firing area named in the item>", "lat": <number>, "lon": <number>}}], "launched": <int> or null, "intercepted": <int> or null, "transfer": <transfer object, arms_transfer only>, "legal_basis": "<max 12 words>" or null, "theater": "<theater id>", "severity": <1, 2, or 3>, "claim": "report" or "official_claim", "killed": <int> or null, "injured": <int> or null}}
+{{"i": <n>, "relevant": true, "type": "<event type id>", "happened": "<when the event itself happened: YYYY-MM-DD or YYYY-MM-DDTHH:MM in UTC>" or null, "summary": "<max 25 words>", "place": "<most specific place named, English spelling>" or null, "admin1": "<province, oblast, or state>" or null, "country": "<ISO 3166-1 alpha-2>" or null, "lat": <number> or null, "lon": <number> or null, "attacker": "<ISO alpha-2 of the country whose forces carried it out>" or null, "origins": [{{"place": "<launch or firing area named in the item>", "lat": <number>, "lon": <number>}}], "launched": <int> or null, "intercepted": <int> or null, "alert": true or false, "transfer": <transfer object, arms_transfer only>, "legal_basis": "<max 12 words>" or null, "theater": "<theater id>", "severity": <1, 2, or 3>, "claim": "report" or "official_claim", "killed": <int> or null, "injured": <int> or null}}
 
 Optional key for any item (relevant or not): if the item says where a US Navy aircraft carrier (hull CVN-##) is, or that one departed, arrived, or is heading somewhere, add
 "carrier": {{"hull": "CVN-78", "status": "departed" | "underway" | "operating" | "arrived" | "in port", "place": "<where it is now>", "lat": <number>, "lon": <number>, "heading_to": {{"place": "<stated destination>", "lat": <number>, "lon": <number>}} or null}}
@@ -77,6 +77,7 @@ Rules:
 - attacker: the country whose forces carried out a strike, launch, raid, or incursion, when the item states or clearly implies it ("Russian drones" = RU, "Ukrainian drones hit a refinery" = UA, Houthi missiles = YE, Hezbollah rockets = LB, Iranian missiles = IR). For interceptions, the side whose weapons were intercepted. Otherwise null.
 - origins: launch or firing areas the item actually names (for example "launched from Kursk and Primorsko-Akhtarsk"), at most 6, with your coordinate estimate for each. Use [] when none are named. Never guess a launch site.
 - launched / intercepted: totals for a mass air attack when the item gives them ("Russia launched 120 drones, 98 were shot down" = 120 / 98). Otherwise null.
+- alert: true when the item is only a real-time warning or tracking update about drones or missiles still in flight (for example an air force post that a drone is heading toward, approaching, or passing a place), with no hit, interception, damage, or casualties reported. Put place and lat/lon at the place named as the target or current position, and type it missile_drone. Otherwise false. Drones or aircraft entering another country's airspace are incursions, not alerts.
 - For preparations or buildups aimed at a country, place the event in that country (its capital if nothing more specific), and say in the summary that it is planning or preparation, not action.
 - For diplomacy, place the event where the meeting or signing happened; if no place is given, use the capital of the main party. Use the theater of the conflict it concerns, even if the meeting is elsewhere.
 - transfer kind: "delivery" = weapons observed or reported moving or arriving (tracked flights, imaged ships, confirmed arrivals); "pledge" = a package announced, approved, or sold but not yet reported delivered; "interdiction" = a shipment seized, intercepted, or destroyed in transit.
@@ -435,6 +436,7 @@ def _clean_record(obj: dict, item: dict) -> dict | None:
         "attacker": attacker if re.fullmatch(r"[A-Z]{2}", attacker) else None,
         "launched": _int_or_none(obj.get("launched")),
         "intercepted": _int_or_none(obj.get("intercepted")),
+        "alert": str(obj.get("alert")).lower() == "true",
         "transfer": _clean_transfer(obj.get("transfer")) if etype == "arms_transfer" else None,
         "legal_basis": (str(obj["legal_basis"]).strip()[:120] if obj.get("legal_basis") else None),
         "theater": str(obj.get("theater") or "").strip(),

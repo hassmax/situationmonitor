@@ -8,6 +8,7 @@
   const REFRESH_MS = 5 * 60 * 1000;
   const HOUR = 3600e3, DAY = 86400e3;
   const LIVE_MS = 6 * HOUR;          // events this recent animate
+  const MAX_ANIMATED = 20;           // but only this many at once, newest first, so busy nights stay smooth
   const SUPPLY_DAYS = 30;
   const isMobile = () => window.innerWidth < 860;
 
@@ -51,10 +52,11 @@
     legal: '<path d="M8 2v11.6M4 14.4h8M2.8 4.6h10.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M2.8 4.6 1 9h3.6zM13.2 4.6 11.4 9H15z" fill="currentColor"/>',
     crate: '<path d="M2 5.2 8 2.3l6 2.9v5.6L8 13.7l-6-2.9z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none"/><path d="M2 5.2 8 8.1l6-2.9M8 8.1v5.6" stroke="currentColor" stroke-width="1.4" fill="none"/>',
     carrier: '<path d="M.8 9.6 2.9 6h10.3l2.2 1.6v1.8l-1.6 1.6H2.6z" fill="currentColor"/><rect x="10.4" y="3.8" width="2.2" height="2.4" rx=".3" fill="currentColor"/>',
+    alert: '<path d="M4.4 12.2V9a3.6 3.6 0 0 1 7.2 0v3.2z" fill="currentColor"/><rect x="2.6" y="12.7" width="10.8" height="1.9" rx=".6" fill="currentColor"/><path d="M8 1.4v2.1M2.8 3.6l1.5 1.5M13.2 3.6l-1.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
   };
   const svgIcon = (name) => `<svg viewBox="0 0 16 16" aria-hidden="true">${ICONS[name] || ICONS.blast}</svg>`;
   const LEGEND = [
-    ["missile", "strike", "Drone or missile"], ["air", "strike", "Airstrike"], ["artillery", "ground", "Shelling"],
+    ["missile", "strike", "Drone or missile"], ["alert", "strike", "Drone alerts"], ["air", "strike", "Airstrike"], ["artillery", "ground", "Shelling"],
     ["ground", "ground", "Ground fighting"], ["territory", "ground", "Territory change"], ["naval", "naval", "Naval"],
     ["hybrid", "hybrid", "Hybrid attack"], ["deploy", "deploy", "Deployment"], ["diplo", "diplo", "Diplomacy, legal"],
     ["crate", "supply", "Arms transfer"], ["carrier", "fleet", "US carrier at sea"],
@@ -133,10 +135,13 @@
   const fmtTime = (ms) => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   const fmtDay = (ms) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   const fmtMoney = (v) => (v >= 1e9 ? `$${(v / 1e9).toFixed(1)} billion` : v >= 1e6 ? `$${Math.round(v / 1e6)} million` : `$${Math.round(v).toLocaleString()}`);
-  const catOf = (e) => CAT[e.type] || ["strike", "blast", ""];
+  // Alerts (drones or missiles reported in flight, grouped per country per day) get a siren and never animate.
+  const catOf = (e) => (e.alert ? ["strike", "alert", ""] : CAT[e.type] || ["strike", "blast", ""]);
+  const alertsText = (e) => { const n = e.alerts || (e.reports || []).length || 1; return `${n} ${n === 1 ? "alert" : "alerts"}`; };
   const isDiplomacy = (e) => e.type === "diplomacy" || e.type === "ceasefire" || e.type === "legal";
   const tkind = (e) => (e.transfer && e.transfer.kind) || "delivery";
   const typeLabel = (e) => {
+    if (e.alert) return "Drone and missile alerts";
     if (e.wave) return "Drone and missile attack wave";
     if (e.type === "arms_transfer") return { pledge: "Pledged aid", interdiction: "Intercepted shipment" }[tkind(e)] || "Arms delivery";
     return TYPES[e.type] || "Event";
@@ -145,6 +150,7 @@
   const isKey = (e) => e.severity >= 3 && e.status === "corroborated";
   const bestStatus = (list) => list.reduce((b, e) => (STATUS[e.status].rank > STATUS[b].rank ? e.status : b), "claimed");
   const metaLine = (e) => (e.wave ? `${countryName(e.attacker)} → ${countryName(e.country)}`
+    : e.alert ? countryName(e.country) || e.place || ""
     : e.type === "arms_transfer" && e.transfer ? `${countryName(e.transfer.supplier)} → ${countryName(e.transfer.recipient)}` : e.place || "");
   // A marker-style icon for lists and the legend, matching the globe.
   const iconBadge = (icon, cat, conf = "solid", extra = "") => `<span class="ico cat-${cat} conf-${conf} ${extra}" aria-hidden="true">${svgIcon(icon)}</span>`;
@@ -241,10 +247,10 @@
   world
     .pointLat("lat").pointLng("lon")
     .pointAltitude(0.005)
-    .pointRadius(() => 0.13 * zoomK)
-    .pointColor((d) => rgba(CAT_RGB.strike, STATUS[d.ref.status].alpha))
+    .pointRadius((d) => (d.alert ? 0.09 : 0.13) * zoomK)
+    .pointColor((d) => rgba(CAT_RGB.strike, d.alert ? 0.5 : STATUS[d.ref.status].alpha))
     .pointResolution(8)
-    .pointLabel((d) => `<div class="tip"><div class="tip-meta"><b>${esc(d.place || "Location")}</b><span>part of an attack wave</span></div><div class="tip-sum">${esc(d.ref.summary)}</div></div>`)
+    .pointLabel((d) => `<div class="tip"><div class="tip-meta"><b>${esc(d.place || "Location")}</b><span>${d.alert ? "named in an alert" : "part of an attack wave"}</span></div><div class="tip-sum">${esc(d.ref.summary)}</div></div>`)
     .onPointHover((d) => { globeEl.style.cursor = d ? "pointer" : ""; })
     .onPointClick((d) => select(d.ref.id, true));
   world
@@ -275,7 +281,7 @@
     const k = clamp(altitude, 0.9, 2.6) / 1.1;
     if (Math.abs(k - zoomK) / zoomK > 0.12) {
       zoomK = k;
-      world.pointRadius(() => 0.13 * zoomK);
+      world.pointRadius((d) => (d.alert ? 0.09 : 0.13) * zoomK);
       world.ringMaxRadius((r) => r.max * zoomK);
     }
     queueDeclutter();
@@ -306,14 +312,14 @@
     return el;
   }
 
-  function eventMarker(e, labelIt) {
+  function eventMarker(e, labelIt, animate) {
     const [cat, icon, fx] = catOf(e);
     const el = markerEl(`ev:${e.id}`);
-    const live = isLive(e) && !reduceMotion;
-    const size = e.severity >= 3 ? "lg" : e.severity === 2 ? "md" : "sm";
+    const live = animate && !reduceMotion;
+    const size = e.alert ? "md" : e.severity >= 3 ? "lg" : e.severity === 2 ? "md" : "sm";
     el.className = `mk cat-${cat} conf-${STATUS[e.status].conf} size-${size}${live && fx ? ` fx-${fx}` : ""}${e.id === S.selectedId ? " is-selected" : ""}${el.classList.contains("spread") ? " spread" : ""}`;
     el.style.setProperty("--fade", String(fade(e)));
-    const label = labelIt ? (e.wave ? (e.launched ? `${e.launched} launched` : `${e.targets.length} places hit`) : e.place || "") : "";
+    const label = labelIt ? (e.alert ? alertsText(e) : e.wave ? (e.launched ? `${e.launched} launched` : `${e.targets.length} places hit`) : e.place || "") : "";
     const btn = el.firstChild;
     btn.innerHTML = `${svgIcon(icon)}${label ? `<span class="mk-label">${esc(label)}</span>` : ""}<span class="mk-count" aria-hidden="true"></span>`;
     btn.setAttribute("aria-label", `${typeLabel(e)}, ${metaLine(e)}. ${STATUS[e.status].label}.`);
@@ -439,7 +445,8 @@
 
   // ------------------------------------------------------------------ tooltips
   function tipEvent(e) {
-    const extra = e.wave && e.targets && e.targets.length > 1 ? `<span>${e.targets.length} locations</span>` : "";
+    const extra = e.alert ? `<span>${alertsText(e)}</span>`
+      : e.wave && e.targets && e.targets.length > 1 ? `<span>${e.targets.length} locations</span>` : "";
     return `<div class="tip"><div class="tip-meta">${eventIcon(e)}<b>${esc(typeLabel(e))}</b><span>${esc(metaLine(e))}</span></div>
       <div class="tip-sum">${esc(e.summary)}</div>
       <div class="tip-foot"><span>${esc(STATUS[e.status].label)}</span>${extra}<span>${esc(ago(e._t))}</span></div></div>`;
@@ -597,7 +604,9 @@
     if (!evs.length) return null;
     const w = (e) => SEV_W[e.severity] * CONF_W[e.status] + (e.wave ? Math.min(4, e.targets.length * 0.4) : 0);
     let best = null;
-    for (const e of evs) {
+    // Alerts add weight to an area but don't headline it when anything actually happened there.
+    const leads = evs.some((e) => !e.alert) ? evs.filter((e) => !e.alert) : evs;
+    for (const e of leads) {
       const near = evs.filter((o) => km(e.lat, e.lon, o.lat, o.lon) <= 400);
       const score = near.reduce((n, o) => n + w(o), 0);
       if (!best || score > best.score) best = { e, near, score };
@@ -811,20 +820,23 @@
     const mapEvents = events.filter(onMap).slice(0, 320);
     S.supply = buildSupply();
 
-    // HTML markers: events (labels on the most important), carriers
+    // HTML markers: events (labels on the most important, and on alert groups), carriers
     const labelled = new Set(mapEvents.filter((e) => e.severity >= 3 || e.wave).sort((a, b) => b.severity - a.severity || b._t - a._t).slice(0, 5).map((e) => e.id));
-    const html = mapEvents.map((e) => eventMarker(e, labelled.has(e.id)));
+    mapEvents.forEach((e) => { if (e.alert) labelled.add(e.id); });
+    const animated = new Set(mapEvents.filter((e) => isLive(e) && catOf(e)[2]).slice(0, MAX_ANIMATED).map((e) => e.id));
+    const html = mapEvents.map((e) => eventMarker(e, labelled.has(e.id), animated.has(e.id)));
     S.fleet.filter(carrierOnMap).forEach((c) => html.push(carrierMarker(c)));
     S.html = html;
     if (!sailing) world.htmlElementsData(html);
 
-    // wave target dots (the main target carries the icon)
+    // wave target dots (the main target carries the icon); a selected alert group shows its places faintly
     const dots = [];
     for (const e of mapEvents) {
-      if (!e.wave) continue;
+      const alert = !!e.alert && e.id === S.selectedId;
+      if (!e.wave && !alert) continue;
       e.targets.slice(0, 40).forEach((t) => {
         if (Math.abs(t.lat - e.lat) < 1e-4 && Math.abs(t.lon - e.lon) < 1e-4) return;
-        dots.push({ lat: t.lat, lon: t.lon, place: t.place, ref: e });
+        dots.push({ lat: t.lat, lon: t.lon, place: t.place, ref: e, alert });
       });
     }
     world.pointsData(dots);
@@ -878,7 +890,8 @@
   // ------------------------------------------------------------------ feed and side lists
   function itemHtml(e, names) {
     const extra = [];
-    if (e.wave && e.targets.length) extra.push(`${e.targets.length} ${e.targets.length === 1 ? "location" : "locations"}`);
+    if (e.alert) extra.push(alertsText(e));
+    if ((e.wave || e.alert) && e.targets.length) extra.push(`${e.targets.length} ${e.targets.length === 1 ? "location" : "locations"}`);
     if (e.wave && e.launched) extra.push(`${e.launched} launched`);
     if (e.legal_basis) extra.push("Legal basis stated");
     return `<li><button class="item sev-${e.severity}${isNew(e) ? " is-new" : ""}" type="button" data-id="${esc(e.id)}" ${e.id === S.selectedId ? 'aria-current="true"' : ""}>
@@ -1040,7 +1053,7 @@
     if (!e) return;
     S.selectedId = id; S.selectedHull = null; S.selectedFlow = null;
     history.replaceState(null, "", "#" + encodeURIComponent(id));
-    if (fly) zoomTo(e.lat, e.lon, Math.min(world.pointOfView().altitude, e.wave && e.targets.length > 3 ? 1.45 : 1.15));
+    if (fly) zoomTo(e.lat, e.lon, Math.min(world.pointOfView().altitude, (e.wave || e.alert) && e.targets.length > 3 ? 1.45 : 1.15));
     renderEventDetail(e);
     render();
   }
@@ -1063,7 +1076,7 @@
     if (!e.wave && origins.length) facts.push(`<span>Launched from <b>${esc(origins.map((o) => o.place || "an unnamed site").join(", "))}</b></span>`);
     const news = S.data.heat.filter((c) => km(e.lat, e.lon, c.lat, c.lon) <= (e.approx ? 60 : 30)).flatMap((c) => c.urls || []).slice(0, 4);
     const reports = (e.reports || []).slice().sort((a, b) => Date.parse(b.time) - Date.parse(a.time));
-    const where = e.wave ? `${esc(metaLine(e))}, ${esc(theaterName)}`
+    const where = e.wave || e.alert ? `${esc(metaLine(e))}, ${esc(theaterName)}`
       : `${esc(e.place || "Unnamed location")}, ${esc(theaterName)} ${e.approx ? '<span class="approx">(approximate location)</span>' : ""}`;
     const waveBlock = e.wave ? `
       <h2 class="reports-title">Locations (${e.targets.length})</h2>
@@ -1071,14 +1084,19 @@
         <span class="target-meta">${x.reports} ${x.reports === 1 ? "report" : "reports"}${x.killed ? `, ${x.killed} killed` : ""}</span></button></li>`).join("")}</ul>` : `<p class="muted">No specific locations reported yet.</p>`}
       <h2 class="reports-title">Launch areas</h2>
       <p class="muted">${origins.length ? esc(origins.map((o) => o.place || "unnamed site").join(", ")) : "Not named in the reports so far. Lines on the map start from the nearest known launch area and are drawn faint."}</p>` : "";
+    const alertBlock = e.alert ? `
+      <p class="muted">Warnings that drones or missiles were in flight, grouped into one marker per country per day. They show where a threat was reported heading, not what was hit. Strikes and interceptions appear as their own events.</p>
+      <h2 class="reports-title">Places named (${e.targets.length})</h2>
+      ${e.targets.length ? `<ul class="targets">${e.targets.map((x) => `<li><button class="target" type="button" data-goto="${x.lat},${x.lon}"><span>${esc(x.place || "Unnamed place")}</span>
+        <span class="target-meta">${x.reports} ${x.reports === 1 ? "alert" : "alerts"}</span></button></li>`).join("")}</ul>` : `<p class="muted">No specific places named.</p>`}` : "";
     showDetail(`
       <div class="detail-type">${eventIcon(e)}${esc(typeLabel(e))}</div>
       <h3>${esc(e.summary)}</h3>
-      <p class="detail-where">${where}<br>Happened ${esc(fmtTime(e._t))}${e._tu - e._t > 30 * 60e3 ? `, latest report ${esc(ago(e._tu))}` : ""}</p>
+      <p class="detail-where">${where}<br>${e.alert ? "First alert" : "Happened"} ${esc(fmtTime(e._t))}${e._tu - e._t > 30 * 60e3 ? `, latest report ${esc(ago(e._tu))}` : ""}</p>
       <div class="verdict"><span class="conf-swatch conf-${STATUS[e.status].conf}" aria-hidden="true"></span><div><strong>${esc(STATUS[e.status].label)}</strong><p>${esc(STATUS[e.status].note(e.sources_count, e.news_nearby))}</p></div></div>
       ${facts.length ? `<div class="facts">${facts.join("")}</div>` : ""}
       ${e.legal_basis ? `<div class="legal-basis"><span>Stated legal basis</span><strong>${esc(e.legal_basis)}</strong><p>As reported by the sources below. The dashboard records claimed justifications; it does not assess them.</p></div>` : ""}
-      ${waveBlock}
+      ${waveBlock}${alertBlock}
       ${reportsHtml(reports)}
       ${news.length ? `<h2 class="reports-title">News coverage nearby (${e.news_nearby || news.length} outlets)</h2>
         <ul class="news-links">${news.map((u) => `<li><a href="${esc(safeUrl(u))}" target="_blank" rel="noopener noreferrer">${esc(u.replace(/^https?:\/\/(www\.)?/, "").slice(0, 80))}</a></li>`).join("")}</ul>` : ""}

@@ -2357,6 +2357,145 @@
 "flights": null,
 "value_usd": null
 }
+},
+{
+"id": "a1e27c5d9b40",
+"alert": true,
+"theater": "ukraine",
+"type": "missile_drone",
+"attacker": null,
+"country": "UA",
+"summary": "Sample: 7 alerts about drones or missiles in flight, naming 4 places including Poltava, Kremenchuk and Zhytomyr. Not real.",
+"place": "Poltava",
+"lat": 49.59,
+"lon": 34.55,
+"approx": false,
+"origins": [],
+"targets": [
+{
+"place": "Poltava",
+"lat": 49.59,
+"lon": 34.55,
+"reports": 3,
+"severity": 1,
+"time": "2026-09-26T15:10:00Z",
+"killed": null,
+"injured": null
+},
+{
+"place": "Kremenchuk",
+"lat": 49.07,
+"lon": 33.42,
+"reports": 2,
+"severity": 1,
+"time": "2026-09-26T15:32:00Z",
+"killed": null,
+"injured": null
+},
+{
+"place": "Zhytomyr",
+"lat": 50.25,
+"lon": 28.66,
+"reports": 1,
+"severity": 1,
+"time": "2026-09-26T16:05:00Z",
+"killed": null,
+"injured": null
+},
+{
+"place": "Chernihiv",
+"lat": 51.49,
+"lon": 31.29,
+"reports": 1,
+"severity": 1,
+"time": "2026-09-26T17:40:00Z",
+"killed": null,
+"injured": null
+}
+],
+"severity": 1,
+"killed": null,
+"injured": null,
+"launched": null,
+"intercepted": null,
+"time": "2026-09-26T15:10:00Z",
+"updated": "2026-09-26T17:40:00Z",
+"reports": [
+{
+"source": "Sample official channel C",
+"platform": "telegram",
+"kind": "official",
+"side": "UA",
+"claim": "official_claim",
+"url": "https://example.com/sample/alert1/1",
+"time": "2026-09-26T15:10:00Z",
+"summary": "Sample alert: a drone is reported heading toward Poltava. Not a real event."
+},
+{
+"source": "Sample official channel C",
+"platform": "telegram",
+"kind": "official",
+"side": "UA",
+"claim": "official_claim",
+"url": "https://example.com/sample/alert1/2",
+"time": "2026-09-26T15:10:00Z",
+"summary": "Sample alert: a drone is reported heading toward Poltava. Not a real event."
+},
+{
+"source": "Sample official channel C",
+"platform": "telegram",
+"kind": "official",
+"side": "UA",
+"claim": "official_claim",
+"url": "https://example.com/sample/alert1/3",
+"time": "2026-09-26T15:10:00Z",
+"summary": "Sample alert: a drone is reported heading toward Poltava. Not a real event."
+},
+{
+"source": "Sample official channel C",
+"platform": "telegram",
+"kind": "official",
+"side": "UA",
+"claim": "official_claim",
+"url": "https://example.com/sample/alert1/4",
+"time": "2026-09-26T15:32:00Z",
+"summary": "Sample alert: a drone is reported heading toward Kremenchuk. Not a real event."
+},
+{
+"source": "Sample official channel C",
+"platform": "telegram",
+"kind": "official",
+"side": "UA",
+"claim": "official_claim",
+"url": "https://example.com/sample/alert1/5",
+"time": "2026-09-26T15:32:00Z",
+"summary": "Sample alert: a drone is reported heading toward Kremenchuk. Not a real event."
+},
+{
+"source": "Sample official channel C",
+"platform": "telegram",
+"kind": "official",
+"side": "UA",
+"claim": "official_claim",
+"url": "https://example.com/sample/alert1/6",
+"time": "2026-09-26T16:05:00Z",
+"summary": "Sample alert: a drone is reported heading toward Zhytomyr. Not a real event."
+},
+{
+"source": "Sample official channel C",
+"platform": "telegram",
+"kind": "official",
+"side": "UA",
+"claim": "official_claim",
+"url": "https://example.com/sample/alert1/7",
+"time": "2026-09-26T17:40:00Z",
+"summary": "Sample alert: a drone is reported heading toward Chernihiv. Not a real event."
+}
+],
+"alerts": 7,
+"status": "claimed",
+"sources_count": 1,
+"news_nearby": 0
 }
 ],
 "heat": [

@@ -11,9 +11,16 @@ Attack waves: missile, drone, and interception reports with a known attacker are
 into one event per direction per day (e.g. Russia -> Ukraine on 26 September), listing every
 location hit and every launch area named. Days run 09:00 to 09:00 UTC so an overnight
 attack stays in one wave.
+
+Alerts: real-time warnings that drones or missiles are in flight ("a drone is heading toward
+Poltava") with nothing reported hit. An air force can post dozens a night, so all alerts about
+one country on one day (same 09:00 UTC days) become a single event listing the places named.
+They never join an attack wave, whose locations are places actually hit. Over NATO's eastern
+flank every airspace alert is news in itself, so those stay separate events.
 """
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta
 
 from common import haversine_km, iso, parse_time, short_hash
@@ -37,6 +44,15 @@ MAX_REPORTS = 80
 ADJECTIVE = {"RU": "Russian", "UA": "Ukrainian", "IR": "Iranian", "IL": "Israeli", "YE": "Houthi",
              "LB": "Hezbollah", "US": "US", "BY": "Belarusian", "PK": "Pakistani", "IN": "Indian"}
 
+ALERT_TYPES = {"missile_drone", "air_defense", "incursion"}
+# Backstop for Ukraine alerts the model doesn't flag, and for events stored before alerts were
+# grouped: the summary describes drones on the move and nothing being hit.
+_MOVING = re.compile(r"\b(?:heading|headed|moving|flying|tracked|tracks|tracking|approaching|passing|"
+                     r"toward|towards|targeting|course|threats?|alerts?|warns?|warning)\b", re.IGNORECASE)
+_HIT = re.compile(r"\b(?:struck|hits?|hitting|damag\w*|destroy\w*|kill\w*|injur\w*|wound\w*|dead|deaths?|"
+                  r"casualt\w*|intercept\w*|shot down|shoot\w* down|downed|explo\w*|blasts?|fire\w*|impacts?|"
+                  r"debris)\b|\b(?:strikes?|attacks?|attacked)\b(?!\s+(?:drones?|uavs?))", re.IGNORECASE)
+
 
 def wave_day(t: str) -> str:
     return (parse_time(t) - timedelta(hours=9)).strftime("%Y-%m-%d")
@@ -45,6 +61,20 @@ def wave_day(t: str) -> str:
 def _is_wave(c: dict) -> bool:
     return (c["type"] in WAVE_TYPES and bool(c.get("attacker")) and bool(c.get("country"))
             and c["attacker"] != c["country"])
+
+
+def _reads_like_alert(summary: str | None) -> bool:
+    return bool(_MOVING.search(summary or "")) and not _HIT.search(summary or "")
+
+
+def _is_alert(c: dict) -> bool:
+    if (c["type"] not in ALERT_TYPES or c["theater"] == "nato_east"
+            or c.get("killed") is not None or c.get("injured") is not None):
+        return False
+    if c.get("alert"):
+        return True
+    return (c["theater"] == "ukraine" and c.get("country") == "UA" and c.get("attacker") in (None, "RU")
+            and _reads_like_alert(c.get("summary")))
 
 
 def _find_transfer(events: list[dict], cand: dict) -> dict | None:
@@ -66,7 +96,7 @@ def _find_match(events: list[dict], cand: dict) -> dict | None:
     ct = parse_time(cand["time"])
     best, best_d = None, float("inf")
     for e in events:
-        if e.get("wave") or e["theater"] != cand["theater"] or FAMILY.get(e["type"], "strike") != fam:
+        if e.get("wave") or e.get("alert") or e["theater"] != cand["theater"] or FAMILY.get(e["type"], "strike") != fam:
             continue
         if abs(ct - parse_time(e["time"])) > WINDOW:
             continue
@@ -137,8 +167,52 @@ def _merge_wave(events: list[dict], cand: dict) -> None:
     _add_origins(wave, cand.get("origins"))
 
 
+def _merge_alert(events: list[dict], cand: dict) -> None:
+    key = "|".join(["alert", cand["theater"], cand.get("country") or "", wave_day(cand["time"])])
+    group = next((e for e in events if e.get("alert_key") == key), None)
+    rep = cand["report"]
+    if group is None:
+        group = {
+            "id": short_hash("alert", key), "alert": True, "alert_key": key,
+            "theater": cand["theater"], "type": "missile_drone",
+            "attacker": None, "country": cand.get("country"),  # alerts never add attribution
+            "summary": cand["summary"], "place": cand["place"],
+            "lat": cand["lat"], "lon": cand["lon"], "approx": cand["approx"],
+            "origins": [], "targets": [], "severity": 1,
+            "killed": None, "injured": None, "launched": None, "intercepted": None,
+            "time": cand["time"], "updated": cand["time"], "reports": [],
+        }
+        events.append(group)
+    if any(r["url"] == rep["url"] for r in group["reports"]):
+        return
+    group["reports"].append(rep)
+    group["time"] = min(group["time"], cand["time"])
+    group["updated"] = max(group["updated"], cand.get("updated") or cand["time"])
+    _add_target(group, cand)
+
+
+def _fold_stored_alerts(events: list[dict]) -> list[dict]:
+    """Events stored before alerts were grouped: fold each "drone heading toward X" warning
+    into its day's alert group. Every stored event is checked once."""
+    folded = set()
+    for e in list(events):
+        if "alert" in e or e.get("wave"):
+            continue
+        if _is_alert(e) and all(_reads_like_alert(r.get("summary")) for r in e["reports"]):
+            for r in e["reports"]:
+                _merge_alert(events, {**e, "report": r})
+            folded.add(id(e))
+        else:
+            e["alert"] = False
+    return [e for e in events if id(e) not in folded]
+
+
 def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
+    events = _fold_stored_alerts(events)
     for cand in sorted(candidates, key=lambda c: c["time"]):
+        if _is_alert(cand):
+            _merge_alert(events, cand)
+            continue
         if _is_wave(cand):
             _merge_wave(events, cand)
             continue
@@ -146,7 +220,7 @@ def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
         match = _find_match(events, cand)
         if match is None:
             events.append({
-                "id": short_hash("event", rep["url"]),
+                "id": short_hash("event", rep["url"]), "alert": False,
                 "theater": cand["theater"], "type": cand["type"], "summary": cand["summary"],
                 "place": cand["place"], "country": cand["country"], "attacker": cand.get("attacker"),
                 "lat": cand["lat"], "lon": cand["lon"], "approx": cand["approx"],
@@ -211,10 +285,33 @@ def _finish_wave(e: dict) -> None:
         names = [t["place"] for t in targets if t.get("place")][:3]
         adj = ADJECTIVE.get(e["attacker"], "")
         lead = f"{adj} drone and missile attack" if adj else "Drone and missile attack"
-        listed = ", ".join(names[:-1]) + (" and " + names[-1] if len(names) > 1 else names[0] if names else "")
-        e["summary"] = f"{lead}: strikes reported in {len(targets)} places, including {listed}."
+        e["summary"] = f"{lead}: strikes reported in {len(targets)} places, including {_join(names)}."
     else:
         e["summary"] = _headline(e)["summary"]
+
+
+def _join(names: list[str]) -> str:
+    return ", ".join(names[:-1]) + " and " + names[-1] if len(names) > 1 else "".join(names)
+
+
+def _finish_alert(e: dict) -> None:
+    """The marker sits on the place named most often; the summary counts the alerts."""
+    targets = sorted(e["targets"], key=lambda t: (-t["reports"], t["time"]))
+    e["targets"] = targets
+    if targets:
+        main = targets[0]
+        e.update(place=main["place"], lat=main["lat"], lon=main["lon"], approx=False)
+    e["alerts"] = len(e["reports"])
+    names = [t["place"] for t in targets if t.get("place")][:3]
+    lead = f"{e['alerts']} alerts about drones or missiles in flight"
+    if e["alerts"] == 1:
+        e["summary"] = _headline(e)["summary"]
+    elif len(targets) > 1 and names:
+        e["summary"] = f"{lead}, naming {len(targets)} places including {_join(names)}."
+    elif names:
+        e["summary"] = f"{lead}, naming {names[0]}."
+    else:
+        e["summary"] = f"{lead}."
 
 
 def apply_status(events: list[dict], cells: list[dict]) -> None:
@@ -222,11 +319,14 @@ def apply_status(events: list[dict], cells: list[dict]) -> None:
     for e in events:
         if e.get("wave"):
             _finish_wave(e)
+        elif e.get("alert"):
+            _finish_alert(e)
         neutral = {r["group"] for r in e["reports"] if not r.get("side")}
         sided = {r["group"] for r in e["reports"] if r.get("side")}
         sides = {r["side"] for r in e["reports"] if r.get("side")}
         news = set()
-        if FAMILY.get(e["type"]) in ("strike", "ground"):
+        # News of violence near a warning's marker says nothing about the warning itself.
+        if FAMILY.get(e["type"]) in ("strike", "ground") and not e.get("alert"):
             news = news_domains_near(index, e)
         e["news_nearby"] = len(news)
         if len(news) >= 3:
@@ -239,7 +339,7 @@ def apply_status(events: list[dict], cells: list[dict]) -> None:
         else:
             e["status"] = "claimed"
         e["sources_count"] = len(groups)
-        if not e.get("wave"):
+        if not e.get("wave") and not e.get("alert"):
             e["summary"] = _headline(e)["summary"]
 
 
@@ -256,7 +356,9 @@ def prune(events: list[dict], now: datetime, retention_days: int, max_events: in
 
 def public_event(e: dict) -> dict:
     """Strip internal fields before publishing."""
-    out = {k: v for k, v in e.items() if k not in ("reports", "us", "cn", "wave_key", "origin")}
+    out = {k: v for k, v in e.items() if k not in ("reports", "us", "cn", "wave_key", "alert_key", "origin")}
+    if not e.get("alert"):
+        out.pop("alert", None)
     if e.get("origin") and not e.get("origins"):
         out["origins"] = [e["origin"]]  # events stored before multi-origin support
     reports = sorted(e["reports"], key=lambda r: r["time"])[-MAX_REPORTS:]

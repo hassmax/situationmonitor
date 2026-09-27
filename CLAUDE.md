@@ -15,7 +15,7 @@ A self-updating 3D globe of armed-conflict events, built from public OSINT posts
 - `pipeline/sources/`: `bluesky.py` (public API, no login), `telegram.py`, `rss.py` (incl. Google News searches), `gdelt.py` (used only to corroborate, not drawn).
 - `pipeline/extract.py`: the model prompt (`SYSTEM_PROMPT`), event types, keyword prefilter (`CONFLICT_RE`), model probing and batching.
 - `pipeline/geo.py`: geocoding, theater assignment, named-sea fallback coordinates.
-- `pipeline/merge.py`: merging reports into events, attack waves, confidence rules.
+- `pipeline/merge.py`: merging reports into events, attack waves, drone and missile alert groups, confidence rules.
 - `pipeline/fleet.py`: US aircraft carriers (USNI Fleet Tracker feed + movement reports; home-port baseline in `CARRIERS` and `HOME`).
 - `pipeline/config/theaters.yaml`, `pipeline/config/sources.yaml`: theaters and sources. If a theater is added or renamed, also update the theater list in `SYSTEM_PROMPT`.
 - `site/`: static front end. `index.html`, `styles.css`, `app.js` (vanilla JS, no build step), `vendor/globe.gl.min.js` (2.46.2, vendored), `assets/countries-110m.json`, `data/demo-events.json` (clearly labeled sample data for `?demo`).
@@ -32,7 +32,7 @@ A self-updating 3D globe of armed-conflict events, built from public OSINT posts
 - **Confidence rules** (`merge.apply_status`): corroborated = 2+ independent source groups with at least one unaligned (or opposing sides agree); unconfirmed = one unaligned source; claimed = only sources aligned with one side. Sources with the same `side` never corroborate each other. GDELT (3+ outlets nearby) counts as one unaligned source.
 - **Time.** Events are timed by when they happened (`time`, from the model's `happened` field, else the post time). `updated` is only the latest report. The merge window is measured from `time` and must never slide forward with later reports (that bug made old events reappear as new). The front end uses `time` for the window, sorting, and "new".
 - **Positions are never estimated.** Carriers show their last reported position with its date; supply routes only use named endpoints (country-level routes are drawn faint); launch lines from assumed launch areas are drawn faint.
-- **Map language.** Icon and color show what happened; marker style shows confidence (solid / outline / dashed). Zoomed out, 3+ nearby events collapse into the lead event's icon with a count; closer in, overlapping markers fan out. Only recent events animate. Respect `prefers-reduced-motion`.
+- **Map language.** Icon and color show what happened; marker style shows confidence (solid / outline / dashed). Zoomed out, 3+ nearby events collapse into the lead event's icon with a count; closer in, overlapping markers fan out. Only recent events animate (at most `MAX_ANIMATED` at once). Respect `prefers-reduced-motion`. Warnings that drones or missiles are in flight ("heading toward X", nothing hit) are grouped into one siren marker per country per day; they never become places hit in an attack wave.
 - **Performance.** Keep it light: no frameworks, no build step, no new heavy layers. Cap marker and line counts as the code already does.
 - UI copy: plain, sentence case, no jargon. Update `README.md` when behavior changes.
 

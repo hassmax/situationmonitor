@@ -159,6 +159,7 @@ def place_record(rec: dict, geocoder: Geocoder, theaters: list[dict]) -> dict | 
         "attacker": rec.get("attacker"),
         "launched": rec.get("launched"),
         "intercepted": rec.get("intercepted"),
+        "alert": rec.get("alert", False),
         "transfer": rec.get("transfer"),
         "legal_basis": rec.get("legal_basis"),
         "severity": rec["severity"],
