@@ -28,7 +28,7 @@ FAMILY = {
 RADIUS_KM = {"strike": 30, "ground": 30, "naval": 150, "deployment": 120, "diplomacy": 400,
              "hybrid": 50, "incursion": 150, "transfer": 0, "legal": 400}
 TRANSFER_WINDOW = timedelta(hours=72)  # repeated flights or sailings on one route become one "bridge"
-WINDOW = timedelta(hours=12)
+WINDOW = timedelta(hours=18)  # measured from when the event first happened, never from later reports
 
 WAVE_TYPES = {"missile_drone", "air_defense", "explosion"}
 TARGET_MERGE_KM = 15
@@ -54,7 +54,7 @@ def _find_transfer(events: list[dict], cand: dict) -> dict | None:
         et = e.get("transfer") or {}
         if (e["type"] == "arms_transfer" and et.get("supplier") == t.get("supplier")
                 and et.get("recipient") == t.get("recipient") and et.get("kind") == t.get("kind")
-                and ct - parse_time(e["updated"]) <= TRANSFER_WINDOW):
+                and abs(ct - parse_time(e["updated"])) <= TRANSFER_WINDOW):
             return e
     return None
 
@@ -68,8 +68,7 @@ def _find_match(events: list[dict], cand: dict) -> dict | None:
     for e in events:
         if e.get("wave") or e["theater"] != cand["theater"] or FAMILY.get(e["type"], "strike") != fam:
             continue
-        et, eu = parse_time(e["time"]), parse_time(e["updated"])
-        if abs(ct - et) > WINDOW and abs(ct - eu) > WINDOW:
+        if abs(ct - parse_time(e["time"])) > WINDOW:
             continue
         d = haversine_km(e["lat"], e["lon"], cand["lat"], cand["lon"])
         radius = RADIUS_KM[fam] * (2 if (e.get("approx") or cand["approx"]) else 1)

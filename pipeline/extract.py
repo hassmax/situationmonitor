@@ -40,7 +40,7 @@ EVENT_TYPES = {
 
 SYSTEM_PROMPT = """You turn raw posts from OSINT accounts, official military channels, and news feeds into structured records for a live armed-conflict map. Reply with one JSON object and nothing else.
 
-For every input item (identified by "i"), decide whether it reports a specific, recent, concrete development in an armed conflict or a notable military action. Relevant: strikes, attacks, shelling, battles, territorial gains or losses, air-defense interceptions, missile or drone launches, naval or air incidents, significant troop deployments or military exercises, casualty reports tied to a specific attack, and hybrid-warfare incidents (sabotage, arson, cable or pipeline damage, GPS jamming, airspace or border violations, drone incursions) when a state is blamed or suspected. Arrests or charges count when they reveal a specific incident or plot. Credible reports of preparations for military action also count (units ordered or put on notice, operational planning reported by officials, force buildups), typed as deployment. Also relevant: major diplomatic developments that bear on these conflicts, such as ceasefire or peace talks, signed agreements, summits between parties or mediators, alliance or defense-pact meetings and invocations (for example NATO Article 4 consultations or meetings under the Saudi-Pakistan-Turkey Mecca defense pact), and UN Security Council votes. Also relevant: major arms transfers and air or sea bridges to parties in these conflicts, and formal legal steps about uses of force (see the legal type). Not relevant: opinion, analysis with no new event, fundraising, memes, anniversaries, domestic politics, routine condemnations or statements of concern, calls or visits with no stated outcome, and items that fit none of the theaters below.
+For every input item (identified by "i"), decide whether it reports a specific, new, concrete development in an armed conflict or a notable military action. Relevant: strikes, attacks, shelling, battles, territorial gains or losses, air-defense interceptions, missile or drone launches, naval or air incidents, significant troop deployments or military exercises, casualty reports tied to a specific attack, and hybrid-warfare incidents (sabotage, arson, cable or pipeline damage, GPS jamming, airspace or border violations, drone incursions) when a state is blamed or suspected. Arrests or charges count when they reveal a specific incident or plot. Credible reports of preparations for military action also count (units ordered or put on notice, operational planning reported by officials, force buildups), typed as deployment. Also relevant: major diplomatic developments that bear on these conflicts, such as ceasefire or peace talks, signed agreements, summits between parties or mediators, alliance or defense-pact meetings and invocations (for example NATO Article 4 consultations or meetings under the Saudi-Pakistan-Turkey Mecca defense pact), and UN Security Council votes. Also relevant: major arms transfers and air or sea bridges to parties in these conflicts, and formal legal steps about uses of force (see the legal type). Not relevant: opinion, analysis with no new event, fundraising, memes, anniversaries, domestic politics, routine condemnations or statements of concern, calls or visits with no stated outcome, and items that fit none of the theaters below.
 
 Theater ids:
 - ukraine: Russia-Ukraine war, including strikes inside Russia or Belarus and the Black Sea
@@ -57,7 +57,7 @@ Event types:
 Output: {{"events": [one object per input item, in any order]}}
 Irrelevant item: {{"i": <n>, "relevant": false}}
 Relevant item:
-{{"i": <n>, "relevant": true, "type": "<event type id>", "summary": "<max 25 words>", "place": "<most specific place named, English spelling>" or null, "admin1": "<province, oblast, or state>" or null, "country": "<ISO 3166-1 alpha-2>" or null, "lat": <number> or null, "lon": <number> or null, "attacker": "<ISO alpha-2 of the country whose forces carried it out>" or null, "origins": [{{"place": "<launch or firing area named in the item>", "lat": <number>, "lon": <number>}}], "launched": <int> or null, "intercepted": <int> or null, "transfer": <transfer object, arms_transfer only>, "legal_basis": "<max 12 words>" or null, "theater": "<theater id>", "severity": <1, 2, or 3>, "claim": "report" or "official_claim", "killed": <int> or null, "injured": <int> or null}}
+{{"i": <n>, "relevant": true, "type": "<event type id>", "happened": "<when the event itself happened: YYYY-MM-DD or YYYY-MM-DDTHH:MM in UTC>" or null, "summary": "<max 25 words>", "place": "<most specific place named, English spelling>" or null, "admin1": "<province, oblast, or state>" or null, "country": "<ISO 3166-1 alpha-2>" or null, "lat": <number> or null, "lon": <number> or null, "attacker": "<ISO alpha-2 of the country whose forces carried it out>" or null, "origins": [{{"place": "<launch or firing area named in the item>", "lat": <number>, "lon": <number>}}], "launched": <int> or null, "intercepted": <int> or null, "transfer": <transfer object, arms_transfer only>, "legal_basis": "<max 12 words>" or null, "theater": "<theater id>", "severity": <1, 2, or 3>, "claim": "report" or "official_claim", "killed": <int> or null, "injured": <int> or null}}
 
 Optional key for any item (relevant or not): if the item says where a US Navy aircraft carrier (hull CVN-##) is, or that one departed, arrived, or is heading somewhere, add
 "carrier": {{"hull": "CVN-78", "status": "departed" | "underway" | "operating" | "arrived" | "in port", "place": "<where it is now>", "lat": <number>, "lon": <number>, "heading_to": {{"place": "<stated destination>", "lat": <number>, "lon": <number>}} or null}}
@@ -66,6 +66,7 @@ Include it even when the item is otherwise not relevant (then keep "relevant": f
 Transfer object: {{"kind": "delivery" | "pledge" | "interdiction", "supplier": "<ISO alpha-2>", "recipient": "<ISO alpha-2>", "mode": "air" | "sea" | "land" | "unspecified", "from": {{"place": "...", "lat": <number>, "lon": <number>}} or null, "to": {{"place": "...", "lat": <number>, "lon": <number>}} or null, "via": [{{"place": "<named transit hub>", "lat": <number>, "lon": <number>}}], "what": "<max 8 words>", "flights": <int> or null, "value_usd": <number> or null}}
 
 Rules:
+- Freshness: an item is relevant only if the event it reports happened within about 24 hours before the item was posted ("posted"). Articles that recap, react to, or analyze something older are not relevant, unless they reveal significant new facts about it (new casualty figures, a new attribution, a new official response); in that case the new facts are the event. Always fill "happened" when the item states or clearly implies when it happened ("on Tuesday", "overnight", "yesterday"), working from the posted date.
 - Write the summary yourself in plain, neutral English. Translate non-English items. Do not copy sentences from the item.
 - When the source is a party to the conflict, attribute the claim in the summary (for example "Russian MoD claims...", "IDF says...").
 - For hybrid incidents and incursions, say who blames whom exactly as the item does (for example "Polish officials suspect Russian involvement"). Never state attribution the item does not make.
@@ -377,6 +378,19 @@ def clean_carrier(obj: dict, item: dict) -> dict | None:
             "time": item["time"], "source": item["source"], "url": item["url"]}
 
 
+def _happened(value, item: dict) -> str | None:
+    """When the event happened, clamped to no later than the post itself. Date-only values
+    are read as the end of that day (the latest the event could have happened)."""
+    if not value:
+        return None
+    v = str(value).strip()
+    t = parse_time(v + "T23:59:00Z" if re.fullmatch(r"\d{4}-\d{2}-\d{2}", v) else v)
+    posted = parse_time(item.get("time"))
+    if not t or not posted:
+        return None
+    return iso(min(t, posted))
+
+
 def _clean_record(obj: dict, item: dict) -> dict | None:
     if not obj.get("relevant"):
         return None
@@ -405,6 +419,7 @@ def _clean_record(obj: dict, item: dict) -> dict | None:
         severity = 1
     return {
         "type": etype,
+        "happened": _happened(obj.get("happened"), item),
         "summary": summary[:240],
         "place": (str(obj["place"]).strip()[:120] if obj.get("place") else None),
         "admin1": (str(obj["admin1"]).strip()[:120] if obj.get("admin1") else None),

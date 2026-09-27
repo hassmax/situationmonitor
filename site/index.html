@@ -29,17 +29,14 @@
       <button class="filters-toggle" id="filtersToggle" type="button" aria-expanded="false" aria-controls="filters">Filters</button>
     </header>
 
-    <nav class="lens panel" id="lensBar" role="tablist" aria-label="View">
-      <button type="button" role="tab" data-lens="fight" aria-selected="true">Fighting</button>
-      <button type="button" role="tab" data-lens="supply" aria-selected="false">Supply</button>
-      <button type="button" role="tab" data-lens="fleet" aria-selected="false">Fleet</button>
-    </nav>
-
     <aside class="filters panel" id="filters" aria-label="Filters">
+      <section class="legend-section">
+        <h2>On the map</h2>
+        <ul class="legend-grid" id="legend"></ul>
+      </section>
       <section>
         <h2>Time</h2>
         <div class="seg" role="group" aria-label="Time window" id="windowSeg"></div>
-        <p class="hint" id="timeNote" hidden>Supply flows always cover the last 30 days.</p>
       </section>
       <section>
         <h2 class="with-note">Theaters <span class="note">7-day tempo</span></h2>
@@ -49,10 +46,21 @@
         <h2>Confidence</h2>
         <ul class="rows" id="statusList"></ul>
       </section>
-      <section id="layerSection">
+      <section>
         <h2>Layers</h2>
         <ul class="rows" id="layerList"></ul>
-        <p class="hint">Launch paths appear when you zoom into a theater or open an event. Faint lines start from the nearest known launch area when a report doesn't name one.</p>
+      </section>
+      <section>
+        <details class="side-box" id="fleetBox" open>
+          <summary><span class="side-title">Aircraft carriers</span><span class="note" id="fleetNote"></span></summary>
+          <ul class="side-list" id="fleetList"></ul>
+        </details>
+      </section>
+      <section>
+        <details class="side-box" id="supplyBox" open>
+          <summary><span class="side-title">Supply routes</span><span class="note">last 30 days</span></summary>
+          <ul class="side-list" id="supplyList"></ul>
+        </details>
       </section>
       <section class="sources">
         <button class="linkish" id="sourcesToggle" type="button" aria-expanded="false" aria-controls="sourcesList">Sources</button>
@@ -81,6 +89,8 @@
     </main>
   </div>
 
+
+  <div class="focus-toast" id="focusToast" role="status" hidden></div>
 
   <script src="vendor/globe.gl.min.js"></script>
   <script src="vendor/topojson-client.min.js"></script>

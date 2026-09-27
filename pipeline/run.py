@@ -118,7 +118,11 @@ def main() -> int:
         cells = []
         health.pop("gdelt", None)
 
-    # 6. Geocode, merge, score
+    # 6. Geocode, merge, score. Records about events that happened long ago are recaps, not news.
+    fresh_records = [r for r in records if hours_since(r.get("happened") or r["item"]["time"], t0) <= settings["max_item_age_hours"]]
+    if len(fresh_records) < len(records):
+        log(f"[extract] dropped {len(records) - len(fresh_records)} reports about older events")
+    records = fresh_records
     geocoder = geo.Geocoder(state["geocache"], session, settings["geocode_per_run"])
     candidates = [c for c in (geo.place_record(r, geocoder, cfg.theaters) for r in records) if c]
     log(f"[geo] placed {len(candidates)}/{len(records)} ({geocoder.calls} lookups)")

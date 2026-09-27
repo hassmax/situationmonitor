@@ -143,7 +143,7 @@ def place_record(rec: dict, geocoder: Geocoder, theaters: list[dict]) -> dict | 
         "severity": rec["severity"],
         "killed": rec["killed"],
         "injured": rec["injured"],
-        "time": item["time"],
+        "time": rec.get("happened") or item["time"],
         "report": {
             "source": item["source"],
             "platform": item["platform"],
