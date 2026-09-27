@@ -123,6 +123,17 @@ class RateLimited(Exception):
     pass
 
 
+# Words added to the filter on 2026-09-27. Posts that matched only these were rejected before
+# then; run.py uses this once to give them another look.
+_ADDED_WORDS = re.compile(r"\b(?:wars?|wartime|visit(?:s|ed|ing)?|trip|met|meets?|meeting|hosts?|hosted)\b", re.IGNORECASE)
+
+
+def rejected_before_added_words(item: dict) -> bool:
+    text = item.get("text", "")
+    return (item.get("prefilter", True) and bool(CONFLICT_RE.search(text))
+            and not CONFLICT_RE.search(_ADDED_WORDS.sub(" ", text)))
+
+
 def is_candidate(item: dict) -> bool:
     if not item.get("prefilter", True):
         return True
