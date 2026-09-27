@@ -15,7 +15,7 @@ A self-updating 3D globe of armed-conflict events, built from public OSINT posts
 - `pipeline/sources/`: `bluesky.py` (public API, no login), `telegram.py`, `rss.py` (incl. Google News searches), `gdelt.py` (used only to corroborate, not drawn).
 - `pipeline/extract.py`: the model prompt (`SYSTEM_PROMPT`), event types, keyword prefilter (`CONFLICT_RE`), model probing and batching.
 - `pipeline/geo.py`: geocoding, theater assignment, named-sea fallback coordinates.
-- `pipeline/recency.py`: drops old stories that arrive with a fresh date (news-only events are checked once against older Google News coverage; the model must name the matching older headline).
+- `pipeline/recency.py`: drops old stories that arrive with a fresh date. News-only events with 2+ different current headlines on the topic always stay; only without current coverage does the model compare against coverage 2+ weeks older, and it must name the matching older headline. Bump `CHECK_VERSION` when changing the rule (drops are put back and everything is re-checked).
 - `pipeline/merge.py`: merging reports into events, attack waves, drone and missile alert groups, confidence rules.
 - `pipeline/fleet.py`: US aircraft carriers (USNI Fleet Tracker feed + movement reports; home-port baseline in `CARRIERS` and `HOME`).
 - `pipeline/config/theaters.yaml`, `pipeline/config/sources.yaml`: theaters and sources. If a theater is added or renamed, also update the theater list in `SYSTEM_PROMPT`.
