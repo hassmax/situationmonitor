@@ -50,13 +50,20 @@ state (seen posts, queue, caches, events) is kept on the `data` branch, overwrit
 | Red-orange, filled | **Corroborated.** Two or more independent sources, at least one not aligned with either side (or opposing sides agree). Nearby news coverage from 3+ outlets in GDELT counts as one independent source. |
 | Amber, ring | **Single source.** One unaligned source so far. |
 | Violet, diamond | **One side's claim.** Only sources aligned with one party, such as a defense ministry and friendly bloggers. |
-| Teal hexagons | **News intensity.** Where GDELT's machine-coded news feed is reporting violence, weighted by the number of distinct outlets. |
 
 Taller markers are more severe. Pulsing rings mark events from the last 3 hours. Countries with events in view, and the countries attacking them, get warm borders and brighter land.
 
 **Attack waves.** Missile, drone, and interception reports with a known attacker are grouped into one event per direction per day (Russia → Ukraine, Ukraine → Russia, Iran → Israel, and so on; days run 09:00–09:00 UTC so an overnight attack stays together). A wave lists every location hit, launch and intercept totals when a source gives them, and the launch areas named. Dashed arcs run from launch areas to targets. When no report names a launch area, the arc starts from the nearest known one and is drawn faint.
 
-**Using it.** Click anywhere near a marker to open it; if several are close together, the globe zooms in and lists them. **Key developments** (severe and corroborated) are pinned at the top of the feed. The small bar charts next to each theater show events per day over the past week. Press **H** to hide the panels, **/** to search, **Esc** to go back. On phones, drag or tap the bar at the top of the event list to collapse or expand it.
+**Carrier strike groups.** Every US aircraft carrier's last reported position, from USNI News' weekly Fleet and Marine Tracker (read automatically each Monday edition) plus departure and arrival reports in between. When a carrier moves, its icon sails from the old position to the new one when you open the page; a dotted wake shows where it came from and a faint line shows a stated destination. Positions are never estimated between reports; each shows its "as of" date.
+
+**Arms transfers and air bridges.** Deliveries of weapons from one country to another, drawn as fast-moving dotted streams from origin to destination. Repeated flights or sailings on the same route within three days merge into one "air bridge" or "sea bridge."
+
+**Legal steps.** Article 51 letters, War Powers reports, Security Council resolutions, and ICJ/ICC actions appear as flat discs (toggle: Legal steps). Any event whose sources state the legal basis the acting state gives for using force shows it in a highlighted box. The dashboard records claimed justifications; it does not assess them.
+
+**About GDELT.** GDELT is a free database that reads news sites worldwide and logs each report of violence with a location, every 15 minutes. It is not drawn on the map. It is used for one thing: when three or more separate outlets report violence near a place where only one source has posted, that report is upgraded to corroborated. Set `gdelt: false` in `sources.yaml` to turn it off.
+
+**Using it.** Click a carrier icon or a name in the Carrier strike groups list to see its status, recent positions, and events within 600 km. Click anywhere near a marker to open it; if several are close together, the globe zooms in and lists them. **Key developments** (severe and corroborated) are pinned at the top of the feed. The small bar charts next to each theater show events per day over the past week. Press **H** to hide the panels, **/** to search, **Esc** to go back. On phones, drag or tap the bar at the top of the event list to collapse or expand it.
 
 ## Customizing
 

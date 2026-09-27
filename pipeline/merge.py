@@ -23,10 +23,11 @@ FAMILY = {
     "airstrike": "strike", "missile_drone": "strike", "air_defense": "strike", "explosion": "strike",
     "artillery": "ground", "ground": "ground", "territory": "ground",
     "naval": "naval", "deployment": "deployment", "diplomacy": "diplomacy", "ceasefire": "diplomacy",
-    "hybrid": "hybrid", "incursion": "incursion",
+    "hybrid": "hybrid", "incursion": "incursion", "arms_transfer": "transfer", "legal": "legal",
 }
 RADIUS_KM = {"strike": 30, "ground": 30, "naval": 150, "deployment": 120, "diplomacy": 400,
-             "hybrid": 50, "incursion": 150}
+             "hybrid": 50, "incursion": 150, "transfer": 0, "legal": 400}
+TRANSFER_WINDOW = timedelta(hours=72)  # repeated flights or sailings on one route become one "bridge"
 WINDOW = timedelta(hours=12)
 
 WAVE_TYPES = {"missile_drone", "air_defense", "explosion"}
@@ -46,8 +47,21 @@ def _is_wave(c: dict) -> bool:
             and c["attacker"] != c["country"])
 
 
+def _find_transfer(events: list[dict], cand: dict) -> dict | None:
+    t = cand.get("transfer") or {}
+    ct = parse_time(cand["time"])
+    for e in events:
+        et = e.get("transfer") or {}
+        if (e["type"] == "arms_transfer" and et.get("supplier") == t.get("supplier")
+                and et.get("recipient") == t.get("recipient") and ct - parse_time(e["updated"]) <= TRANSFER_WINDOW):
+            return e
+    return None
+
+
 def _find_match(events: list[dict], cand: dict) -> dict | None:
     fam = FAMILY.get(cand["type"], "strike")
+    if fam == "transfer":
+        return _find_transfer(events, cand) if cand.get("transfer") else None
     ct = parse_time(cand["time"])
     best, best_d = None, float("inf")
     for e in events:
@@ -137,6 +151,7 @@ def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
                 "place": cand["place"], "country": cand["country"], "attacker": cand.get("attacker"),
                 "lat": cand["lat"], "lon": cand["lon"], "approx": cand["approx"],
                 "origins": list(cand.get("origins") or []),
+                "transfer": cand.get("transfer"), "legal_basis": cand.get("legal_basis"),
                 "severity": cand["severity"],
                 "killed": cand["killed"], "injured": cand["injured"],
                 "time": cand["time"], "updated": cand["time"], "reports": [rep],
@@ -149,6 +164,13 @@ def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
         match["updated"] = max(match["updated"], cand["time"])
         match["severity"] = max(match["severity"], cand["severity"])
         match["attacker"] = match.get("attacker") or cand.get("attacker")
+        match["legal_basis"] = match.get("legal_basis") or cand.get("legal_basis")
+        if match.get("transfer") and cand.get("transfer"):
+            mt, ct_ = match["transfer"], cand["transfer"]
+            mt["flights"] = _max_or_none(mt.get("flights"), ct_.get("flights"))
+            mt["what"] = mt.get("what") or ct_.get("what")
+            if mt.get("mode") == "unspecified":
+                mt["mode"] = ct_.get("mode")
         for k in ("killed", "injured"):
             match[k] = _max_or_none(match.get(k), cand[k])
         if match.get("approx") and not cand["approx"]:

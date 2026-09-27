@@ -40,7 +40,11 @@
     ceasefire: "Diplomacy",
     hybrid: "Hybrid attack",
     incursion: "Airspace or border incursion",
+    arms_transfer: "Arms transfer",
+    legal: "Legal step",
   };
+  const MODE = { air: "by air", sea: "by sea", land: "overland", unspecified: "" };
+  const ICE = [205, 228, 255];
   const PLATFORM = { bluesky: "Bluesky", telegram: "Telegram", rss: "News feed", gdelt: "GDELT" };
   const KIND = { official: "Official", partisan: "Partisan", osint: "OSINT", news: "News" };
   const WINDOWS = [["6h", 6], ["24h", 24], ["3d", 72], ["7d", 168]];
@@ -86,6 +90,8 @@
     const x = Math.sin(toRad(c - a) / 2) ** 2 + Math.cos(toRad(a)) * Math.cos(toRad(c)) * Math.sin(toRad(d - b) / 2) ** 2;
     return 12742 * Math.asin(Math.min(1, Math.sqrt(x)));
   }
+  // Lowest arc height that still clears the globe's curvature (for sea lanes and ship tracks).
+  const hugAlt = (distKm) => 1.25 * (1 - Math.cos(distKm / 6371 / 2)) + 0.004;
   function nearest(list, p) {
     let best = null, bd = Infinity;
     for (const o of list || []) {
@@ -107,7 +113,13 @@
   const fmtTime = (ms) => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   const markHtml = (status) => `<span class="mark mark--${status}" aria-hidden="true"></span>`;
   const isDiplomacy = (e) => e.type === "diplomacy" || e.type === "ceasefire";
-  const typeLabel = (e) => (e.wave ? "Attack wave" : TYPES[e.type] || "Event");
+  const isFlat = (e) => isDiplomacy(e) || e.type === "legal";
+  const isBridge = (e) => e.type === "arms_transfer" && ((e.reports || []).length >= 3 || (e.transfer && e.transfer.flights >= 3));
+  const typeLabel = (e) => {
+    if (e.wave) return "Attack wave";
+    if (isBridge(e)) return e.transfer.mode === "sea" ? "Sea bridge" : "Air bridge";
+    return TYPES[e.type] || "Event";
+  };
   const originsOf = (e) => (e.origins && e.origins.length ? e.origins : e.origin ? [e.origin] : []);
   const isKey = (e) => e.severity >= 3 && e.status === "corroborated";
 
@@ -118,7 +130,9 @@
     windowH: 24,
     theaterOn: new Set(FALLBACK_THEATERS.map((t) => t.id)),
     statusOn: new Set(Object.keys(STATUS)),
-    layers: { heat: true, arcs: true, diplomacy: true },
+    layers: { arcs: true, transfers: true, carriers: true, diplomacy: true, legal: true },
+    fleet: [],
+    selectedHull: null,
     query: "",
     selectedId: null,
     spot: null,
@@ -205,7 +219,7 @@
   function pointRadius(d) {
     const sel = (d.ref || d).id === S.selectedId ? 1.5 : 1;
     if (d.secondary) return 0.13 * zoomK * sel;
-    return (0.16 + d.severity * 0.07) * zoomK * sel * (isDiplomacy(d) ? 1.5 : 1);
+    return (0.16 + d.severity * 0.07) * zoomK * sel * (isFlat(d) ? 1.5 : 1);
   }
   world.onZoom(({ altitude }) => {
     const k = Math.max(0.6, Math.min(2.6, altitude)) / 1.25;
@@ -217,12 +231,24 @@
   });
 
   function tipHtml(e) {
-    const meta = e.wave ? `${countryName(e.attacker)} → ${countryName(e.country)}` : e.place || "";
+    const meta = metaLine(e);
     const extra = e.wave && e.targets && e.targets.length > 1 ? `<span>${e.targets.length} locations</span>` : "";
     return `<div class="tip">
       <div class="tip-meta"><b>${esc(typeLabel(e))}</b><span>${esc(meta)}</span></div>
       <div class="tip-sum">${esc(e.summary)}</div>
       <div class="tip-foot">${markHtml(e.status)}<span>${esc(STATUS[e.status].label)}</span>${extra}<span>${esc(ago(e._t))}</span></div>
+    </div>`;
+  }
+  function metaLine(e) {
+    if (e.wave) return `${countryName(e.attacker)} → ${countryName(e.country)}`;
+    if (e.type === "arms_transfer" && e.transfer) return `${countryName(e.transfer.supplier)} → ${countryName(e.transfer.recipient)}`;
+    return e.place || "";
+  }
+  function tipCarrier(c) {
+    return `<div class="tip">
+      <div class="tip-meta"><b>${esc(c.name)}</b><span>${esc(c.hull)}</span></div>
+      <div class="tip-sum">${esc(carrierStatus(c))}${c.place ? `, ${esc(c.place)}` : ""}</div>
+      <div class="tip-foot"><span>As of ${esc(fmtDay(c._asOf))}</span>${c.heading_to ? `<span>heading to ${esc(c.heading_to.place || "a stated destination")}</span>` : ""}</div>
     </div>`;
   }
   function tipTarget(d) {
@@ -237,7 +263,7 @@
   world
     .pointLat("lat")
     .pointLng("lon")
-    .pointAltitude((d) => (d.secondary ? 0.006 : isDiplomacy(d) ? 0.003 : 0.01 + d.severity * 0.016))
+    .pointAltitude((d) => (d.secondary ? 0.006 : isFlat(d) ? 0.003 : 0.01 + d.severity * 0.016))
     .pointRadius((d) => pointRadius(d))
     .pointColor((d) => rgba(STATUS[d.status].rgb, d.secondary ? 0.75 : d.status === "unconfirmed" ? 0.75 : 0.95))
     .pointResolution(10)
@@ -254,41 +280,120 @@
     .ringRepeatPeriod((r) => r.period)
     .ringAltitude(0.006);
 
+  const ARC = {
+    strike: { stroke: 0.32, dash: 0.45, gap: 0.2, ms: 2300 },
+    strikeApprox: { stroke: 0.2, dash: 0.45, gap: 0.2, ms: 3400 },
+    transfer: { stroke: 0.5, dash: 0.05, gap: 0.05, ms: 1700 },
+    track: { stroke: 0.4, dash: 0.06, gap: 0.04, ms: 5200 },
+    plan: { stroke: 0.26, dash: 0.2, gap: 0.14, ms: 8000 },
+  };
   world
     .arcStartLat("sLat")
     .arcStartLng("sLng")
     .arcEndLat("eLat")
     .arcEndLng("eLng")
-    .arcColor((a) => [rgba(STATUS[a.status].rgb, a.approx ? 0.02 : 0.06), rgba(STATUS[a.status].rgb, a.approx ? 0.42 : 0.92)])
-    .arcStroke((a) => (a.approx ? 0.2 : 0.32))
-    .arcDashLength(0.45)
-    .arcDashGap(0.2)
+    .arcColor((a) => {
+      if (a.kind === "track") return [rgba(ICE, 0.12), rgba(ICE, 0.95)];
+      if (a.kind === "plan") return [rgba(ICE, 0.55), rgba(ICE, 0.08)];
+      const c = STATUS[a.status].rgb;
+      if (a.kind === "transfer") return [rgba(c, 0.25), rgba(c, 1)];
+      return [rgba(c, a.kind === "strikeApprox" ? 0.02 : 0.06), rgba(c, a.kind === "strikeApprox" ? 0.42 : 0.92)];
+    })
+    .arcStroke((a) => ARC[a.kind].stroke)
+    .arcDashLength((a) => ARC[a.kind].dash)
+    .arcDashGap((a) => ARC[a.kind].gap)
     .arcDashInitialGap(() => Math.random())
-    .arcDashAnimateTime((a) => (reduceMotion ? 0 : a.approx ? 3400 : 2300))
+    .arcDashAnimateTime((a) => (reduceMotion ? 0 : ARC[a.kind].ms))
+    .arcAltitude((a) => (a.alt === undefined ? null : a.alt))
     .arcAltitudeAutoScale(0.36)
-    .arcLabel((a) => tipHtml(a.ref))
+    .arcLabel((a) => (a.carrier ? tipCarrier(a.carrier) : tipHtml(a.ref)))
     .onArcHover((a) => { globeEl.style.cursor = a ? "pointer" : ""; })
-    .onArcClick((a) => select(a.ref.id, true));
+    .onArcClick((a) => (a.carrier ? selectCarrier(a.carrier.hull, true) : select(a.ref.id, true)));
 
+  // ------------------------------------------------------------------ carriers
+  // Icons are small HTML buttons so they stay crisp and are easy to click.
+  const carrierEls = new Map();
+  const CARRIER_SVG = `<svg viewBox="0 0 28 14" aria-hidden="true"><path d="M1.5 9.2 4 4.8h17.2l5.3 2.6v2.4l-2.4 2.2H3.6z" fill="currentColor"/><path d="M6 6.4h12.5M10 11.2 21 5.4" stroke="rgba(8,22,39,.75)" stroke-width="0.9"/><rect x="17.2" y="9.3" width="3.4" height="2.3" rx="0.4" fill="rgba(8,22,39,.8)"/></svg>`;
+  function carrierEl(c) {
+    let el = carrierEls.get(c.hull);
+    if (!el) {
+      el = document.createElement("button");
+      el.type = "button";
+      el.className = "cvn";
+      el.innerHTML = `${CARRIER_SVG}<span></span>`;
+      el.addEventListener("click", (ev) => { ev.stopPropagation(); selectCarrier(c.hull, true); });
+      el.addEventListener("pointerdown", (ev) => ev.stopPropagation());
+      carrierEls.set(c.hull, el);
+    }
+    el.querySelector("span").textContent = c.short || c.hull;
+    el.className = `cvn cvn--${carrierTone(c)}${c.hull === S.selectedHull ? " is-selected" : ""}`;
+    el.setAttribute("aria-label", `${c.name}, ${carrierStatus(c)}${c.place ? ", " + c.place : ""}`);
+    return el;
+  }
   world
-    .hexBinPointLat("lat")
-    .hexBinPointLng("lon")
-    .hexBinPointWeight("w")
-    .hexBinResolution(3)
-    .hexMargin(0.18)
-    .hexAltitude((d) => Math.min(0.06, 0.006 * Math.sqrt(d.sumWeight)))
-    .hexTopColor((d) => rgba(NEWS_RGB, Math.min(0.85, 0.32 + d.sumWeight / 40)))
-    .hexSideColor((d) => rgba(NEWS_RGB, Math.min(0.5, 0.14 + d.sumWeight / 80)))
-    .hexBinMerge(true)
-    .hexTransitionDuration(reduceMotion ? 0 : 700);
+    .htmlLat("lat")
+    .htmlLng("lon")
+    .htmlAltitude(0.012)
+    .htmlElement((c) => carrierEl(c))
+    .htmlElementVisibilityModifier((el, visible) => {
+      el.style.opacity = visible ? "1" : "0";
+      el.style.pointerEvents = visible ? "auto" : "none";
+    });
+
+  function carrierStatus(c) {
+    switch (c.status) {
+      case "departed": return "Just departed";
+      case "underway": return c.deployed ? "Deployed, underway" : "Underway";
+      case "operating": return c.deployed ? "Deployed" : "Operating";
+      case "arrived": return "Arrived";
+      case "in port": return c.maintenance ? "In maintenance" : "In port";
+      default: return "Reported";
+    }
+  }
+  function carrierTone(c) {
+    if (c.status === "departed" || c.status === "underway") return "underway";
+    if (c.status === "in port") return "port";
+    return "deployed";
+  }
+  const fmtDay = (ms) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+  // Great-circle interpolation for the "sailing" animation.
+  function slerp(a, b, t) {
+    const [la1, lo1, la2, lo2] = [a.lat, a.lon, b.lat, b.lon].map(toRad);
+    const d = 2 * Math.asin(Math.sqrt(Math.sin((la2 - la1) / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin((lo2 - lo1) / 2) ** 2));
+    if (d < 1e-6) return { lat: b.lat, lon: b.lon };
+    const A = Math.sin((1 - t) * d) / Math.sin(d), B = Math.sin(t * d) / Math.sin(d);
+    const x = A * Math.cos(la1) * Math.cos(lo1) + B * Math.cos(la2) * Math.cos(lo2);
+    const y = A * Math.cos(la1) * Math.sin(lo1) + B * Math.cos(la2) * Math.sin(lo2);
+    const z = A * Math.sin(la1) + B * Math.sin(la2);
+    return { lat: (Math.atan2(z, Math.hypot(x, y)) * 180) / Math.PI, lon: (Math.atan2(y, x) * 180) / Math.PI };
+  }
+  const animated = new Set();
+  let sailing = false;
+  function sailRecentMoves() {
+    if (reduceMotion || !S.layers.carriers) return;
+    const movers = S.fleet.filter((c) => c.prev && c._moved && Date.now() - c._moved < 7 * 86400e3 && !animated.has(c.hull + c.as_of));
+    if (!movers.length) return;
+    movers.forEach((c) => { animated.add(c.hull + c.as_of); c._from = { lat: c.prev.lat, lon: c.prev.lon }; c._to = { lat: c._lat, lon: c._lon }; });
+    const t0 = performance.now(), dur = 4200;
+    sailing = true;
+    const ease = (t) => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+    const step = (now) => {
+      const t = Math.min(1, (now - t0) / dur);
+      movers.forEach((c) => { const p = slerp(c._from, c._to, ease(t)); c.lat = p.lat; c.lon = p.lon; });
+      world.htmlElementsData(S.layers.carriers ? S.fleet : []);
+      if (t < 1) requestAnimationFrame(step);
+      else sailing = false;
+    };
+    requestAnimationFrame(step);
+  }
 
   // Clicks that land on the globe, a country dot, a border, or a heat hexagon still pick
   // the nearest event, so small markers don't need pixel-perfect aim.
   world
     .onGlobeClick((coords, ev) => pickNear(ev, coords))
     .onHexPolygonClick((_, ev, coords) => pickNear(ev, coords))
-    .onPathClick((_, ev, coords) => pickNear(ev, coords))
-    .onHexClick((_, ev, coords) => pickNear(ev, coords));
+    .onPathClick((_, ev, coords) => pickNear(ev, coords));
 
   function pickNear(ev, coords) {
     if (!S.points.length) return;
@@ -374,6 +479,11 @@
         (e.targets || []).forEach((t) => { if (t.time) t.time = move(t.time); });
       });
       (data.heat || []).forEach((c) => { c.first = move(c.first); c.last = move(c.last); });
+      (data.fleet || []).forEach((c) => {
+        ["as_of", "moved_at", "departed_at"].forEach((k) => { if (c[k]) c[k] = move(c[k]); });
+        if (c.prev && c.prev.as_of) c.prev.as_of = move(c.prev.as_of);
+        (c.track || []).forEach((t) => { if (t.time) t.time = move(t.time); });
+      });
     }
     data.events = (data.events || []).filter((e) => STATUS[e.status] && isFinite(e.lat) && isFinite(e.lon));
     for (const e of data.events) {
@@ -385,6 +495,17 @@
         ...(e.reports || []).map((r) => r.source)].join(" ").toLowerCase();
     }
     data.heat = (data.heat || []).map((c) => ({ ...c, _t: Date.parse(c.last) }));
+    // Carriers: keep the same objects across refreshes so their icons persist.
+    const byHull = new Map(S.fleet.map((c) => [c.hull, c]));
+    S.fleet = (data.fleet || []).filter((c) => isFinite(c.lat) && isFinite(c.lon)).map((c) => {
+      const d = byHull.get(c.hull) || {};
+      Object.assign(d, c);
+      d._lat = c.lat; d._lon = c.lon;
+      d._asOf = Date.parse(c.as_of);
+      d._moved = c.moved_at ? Date.parse(c.moved_at) : 0;
+      d._fresh = (c.status === "departed" || c.status === "underway") && Date.now() - d._asOf < 72 * 3600e3;
+      return d;
+    }).sort((a, b) => (carrierTone(a) === "port") - (carrierTone(b) === "port") || a.hull.localeCompare(b.hull));
     const theaters = Array.isArray(data.theaters) && data.theaters.length ? data.theaters : FALLBACK_THEATERS;
     if (S.firstLoad) {
       S.theaterOn = new Set(theaters.map((t) => t.id));
@@ -398,13 +519,17 @@
     renderTheaters();
     renderSources();
     render();
+    renderFleetList();
     updateFreshness();
+    sailRecentMoves();
 
     if (S.firstLoad) {
       S.firstLoad = false;
       const fromHash = decodeURIComponent(location.hash.slice(1));
       if (fromHash && data.events.some((e) => e.id === fromHash)) {
         select(fromHash, true);
+      } else if (/^CVN-\d{2}$/.test(fromHash) && S.fleet.some((c) => c.hull === fromHash)) {
+        selectCarrier(fromHash, true);
       } else {
         const alt = isMobile() ? 3.0 : 2.25;
         world.pointOfView({ lat: 27, lng: 40, altitude: alt }, reduceMotion ? 0 : 2600);
@@ -412,6 +537,9 @@
     } else if (S.selectedId) {
       const still = data.events.find((e) => e.id === S.selectedId);
       if (still) renderDetail(still, true);
+    } else if (S.selectedHull) {
+      const c = S.fleet.find((x) => x.hull === S.selectedHull);
+      if (c) renderCarrierDetail(c, true);
     }
   }
 
@@ -431,6 +559,8 @@
     if (!ignoreTheater && !S.theaterOn.has(e.theater)) return false;
     if (!S.statusOn.has(e.status)) return false;
     if (!S.layers.diplomacy && isDiplomacy(e)) return false;
+    if (!S.layers.legal && e.type === "legal") return false;
+    if (!S.layers.transfers && e.type === "arms_transfer") return false;
     const q = S.query.trim().toLowerCase();
     if (q && !e._search.includes(q)) return false;
     return true;
@@ -438,12 +568,6 @@
 
   function visibleEvents() {
     return S.data ? S.data.events.filter((e) => passesBase(e)).sort((a, b) => b._t - a._t) : [];
-  }
-
-  function visibleHeat() {
-    if (!S.data || !S.layers.heat) return [];
-    const since = Date.now() - S.windowH * 3600e3;
-    return S.data.heat.filter((c) => c._t >= since && S.theaterOn.has(c.theater));
   }
 
   // ------------------------------------------------------------------ render
@@ -462,15 +586,24 @@
   }
 
   function buildArcs(events) {
-    if (!S.layers.arcs) return [];
     const arcs = [];
     const push = (e, o, d, approx) => {
       const dist = km(o.lat, o.lon, d.lat, d.lon);
       if (dist < 25 || (approx && dist > 1800)) return;
-      arcs.push({ ref: e, sLat: o.lat, sLng: o.lon, eLat: d.lat, eLng: d.lon, status: e.status, approx });
+      arcs.push({ ref: e, sLat: o.lat, sLng: o.lon, eLat: d.lat, eLng: d.lon, status: e.status, kind: approx ? "strikeApprox" : "strike" });
     };
     for (const e of events) {
-      if (arcs.length >= 220) break;
+      if (arcs.length >= 240) break;
+      if (e.type === "arms_transfer") {
+        const t = e.transfer;
+        if (!S.layers.transfers || !t || !t.from || !t.to) continue;
+        const dist = km(t.from.lat, t.from.lon, t.to.lat, t.to.lon);
+        if (dist < 25) continue;
+        const alt = t.mode === "sea" || t.mode === "land" ? hugAlt(dist) : Math.min(0.55, 0.06 + dist / 22000);
+        arcs.push({ ref: e, sLat: t.from.lat, sLng: t.from.lon, eLat: t.to.lat, eLng: t.to.lon, status: e.status, kind: "transfer", alt });
+        continue;
+      }
+      if (!S.layers.arcs) continue;
       const origins = originsOf(e);
       if (e.wave) {
         const dests = e.targets.length ? e.targets.slice(0, 20) : [e];
@@ -485,6 +618,16 @@
         push(e, nearest(ANCHORS[e.attacker], e), e, true);
       }
     }
+    if (S.layers.carriers) {
+      for (const c of S.fleet) {
+        if (c.prev && c._moved && Date.now() - c._moved < 14 * 86400e3 && km(c.prev.lat, c.prev.lon, c._lat, c._lon) > 100) {
+          arcs.push({ carrier: c, sLat: c.prev.lat, sLng: c.prev.lon, eLat: c._lat, eLng: c._lon, kind: "track", alt: hugAlt(km(c.prev.lat, c.prev.lon, c._lat, c._lon)) });
+        }
+        if (c.heading_to && km(c._lat, c._lon, c.heading_to.lat, c.heading_to.lon) > 100) {
+          arcs.push({ carrier: c, sLat: c._lat, sLng: c._lon, eLat: c.heading_to.lat, eLng: c.heading_to.lon, kind: "plan", alt: hugAlt(km(c._lat, c._lon, c.heading_to.lat, c.heading_to.lon)) });
+        }
+      }
+    }
     return arcs;
   }
 
@@ -494,7 +637,7 @@
     world.pointsData(S.points);
     world.pointRadius((d) => pointRadius(d));
     world.arcsData(buildArcs(events));
-    world.hexBinPointsData(visibleHeat());
+    if (!sailing) world.htmlElementsData(S.layers.carriers ? S.fleet : []);
     renderRings(events);
     updateActiveCountries(events);
     renderFeed(events);
@@ -507,7 +650,7 @@
   function updateActiveCountries(events) {
     const active = new Set();
     for (const e of events) {
-      if (isDiplomacy(e)) continue;
+      if (isFlat(e) || e.type === "arms_transfer") continue;
       [e.country, e.attacker].forEach((c) => { const n = ISO_NUM.get(c); if (n) active.add(n); });
     }
     const key = [...active].sort().join(",");
@@ -528,6 +671,13 @@
         }
       }
     }
+    if (S.layers.carriers && !reduceMotion) {
+      for (const c of S.fleet) {
+        if (c._fresh) rings.push({ lat: c._lat, lon: c._lon, rgb: ICE, alpha: 0.6, max: 3.2, speed: 0.9, period: 2600 });
+      }
+    }
+    const selC = S.selectedHull && S.fleet.find((c) => c.hull === S.selectedHull);
+    if (selC) rings.push({ lat: selC._lat, lon: selC._lon, rgb: [234, 240, 246], alpha: 0.9, max: 4, speed: reduceMotion ? 0 : 2.2, period: 1200 });
     const sel = S.selectedId && events.find((e) => e.id === S.selectedId);
     if (sel) rings.push({ lat: sel.lat, lon: sel.lon, rgb: [234, 240, 246], alpha: 0.9, max: 4.5, speed: reduceMotion ? 0 : 2.4, period: 1100 });
     world.ringsData(rings);
@@ -541,10 +691,15 @@
   }
 
   function itemHtml(e, names) {
-    const meta = e.wave ? `${countryName(e.attacker)} → ${countryName(e.country)}` : e.place || "";
+    const meta = metaLine(e);
     const extra = [];
     if (e.wave && e.targets.length) extra.push(`${e.targets.length} ${e.targets.length === 1 ? "location" : "locations"}`);
     if (e.wave && e.launched) extra.push(`${e.launched} launched`);
+    if (e.type === "arms_transfer" && e.transfer) {
+      if (MODE[e.transfer.mode]) extra.push(MODE[e.transfer.mode]);
+      if (e.transfer.flights) extra.push(`${e.transfer.flights} ${e.transfer.mode === "sea" ? "ships" : "flights"}`);
+    }
+    if (e.legal_basis) extra.push("Legal basis stated");
     return `
       <li><button class="item sev-${e.severity}${e.wave ? " is-wave" : ""}" type="button" data-id="${esc(e.id)}" ${e.id === S.selectedId ? 'aria-current="true"' : ""}>
         ${markHtml(e.status)}
@@ -675,6 +830,7 @@
     const e = S.data && S.data.events.find((x) => x.id === id);
     if (!e) return;
     S.selectedId = id;
+    S.selectedHull = null;
     history.replaceState(null, "", "#" + encodeURIComponent(id));
     controls.autoRotate = false;
     if (fly) {
@@ -689,6 +845,7 @@
 
   function closeDetail(keepSpot) {
     S.selectedId = null;
+    S.selectedHull = null;
     if (!keepSpot) S.spot = null;
     history.replaceState(null, "", location.pathname + location.search);
     $("#detail").hidden = true;
@@ -714,6 +871,13 @@
     if (e.intercepted != null) facts.push(`<span>Intercepted <b>${e.intercepted}</b> (reported)</span>`);
     if (e.killed != null) facts.push(`<span>Killed <b>${e.killed}</b> (reported)</span>`);
     if (e.injured != null) facts.push(`<span>Injured <b>${e.injured}</b> (reported)</span>`);
+    if (e.type === "arms_transfer" && e.transfer) {
+      const t = e.transfer;
+      facts.push(`<span>From <b>${esc(countryName(t.supplier))}</b> to <b>${esc(countryName(t.recipient))}</b>${MODE[t.mode] ? " " + esc(MODE[t.mode]) : ""}</span>`);
+      if (t.from && t.to) facts.push(`<span>Route <b>${esc(t.from.place || "origin")}</b> → <b>${esc(t.to.place || "destination")}</b></span>`);
+      if (t.what) facts.push(`<span>Cargo <b>${esc(t.what)}</b></span>`);
+      if (t.flights) facts.push(`<span><b>${t.flights}</b> ${t.mode === "sea" ? "sailings" : "flights"} (reported)</span>`);
+    }
     const origins = originsOf(e);
     if (!e.wave && origins.length) facts.push(`<span>Launched from <b>${esc(origins.map((o) => o.place || "an unnamed site").join(", "))}</b></span>`);
     const news = nearbyNews(e);
@@ -749,6 +913,7 @@
         <div><strong>${esc(STATUS[e.status].label)}</strong><p>${esc(STATUS[e.status].note(e))}</p></div>
       </div>
       ${facts.length ? `<div class="facts">${facts.join("")}</div>` : ""}
+      ${e.legal_basis ? `<div class="legal-basis"><span>Stated legal basis</span><strong>${esc(e.legal_basis)}</strong><p>As reported by the sources below. The dashboard records claimed justifications; it does not assess them.</p></div>` : ""}
       ${waveBlock}
       <h2 class="reports-title">Reports (${reports.length})</h2>
       <ul class="reports">
@@ -778,6 +943,72 @@
       if (t) world.pointOfView({ lat: t.lat, lng: t.lon, altitude: Math.min(world.pointOfView().altitude, 0.9) }, reduceMotion ? 0 : 900);
     }));
     if (!isMobile() && !refresh) $("#backBtn").focus({ preventScroll: true });
+  }
+
+  function selectCarrier(hull, fly) {
+    const c = S.fleet.find((x) => x.hull === hull);
+    if (!c) return;
+    S.selectedHull = hull;
+    S.selectedId = null;
+    history.replaceState(null, "", "#" + encodeURIComponent(hull));
+    controls.autoRotate = false;
+    if (fly) world.pointOfView({ lat: c._lat, lng: c._lon, altitude: Math.max(1.3, Math.min(world.pointOfView().altitude, 1.8)) }, reduceMotion ? 0 : 1300);
+    renderCarrierDetail(c);
+    render();
+    renderFleetList();
+    if (isMobile()) { toggleFilters(false); if (S.sheet < 2) setSheet(2); }
+  }
+
+  function renderCarrierDetail(c, refresh = false) {
+    const keepScroll = refresh ? $("#detail").scrollTop : 0;
+    const nearby = visibleEvents().filter((e) => km(e.lat, e.lon, c._lat, c._lon) <= 600).slice(0, 6);
+    const track = (c.track || []).slice().reverse();
+    $("#detail").innerHTML = `
+      <button class="back" type="button" id="backBtn">
+        <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M10 3 5 8l5 5"/></svg>
+        Back to the list
+      </button>
+      <div class="detail-type">Carrier strike group</div>
+      <h3>${esc(c.name)} <span class="hull">${esc(c.hull)}</span></h3>
+      <p class="detail-where">${esc(carrierStatus(c))}${c.place ? `, ${esc(c.place)}` : ""}<br>
+        Last reported ${esc(fmtDay(c._asOf))} (${esc(ago(c._asOf))})</p>
+      ${c.heading_to ? `<div class="verdict verdict--ice"><span class="mark mark--ice" aria-hidden="true"></span><div><strong>Heading to ${esc(c.heading_to.place || "a stated destination")}</strong><p>Destination as stated in reporting. The map does not estimate positions between reports.</p></div></div>` : ""}
+      ${c.prev ? `<p class="muted">Previously ${esc(c.prev.place || "elsewhere")}${c.prev.as_of ? `, ${esc(fmtDay(Date.parse(c.prev.as_of)))}` : ""}.</p>` : ""}
+      ${track.length > 1 ? `<h2 class="reports-title">Recent positions</h2><ul class="targets">${track.map((t) => `
+        <li><button class="target" type="button" data-lat="${t.lat}" data-lon="${t.lon}"><span>${esc(t.place || "At sea")}</span><span class="target-meta">${esc(fmtDay(Date.parse(t.time)))}</span></button></li>`).join("")}</ul>` : ""}
+      <h2 class="reports-title">Events within 600 km (${nearby.length})</h2>
+      ${nearby.length ? `<ul class="targets">${nearby.map((e) => `
+        <li><button class="target" type="button" data-event="${esc(e.id)}"><span>${esc(e.summary)}</span><span class="target-meta">${esc(agoShort(e._t))}</span></button></li>`).join("")}</ul>` : '<p class="muted">None in the current time window.</p>'}
+      <h2 class="reports-title">Source</h2>
+      <p class="muted">${esc(c.source || "Reporting")}${c.url ? ` <a href="${esc(safeUrl(c.url))}" target="_blank" rel="noopener noreferrer">Open</a>` : ""}</p>
+    `;
+    $("#feedList").hidden = true;
+    $("#feedHead").hidden = true;
+    $("#detail").hidden = false;
+    $("#detail").scrollTop = keepScroll;
+    $("#backBtn").addEventListener("click", () => { closeDetail(false); renderFleetList(); });
+    $("#detail").querySelectorAll("[data-lat]").forEach((b) => b.addEventListener("click", () => {
+      world.pointOfView({ lat: Number(b.dataset.lat), lng: Number(b.dataset.lon), altitude: Math.min(world.pointOfView().altitude, 1.4) }, reduceMotion ? 0 : 900);
+    }));
+    $("#detail").querySelectorAll("[data-event]").forEach((b) => b.addEventListener("click", () => select(b.dataset.event, true)));
+    if (!isMobile() && !refresh) $("#backBtn").focus({ preventScroll: true });
+  }
+
+  function renderFleetList() {
+    const list = $("#fleetList");
+    if (!list) return;
+    $("#fleetNote").textContent = S.fleet.length ? `${S.fleet.filter((c) => carrierTone(c) !== "port").length} at sea` : "";
+    if (!S.fleet.length) {
+      list.innerHTML = '<li class="muted small">No positions yet. They come from USNI News\u2019 weekly Fleet and Marine Tracker and daily movement reports.</li>';
+      return;
+    }
+    list.innerHTML = S.fleet.map((c) => `
+      <li><button class="fleet-row${c.hull === S.selectedHull ? " is-selected" : ""}" type="button" data-hull="${esc(c.hull)}">
+        <span class="fleet-dot fleet-dot--${carrierTone(c)}" aria-hidden="true"></span>
+        <span class="fleet-name">${esc(c.short || c.name)}</span>
+        <span class="fleet-place">${esc(c.heading_to ? `→ ${c.heading_to.place || "en route"}` : c.place || "")}</span>
+        <span class="fleet-age">${esc(agoShort(c._asOf))}</span>
+      </button></li>`).join("");
   }
 
   // ------------------------------------------------------------------ mobile sheet
@@ -852,22 +1083,19 @@
         <span class="count" data-status-count="${id}"></span>
       </label></li>`).join("");
 
-    $("#layerList").innerHTML = `
+    const layer = (key, swatch, label) => `
       <li><label class="check">
-        <input type="checkbox" data-layer="heat" checked>
-        <span class="swatch-news" aria-hidden="true"></span>
-        <span class="label">News intensity (GDELT)</span><span class="count"></span>
-      </label></li>
-      <li><label class="check">
-        <input type="checkbox" data-layer="arcs" checked>
-        <svg class="swatch-arc" viewBox="0 0 16 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.5 2" aria-hidden="true"><path d="M1.5 12.5C3 4 13 4 14.5 12.5"/></svg>
-        <span class="label">Launch paths</span><span class="count"></span>
-      </label></li>
-      <li><label class="check">
-        <input type="checkbox" data-layer="diplomacy" checked>
-        <span class="swatch-diplo" aria-hidden="true"></span>
-        <span class="label">Diplomacy</span><span class="count"></span>
+        <input type="checkbox" data-layer="${key}" ${S.layers[key] ? "checked" : ""}>
+        ${swatch}
+        <span class="label">${label}</span><span class="count"></span>
       </label></li>`;
+    $("#layerList").innerHTML = [
+      layer("arcs", '<svg class="swatch-arc" viewBox="0 0 16 14" fill="none" stroke="currentColor" stroke-width="1.6" stroke-dasharray="2.5 2" aria-hidden="true"><path d="M1.5 12.5C3 4 13 4 14.5 12.5"/></svg>', "Launch paths"),
+      layer("transfers", '<svg class="swatch-arc" viewBox="0 0 16 14" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="0.8 1.8" stroke-linecap="round" aria-hidden="true"><path d="M1.5 12.5C3 3 13 3 14.5 12.5"/></svg>', "Arms transfers"),
+      layer("carriers", '<svg class="swatch-cvn" viewBox="0 0 28 14" aria-hidden="true"><path d="M1.5 9.2 4 4.8h17.2l5.3 2.6v2.4l-2.4 2.2H3.6z" fill="currentColor"/></svg>', "Carrier strike groups"),
+      layer("diplomacy", '<span class="swatch-diplo" aria-hidden="true"></span>', "Diplomacy"),
+      layer("legal", '<span class="swatch-diplo swatch-legal" aria-hidden="true"></span>', "Legal steps"),
+    ].join("");
   }
 
   function setPanelsHidden(hidden) {
@@ -896,6 +1124,8 @@
     });
 
     $("#filters").addEventListener("click", (ev) => {
+      const row = ev.target.closest("[data-hull]");
+      if (row) { selectCarrier(row.dataset.hull, true); return; }
       const fly = ev.target.closest("[data-fly]");
       if (!fly) return;
       const t = S.theaters.find((x) => x.id === fly.dataset.fly);
@@ -933,7 +1163,7 @@
     document.addEventListener("keydown", (ev) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
       if (ev.key === "Escape") {
-        if (S.selectedId || S.spot) closeDetail(false);
+        if (S.selectedId || S.selectedHull || S.spot) closeDetail(false);
         else if ($("#filters").classList.contains("open")) toggleFilters(false);
       }
       if (typing) return;

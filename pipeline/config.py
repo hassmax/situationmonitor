@@ -33,6 +33,8 @@ DEFAULT_SETTINGS = {
     "heat_retention_hours": 72,
     "max_events": 2500,
     "max_heat_cells": 4000,
+    # GDELT counts as one extra independent source when 3+ news outlets report violence nearby.
+    "gdelt": True,
 }
 
 

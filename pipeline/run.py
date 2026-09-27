@@ -19,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import config as config_mod  # noqa: E402
 import extract  # noqa: E402
+import fleet  # noqa: E402
 import geo  # noqa: E402
 import merge  # noqa: E402
 from common import hours_since, http_session, iso, load_json, log, now, save_json  # noqa: E402
@@ -95,16 +96,28 @@ def main() -> int:
 
     # 3. Extract with the model (budgeted); the rest waits in the queue
     queue = extract.build_queue(state["pending"], fresh, t0, settings)
-    records, leftover, calls = extract.run(queue, state, settings, t0, disabled=args.no_llm)
+    records, leftover, calls, carrier_reports = extract.run(queue, state, settings, t0, disabled=args.no_llm)
     state["pending"] = leftover
     log(f"[extract] {len(records)} events from {calls} model calls; {len(leftover)} waiting")
 
-    # 4. GDELT news-intensity cells
-    rows = gdelt.fetch(state, session, cfg.theaters, health)
-    cells = gdelt.update_cells(cells, rows, t0, settings["heat_retention_hours"], settings["max_heat_cells"])
-    log(f"[gdelt] {len(rows)} rows -> {len(cells)} cells")
+    # 4. Carrier strike groups: weekly USNI tracker plus movements seen in today's posts
+    if not args.no_llm:
+        weekly = fleet.read_weekly_tracker(state, items, session, settings, t0, extract.ask_json)
+        fleet.update(state, weekly)
+        fleet.mark_deployment(state, weekly)
+    moved = fleet.update(state, carrier_reports)
+    log(f"[fleet] {len(carrier_reports)} carrier reports, {moved} applied")
 
-    # 5. Geocode, merge, score
+    # 5. GDELT: used to corroborate reports (3+ outlets reporting violence nearby)
+    if settings.get("gdelt", True):
+        rows = gdelt.fetch(state, session, cfg.theaters, health)
+        cells = gdelt.update_cells(cells, rows, t0, settings["heat_retention_hours"], settings["max_heat_cells"])
+        log(f"[gdelt] {len(rows)} rows -> {len(cells)} cells")
+    else:
+        cells = []
+        health.pop("gdelt", None)
+
+    # 6. Geocode, merge, score
     geocoder = geo.Geocoder(state["geocache"], session, settings["geocode_per_run"])
     candidates = [c for c in (geo.place_record(r, geocoder, cfg.theaters) for r in records) if c]
     log(f"[geo] placed {len(candidates)}/{len(records)} ({geocoder.calls} lookups)")
@@ -112,7 +125,7 @@ def main() -> int:
     events = merge.prune(events, t0, settings["event_retention_days"], settings["max_events"])
     merge.apply_status(events, cells)
 
-    # 6. Housekeeping
+    # 7. Housekeeping
     cutoff = int((t0 - timedelta(days=8)).timestamp())
     state["seen"] = {k: v for k, v in seen.items() if v >= cutoff}
     configured = {f"bsky:{s['handle'].lstrip('@')}" for s in cfg.sources["bluesky"]}
@@ -126,7 +139,7 @@ def main() -> int:
         "queue": len(leftover),
     }
 
-    # 7. Write
+    # 8. Write
     save_json(state_dir / "state.json", state)
     save_json(state_dir / "events.json", {"events": events, "cells": cells})
     public = {
@@ -134,6 +147,7 @@ def main() -> int:
         "theaters": theaters_meta(cfg.theaters),
         "events": [merge.public_event(e) for e in events],
         "heat": public_cells(cells),
+        "fleet": fleet.public(state, t0),
         "sources": [dict(id=k, **v) for k, v in sorted(state["health"].items(), key=lambda kv: kv[1]["name"].lower())],
         "run": state["last_run"],
     }

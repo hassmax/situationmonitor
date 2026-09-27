@@ -34,11 +34,13 @@ EVENT_TYPES = {
     "diplomacy": "ceasefires, peace talks, signed agreements, summits, alliance or defense-pact meetings and invocations, UN Security Council action, or formal escalations such as declarations of war",
     "hybrid": "sabotage, arson, undersea cable or pipeline damage, GPS jamming, cyberattacks with physical effects, or foiled plots of these",
     "incursion": "airspace violations, drone incursions, border provocations, or military buildups at a border",
+    "arms_transfer": "major arms deliveries, air or sea bridges (surges of cargo flights or ships carrying weapons), military aid deliveries, or intercepted weapons shipments",
+    "legal": "formal legal steps about a use of force or the conduct of hostilities: Article 51 letters to the UN Security Council, War Powers Resolution reports or votes, Security Council resolutions, ICJ or ICC orders, warrants, or rulings, and official statements of the legal basis for a strike",
 }
 
 SYSTEM_PROMPT = """You turn raw posts from OSINT accounts, official military channels, and news feeds into structured records for a live armed-conflict map. Reply with one JSON object and nothing else.
 
-For every input item (identified by "i"), decide whether it reports a specific, recent, concrete development in an armed conflict or a notable military action. Relevant: strikes, attacks, shelling, battles, territorial gains or losses, air-defense interceptions, missile or drone launches, naval or air incidents, significant troop deployments or military exercises, casualty reports tied to a specific attack, and hybrid-warfare incidents (sabotage, arson, cable or pipeline damage, GPS jamming, airspace or border violations, drone incursions) when a state is blamed or suspected. Arrests or charges count when they reveal a specific incident or plot. Credible reports of preparations for military action also count (units ordered or put on notice, operational planning reported by officials, force buildups), typed as deployment. Also relevant: major diplomatic developments that bear on these conflicts, such as ceasefire or peace talks, signed agreements, summits between parties or mediators, alliance or defense-pact meetings and invocations (for example NATO Article 4 consultations or meetings under the Saudi-Pakistan-Turkey Mecca defense pact), and UN Security Council votes. Not relevant: opinion, analysis with no new event, fundraising, memes, anniversaries, domestic politics, routine condemnations or statements of concern, calls or visits with no stated outcome, and items that fit none of the theaters below.
+For every input item (identified by "i"), decide whether it reports a specific, recent, concrete development in an armed conflict or a notable military action. Relevant: strikes, attacks, shelling, battles, territorial gains or losses, air-defense interceptions, missile or drone launches, naval or air incidents, significant troop deployments or military exercises, casualty reports tied to a specific attack, and hybrid-warfare incidents (sabotage, arson, cable or pipeline damage, GPS jamming, airspace or border violations, drone incursions) when a state is blamed or suspected. Arrests or charges count when they reveal a specific incident or plot. Credible reports of preparations for military action also count (units ordered or put on notice, operational planning reported by officials, force buildups), typed as deployment. Also relevant: major diplomatic developments that bear on these conflicts, such as ceasefire or peace talks, signed agreements, summits between parties or mediators, alliance or defense-pact meetings and invocations (for example NATO Article 4 consultations or meetings under the Saudi-Pakistan-Turkey Mecca defense pact), and UN Security Council votes. Also relevant: major arms transfers and air or sea bridges to parties in these conflicts, and formal legal steps about uses of force (see the legal type). Not relevant: opinion, analysis with no new event, fundraising, memes, anniversaries, domestic politics, routine condemnations or statements of concern, calls or visits with no stated outcome, and items that fit none of the theaters below.
 
 Theater ids:
 - ukraine: Russia-Ukraine war, including strikes inside Russia or Belarus and the Black Sea
@@ -55,7 +57,13 @@ Event types:
 Output: {{"events": [one object per input item, in any order]}}
 Irrelevant item: {{"i": <n>, "relevant": false}}
 Relevant item:
-{{"i": <n>, "relevant": true, "type": "<event type id>", "summary": "<max 25 words>", "place": "<most specific place named, English spelling>" or null, "admin1": "<province, oblast, or state>" or null, "country": "<ISO 3166-1 alpha-2>" or null, "lat": <number> or null, "lon": <number> or null, "attacker": "<ISO alpha-2 of the country whose forces carried it out>" or null, "origins": [{{"place": "<launch or firing area named in the item>", "lat": <number>, "lon": <number>}}], "launched": <int> or null, "intercepted": <int> or null, "theater": "<theater id>", "severity": <1, 2, or 3>, "claim": "report" or "official_claim", "killed": <int> or null, "injured": <int> or null}}
+{{"i": <n>, "relevant": true, "type": "<event type id>", "summary": "<max 25 words>", "place": "<most specific place named, English spelling>" or null, "admin1": "<province, oblast, or state>" or null, "country": "<ISO 3166-1 alpha-2>" or null, "lat": <number> or null, "lon": <number> or null, "attacker": "<ISO alpha-2 of the country whose forces carried it out>" or null, "origins": [{{"place": "<launch or firing area named in the item>", "lat": <number>, "lon": <number>}}], "launched": <int> or null, "intercepted": <int> or null, "transfer": <transfer object, arms_transfer only>, "legal_basis": "<max 12 words>" or null, "theater": "<theater id>", "severity": <1, 2, or 3>, "claim": "report" or "official_claim", "killed": <int> or null, "injured": <int> or null}}
+
+Optional key for any item (relevant or not): if the item says where a US Navy aircraft carrier (hull CVN-##) is, or that one departed, arrived, or is heading somewhere, add
+"carrier": {{"hull": "CVN-78", "status": "departed" | "underway" | "operating" | "arrived" | "in port", "place": "<where it is now>", "lat": <number>, "lon": <number>, "heading_to": {{"place": "<stated destination>", "lat": <number>, "lon": <number>}} or null}}
+Include it even when the item is otherwise not relevant (then keep "relevant": false). Only US aircraft carriers; ignore other ships.
+
+Transfer object: {{"supplier": "<ISO alpha-2>", "recipient": "<ISO alpha-2>", "mode": "air" | "sea" | "land" | "unspecified", "from": {{"place": "...", "lat": <number>, "lon": <number>}}, "to": {{"place": "...", "lat": <number>, "lon": <number>}}, "what": "<max 8 words>", "flights": <int> or null}}
 
 Rules:
 - Write the summary yourself in plain, neutral English. Translate non-English items. Do not copy sentences from the item.
@@ -69,6 +77,8 @@ Rules:
 - launched / intercepted: totals for a mass air attack when the item gives them ("Russia launched 120 drones, 98 were shot down" = 120 / 98). Otherwise null.
 - For preparations or buildups aimed at a country, place the event in that country (its capital if nothing more specific), and say in the summary that it is planning or preparation, not action.
 - For diplomacy, place the event where the meeting or signing happened; if no place is given, use the capital of the main party. Use the theater of the conflict it concerns, even if the meeting is elsewhere.
+- transfer: "from" is the departure airfield, port, or area if named, otherwise the supplier's capital; "to" is the arrival point if named, otherwise the recipient's capital. Put the event's own place and lat/lon at "to". Use the theater of the conflict the weapons are for.
+- legal_basis: only when the item states the justification the acting state gives for using force (for example "self-defense under UN Charter Article 51", "host-state consent", "2001 AUMF"). Never infer one. For legal-type events, place them where the step happened (UN headquarters, The Hague, Washington) but use the theater of the conflict concerned.
 - claim = "official_claim" when the item is a government, military, or armed-group statement about its own actions or results; otherwise "report".
 """.format(types="\n".join(f"- {k}: {v}" for k, v in EVENT_TYPES.items()))
 
@@ -85,7 +95,10 @@ _EN = (r"air ?strikes?|strikes?|struck|missiles?|drones?|uavs?|shahed|shell(?:in
        r"peace|pact|treaty|security council|article 4|article 5|foreign ministers?|defen[cs]e ministers?|"
        r"chiefs of staff|delegations?|military|pentagon|southcom|southern command|deploy(?:s|ed|ing|ment|ments)?|"
        r"build-?up|mobili[sz](?:e|ed|ation)|on notice|cartels?|guerrillas?|eln|farc|gangs?|"
-       r"ataques?|bombardeos?|enfrentamientos?|militares|ej[eé]rcito|muertos|fuerzas armadas")
+       r"ataques?|bombardeos?|enfrentamientos?|militares|ej[eé]rcito|muertos|fuerzas armadas|"
+       r"carriers?|strike group|cvn|uss|airlift|air ?bridge|shipments?|deliver(?:y|ies|ed)|military aid|"
+       r"c-17|il-76|antonov|arms|weapons|munitions|ammunition|article 51|war powers|aumf|icj|icc|"
+       r"self-defen[cs]e|warrants?|rulings?|provisional measures|legal basis")
 CONFLICT_RE = re.compile(
     rf"\b(?:{_EN})\b"
     r"|удар|обстр|ракет|дрон|бпла|шахед|атак|вибух|взрыв|штурм|наступ|звільн|освобо|ппо|пво|загибл|погиб|"
@@ -315,6 +328,49 @@ def _int_or_none(v):
     return n if n >= 0 else None
 
 
+def _place(o) -> dict | None:
+    if not isinstance(o, dict):
+        return None
+    lat, lon = _num(o.get("lat"), -90, 90), _num(o.get("lon"), -180, 180)
+    if lat is None or lon is None:
+        return None
+    return {"place": (str(o.get("place")).strip()[:80] if o.get("place") else None), "lat": round(lat, 3), "lon": round(lon, 3)}
+
+
+def _iso2(v) -> str | None:
+    v = str(v or "").upper().strip()
+    return v if re.fullmatch(r"[A-Z]{2}", v) else None
+
+
+def _clean_transfer(t) -> dict | None:
+    if not isinstance(t, dict):
+        return None
+    out = {
+        "supplier": _iso2(t.get("supplier")),
+        "recipient": _iso2(t.get("recipient")),
+        "mode": t.get("mode") if t.get("mode") in ("air", "sea", "land") else "unspecified",
+        "from": _place(t.get("from")),
+        "to": _place(t.get("to")),
+        "what": (str(t["what"]).strip()[:80] if t.get("what") else None),
+        "flights": _int_or_none(t.get("flights")),
+    }
+    return out if out["supplier"] and out["recipient"] else None
+
+
+def clean_carrier(obj: dict, item: dict) -> dict | None:
+    """A carrier position report, independent of whether the item is a map event."""
+    c = obj.get("carrier") if isinstance(obj, dict) else None
+    if not isinstance(c, dict):
+        return None
+    m = re.search(r"(\d{2})", str(c.get("hull") or ""))
+    here = _place(c)
+    if not m or not here:
+        return None
+    status = c.get("status") if c.get("status") in ("departed", "underway", "operating", "arrived", "in port") else "operating"
+    return {"hull": f"CVN-{m.group(1)}", "status": status, **here, "heading_to": _place(c.get("heading_to")),
+            "time": item["time"], "source": item["source"], "url": item["url"]}
+
+
 def _clean_record(obj: dict, item: dict) -> dict | None:
     if not obj.get("relevant"):
         return None
@@ -353,6 +409,8 @@ def _clean_record(obj: dict, item: dict) -> dict | None:
         "attacker": attacker if re.fullmatch(r"[A-Z]{2}", attacker) else None,
         "launched": _int_or_none(obj.get("launched")),
         "intercepted": _int_or_none(obj.get("intercepted")),
+        "transfer": _clean_transfer(obj.get("transfer")) if etype == "arms_transfer" else None,
+        "legal_basis": (str(obj["legal_basis"]).strip()[:120] if obj.get("legal_basis") else None),
         "theater": str(obj.get("theater") or "").strip(),
         "severity": severity,
         "claim": "official_claim" if obj.get("claim") == "official_claim" else "report",
@@ -363,17 +421,17 @@ def _clean_record(obj: dict, item: dict) -> dict | None:
 
 
 def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled: bool = False):
-    """Returns (records, leftover_queue, calls_used)."""
+    """Returns (records, leftover_queue, calls_used, carrier_reports)."""
     token = os.environ.get("LLM_API_KEY", "").strip()
     if disabled or not token:
         if not token:
             log("[extract] LLM_API_KEY is not set; add the GEMINI_API_KEY repository secret (see README)")
-        return [], queue, 0
+        return [], queue, 0, []
     allowed = calls_allowed(state, settings, now)
     batches = make_batches(queue, settings)
     log(f"[extract] queue={len(queue)} batches={len(batches)} allowed_calls={allowed}")
     if not allowed or not batches:
-        return [], queue, 0
+        return [], queue, 0, []
 
     chosen = state.get("llm_model")
     checked = parse_time(chosen.get("checked")) if chosen else None
@@ -385,13 +443,14 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
             chosen = _find_model(token, settings, state)
         except RateLimited as exc:
             log(f"[extract] rate limited while checking models: {exc}")
-            return [], queue, state["llm_calls"]["count"] - before
+            return [], queue, state["llm_calls"]["count"] - before, []
         if chosen is None:
             log("[extract] no model returned a usable answer; see the probe lines above")
-            return [], queue, state["llm_calls"]["count"] - before
+            return [], queue, state["llm_calls"]["count"] - before, []
         allowed = max(0, allowed - (state["llm_calls"]["count"] - before))
 
     records: list[dict] = []
+    carriers: list[dict] = []
     done: set[str] = set()
     used = 0
     failures = 0
@@ -423,8 +482,36 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
                 continue
             i = obj.get("i")
             if isinstance(i, int) and 0 <= i < len(batch):
+                cv = clean_carrier(obj, batch[i])
+                if cv:
+                    carriers.append(cv)
                 rec = _clean_record(obj, batch[i])
                 if rec:
                     records.append(rec)
     leftover = [it for it in queue if it["id"] not in done and int(it.get("attempts", 0)) < 3]
-    return records, leftover[: settings["pending_max"]], used
+    return records, leftover[: settings["pending_max"]], used, carriers
+
+
+def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, now: datetime,
+             max_tokens: int = 4000) -> dict | None:
+    """One budgeted model call outside the batch loop. Returns parsed JSON or None."""
+    token = os.environ.get("LLM_API_KEY", "").strip()
+    chosen = state.get("llm_model")
+    if not token or not chosen or calls_allowed(state, settings, now) <= 0:
+        return None
+    body = {
+        "model": chosen["model"], "temperature": 0, "max_tokens": max_tokens, "stream": False,
+        "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_text}],
+    }
+    if chosen.get("json_mode", True):
+        body["response_format"] = {"type": "json_object"}
+    state["llm_calls"]["count"] += 1
+    try:
+        r = _post(chosen["url"], body, token)
+        if r.status_code >= 400:
+            log(f"[extract] one-off call failed: {_describe(r)}")
+            return None
+        return _parse_json_object(_content_from_response(r))
+    except Exception as exc:  # noqa: BLE001
+        log(f"[extract] one-off call failed: {exc}")
+        return None
