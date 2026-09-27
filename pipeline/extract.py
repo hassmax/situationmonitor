@@ -528,6 +528,13 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
                 rec = _clean_record(obj, batch[i])
                 if rec:
                     records.append(rec)
+                elif batch[i].get("platform") == "rss":
+                    # Headlines the model set aside, kept briefly so a missed story can be traced.
+                    # News headlines and links only: post text from other platforms is never stored.
+                    state.setdefault("model_rejected", []).append({
+                        "time": batch[i]["time"], "source": batch[i]["source"], "url": batch[i]["url"],
+                        "headline": batch[i]["text"].split("\n", 1)[0][:200], "at": iso(now)})
+    state["model_rejected"] = state.get("model_rejected", [])[-400:]
     leftover = [it for it in queue if it["id"] not in done and int(it.get("attempts", 0)) < 3]
     return records, leftover[: settings["pending_max"]], used, carriers
 
