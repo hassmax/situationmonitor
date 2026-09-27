@@ -20,10 +20,11 @@ flank every airspace alert is news in itself, so those stay separate events.
 """
 from __future__ import annotations
 
+import json
 import re
 from datetime import datetime, timedelta
 
-from common import haversine_km, iso, parse_time, short_hash
+from common import haversine_km, iso, log, parse_time, short_hash
 from sources.gdelt import CellIndex, news_domains_near
 
 FAMILY = {
@@ -89,6 +90,32 @@ def _find_transfer(events: list[dict], cand: dict) -> dict | None:
     return None
 
 
+_WORD_STOP = set("""a an the of in on at to for and or by with as is are was were be been its it this that
+from after over into amid near during against about says said say claims claimed claim reports reported
+report according officials official state states stated new following""".split())
+
+
+def _words(text: str) -> set[str]:
+    return {w.rstrip("s") for w in re.findall(r"[a-z][a-z'-]+", (text or "").lower()) if w not in _WORD_STOP}
+
+
+def _overlap(a: str, b: str) -> float:
+    wa, wb = _words(a), _words(b)
+    return len(wa & wb) / min(len(wa), len(wb)) if wa and wb else 0.0
+
+
+def _same_talks(e: dict, cand: dict) -> bool:
+    """Diplomacy and legal steps merge by who takes part, not only by place: separate talks
+    often happen in the same region on the same day (Netanyahu in Abu Dhabi, an Iranian
+    proposal on Hormuz)."""
+    a, b = set(e.get("parties") or []), set(cand.get("parties") or [])
+    if a and b:
+        if len(a & b) >= 2:
+            return True
+        return a == b and _overlap(e["summary"], cand["summary"]) >= 0.4
+    return _overlap(e["summary"], cand["summary"]) >= 0.5
+
+
 def _find_match(events: list[dict], cand: dict) -> dict | None:
     fam = FAMILY.get(cand["type"], "strike")
     if fam == "transfer":
@@ -99,6 +126,8 @@ def _find_match(events: list[dict], cand: dict) -> dict | None:
         if e.get("wave") or e.get("alert") or e["theater"] != cand["theater"] or FAMILY.get(e["type"], "strike") != fam:
             continue
         if abs(ct - parse_time(e["time"])) > WINDOW:
+            continue
+        if fam in ("diplomacy", "legal") and not _same_talks(e, cand):
             continue
         d = haversine_km(e["lat"], e["lon"], cand["lat"], cand["lon"])
         radius = RADIUS_KM[fam] * (2 if (e.get("approx") or cand["approx"]) else 1)
@@ -225,6 +254,7 @@ def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
                 "place": cand["place"], "country": cand["country"], "attacker": cand.get("attacker"),
                 "lat": cand["lat"], "lon": cand["lon"], "approx": cand["approx"],
                 "origins": list(cand.get("origins") or []),
+                "parties": list(cand.get("parties") or []),
                 "transfer": cand.get("transfer"), "legal_basis": cand.get("legal_basis"),
                 "severity": cand["severity"],
                 "killed": cand["killed"], "injured": cand["injured"],
@@ -238,6 +268,7 @@ def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
         match["updated"] = max(match["updated"], cand["time"])
         match["severity"] = max(match["severity"], cand["severity"])
         match["attacker"] = match.get("attacker") or cand.get("attacker")
+        match["parties"] = match.get("parties") or list(cand.get("parties") or [])
         match["legal_basis"] = match.get("legal_basis") or cand.get("legal_basis")
         if match.get("transfer") and cand.get("transfer"):
             mt, ct_ = match["transfer"], cand["transfer"]
@@ -367,3 +398,65 @@ def public_event(e: dict) -> dict:
         for r in reports
     ]
     return out
+
+
+SPLIT_PROMPT = """You get news events from a conflict map. Each event is a list of report summaries that were grouped together by place and time, and some mix different developments (for example a leader's visit and a separate ceasefire proposal).
+
+For each event, split its reports into groups so that each group describes one specific development: the same meeting, visit, statement, vote, proposal, or decision. Reports about the same development in different words, or with small differences in detail, belong in the same group. Use a single group when all reports are about one development.
+
+Reply with one JSON object and nothing else:
+{"events": [{"e": <event number>, "groups": [[<report numbers>], ...]}]}"""
+
+
+def split_mixed_talks(events: list[dict], state: dict, ask, settings: dict, now) -> list[dict]:
+    """One-time repair. Diplomacy and legal reports used to merge by place alone, so unrelated
+    developments could share one event (a Netanyahu visit inside an Iranian proposal on Hormuz).
+    The model groups each suspect event's reports by development; the group holding the event's
+    headline stays, and the other reports go back to the model, from their own summaries, to
+    become events of their own. If the model is unavailable, the repair waits for the next run."""
+    if state.get("talks_split"):
+        return events
+    suspect = []
+    for e in events:
+        reps = e.get("reports", [])
+        if FAMILY.get(e["type"]) not in ("diplomacy", "legal") or len(reps) < 2:
+            continue
+        if any(_overlap(a["summary"], b["summary"]) < 0.5 for a in reps[:40] for b in reps[:40]):
+            suspect.append(e)
+    if suspect:
+        payload = [{"e": n, "reports": [{"r": k, "summary": r["summary"]} for k, r in enumerate(e["reports"][:40])]}
+                   for n, e in enumerate(suspect)]
+        reply = ask(SPLIT_PROMPT, json.dumps({"events": payload}, ensure_ascii=False), state, settings, now, max_tokens=4000)
+        if not isinstance(reply, dict) or not isinstance(reply.get("events"), list):
+            log("[merge] mixed-talks repair: no model answer; will retry next run")
+            return events
+        requeue = []
+        for res in reply["events"]:
+            if not isinstance(res, dict) or not isinstance(res.get("e"), int) or not 0 <= res["e"] < len(suspect):
+                continue
+            e = suspect[res["e"]]
+            n = min(40, len(e["reports"]))
+            groups = res.get("groups")
+            flat = [k for g in groups for k in g] if isinstance(groups, list) and all(isinstance(g, list) for g in groups) else []
+            if len(groups or []) < 2 or not all(isinstance(k, int) for k in flat) or sorted(flat) != list(range(n)):
+                continue  # one development, or an answer that doesn't account for every report
+            parts = [[e["reports"][k] for k in g] for g in groups]
+            kept = next((i for i, g in enumerate(parts) if any(r["summary"] == e["summary"] for r in g)),
+                        max(range(len(parts)), key=lambda i: len(parts[i])))
+            keep = parts[kept] + e["reports"][40:]
+            for i, g in enumerate(parts):
+                if i != kept:
+                    for r in g:
+                        requeue.append({
+                            "id": short_hash("resplit", r["url"]), "source_id": r.get("source"), "source": r.get("source"),
+                            "platform": r.get("platform"), "kind": r.get("kind"), "side": r.get("side"),
+                            "group": r.get("group"), "weight": int(r.get("weight", 1)), "prefilter": False,
+                            "url": r["url"], "text": r["summary"], "time": r["time"],
+                        })
+            e["reports"] = keep
+            e["time"] = min(r["time"] for r in keep)
+            e["updated"] = max(r["time"] for r in keep)
+            log(f"[merge] split {e['summary'][:70]!r}: kept {len(parts[kept])} of {n} reports, sent the rest back")
+        state["pending"] = requeue + state.get("pending", [])
+    state["talks_split"] = 1
+    return events

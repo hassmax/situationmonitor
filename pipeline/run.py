@@ -152,6 +152,9 @@ def main() -> int:
     geocoder = geo.Geocoder(state["geocache"], session, settings["geocode_per_run"])
     candidates = [c for c in (geo.place_record(r, geocoder, cfg.theaters) for r in records) if c]
     log(f"[geo] placed {len(candidates)}/{len(records)} ({geocoder.calls} lookups)")
+    # One-time repair of diplomacy events that merged unrelated talks (see merge.split_mixed_talks).
+    if not args.no_llm:
+        events = merge.split_mixed_talks(events, state, extract.ask_json, settings, t0)
     known = {e["id"] for e in events}
     events = merge.merge(events, candidates)
     events = merge.prune(events, t0, settings["event_retention_days"], settings["max_events"])

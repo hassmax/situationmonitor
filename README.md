@@ -41,7 +41,7 @@ state (seen posts, queue, caches, events) is kept on the `data` branch, overwrit
 - **Extraction.** Posts are sent to the model in batches of about 25. It decides whether each describes a concrete, recent military event, then returns a type, a 25-word summary in its own words (translated when needed), and a place. Only these summaries and links to the originals are published, never the full posts.
 - **Budget.** Gemini's free Flash-Lite quota is currently about 500 requests a day (Google adjusts it; AI Studio shows your live limit). The pipeline spreads 400 across the day and queues the rest, so bursts show up with a delay rather than getting dropped. Candidate model names are tried in order and the first that answers is used, so a renamed model doesn't break the pipeline.
 - **Geocoding.** The model's place name is checked against OpenStreetMap. If the two disagree by more than 300 km, the model's estimate is kept and the event is marked approximate.
-- **Merging.** Reports of the same kind of event within 30 km and 12 hours of each other are merged into one event with several sources (wider radius for naval and deployment reports).
+- **Merging.** Reports of the same kind of event within 30 km and 12 hours of each other are merged into one event with several sources (wider radius for naval and deployment reports). Diplomatic and legal steps merge by who takes part, not just by place: the model lists the countries or bodies involved, and reports merge only when they share two of them (or the same one with matching wording), so a leader's visit to Abu Dhabi and an Iranian proposal on Hormuz the same day stay separate events.
 
 ### Reading the map
 
