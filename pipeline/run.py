@@ -75,6 +75,8 @@ def main() -> int:
     stored = load_json(state_dir / "events.json", {})
     # Anything filed under a theater that is no longer configured is dropped.
     events: list[dict] = [e for e in stored.get("events", []) if e.get("theater") in cfg.theater_ids]
+    # Events taken off the map by hand (pipeline/config/removed.yaml).
+    events = [e for e in events if e.get("id") not in cfg.removed]
     cells: list[dict] = [c for c in stored.get("cells", []) if c.get("theater") in cfg.theater_ids]
 
     session = http_session()
@@ -135,6 +137,14 @@ def main() -> int:
     if len(fresh_records) < len(records):
         log(f"[extract] dropped {len(records) - len(fresh_records)} reports about older events")
     records = fresh_records
+    # Google News can list an old article with a fresh date; drop headlines it already showed days ago.
+    checks = 0
+    for r in list(records):
+        if checks >= 10 or r["severity"] < 2 or not rss.is_google_news(r["item"]):
+            continue
+        checks += 1
+        if rss.republished(r["item"], session):
+            records.remove(r)
     geocoder = geo.Geocoder(state["geocache"], session, settings["geocode_per_run"])
     candidates = [c for c in (geo.place_record(r, geocoder, cfg.theaters) for r in records) if c]
     log(f"[geo] placed {len(candidates)}/{len(records)} ({geocoder.calls} lookups)")
