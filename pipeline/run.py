@@ -17,6 +17,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import brief  # noqa: E402
 import config as config_mod  # noqa: E402
 import extract  # noqa: E402
 import fleet  # noqa: E402
@@ -163,7 +164,13 @@ def main() -> int:
     if not args.no_llm:
         events = recency.check(events, {e["id"] for e in events} - known, session, extract.ask_json, state, settings, t0)
 
-    # 7. Housekeeping
+    # 7. Situation brief: at most one model call an hour, from the same daily budget
+    published = [merge.public_event(e) for e in events]
+    if not args.no_llm:
+        brief.update(state, published, {t["id"]: t["name"] for t in cfg.theaters}, settings, t0,
+                     extract.ask_json, extract.calls_remaining(state, settings, t0))
+
+    # 8. Housekeeping
     cutoff = int((t0 - timedelta(days=8)).timestamp())
     state["seen"] = {k: v for k, v in seen.items() if v >= cutoff}
     configured = {f"bsky:{s['handle'].lstrip('@')}" for s in cfg.sources["bluesky"]}
@@ -177,13 +184,14 @@ def main() -> int:
         "queue": len(leftover),
     }
 
-    # 8. Write
+    # 9. Write
     save_json(state_dir / "state.json", state)
     save_json(state_dir / "events.json", {"events": events, "cells": cells})
     public = {
         "generated_at": iso(t0),
         "theaters": theaters_meta(cfg.theaters),
-        "events": [merge.public_event(e) for e in events],
+        "events": published,
+        "brief": state.get("brief"),
         "heat": public_cells(cells),
         "fleet": fleet.public(state, t0),
         "fleet_meta": {k: (state.get("fleet_meta") or {}).get(k) for k in ("tracker_time", "tracker_url")},

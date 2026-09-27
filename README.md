@@ -68,6 +68,8 @@ Everything is on one globe. The legend at the top of the left panel explains eve
 
 **About GDELT.** GDELT is a free database that reads news sites worldwide and logs each report of violence with a location, every 15 minutes. It is not drawn on the map. It is used for one thing: when three or more separate outlets report violence near a place where only one source has posted, that report is upgraded to corroborated. Set `gdelt: false` in `sources.yaml` to turn it off.
 
+**What changed in the last 6 hours.** A short brief sits at the top of the event list. It is machine-written, at most once an hour and only when events changed, from the dashboard's own events of the last 6 hours and nothing else: no outside knowledge, no predictions. Every line cites the events it rests on (click a place name to open one), keeps the confidence explicit ("a single-source report says…", "Russia's MoD claims…"), and lines citing events that don't exist are thrown out. "By theater" expands one line per theater. The brief ignores the time and theater filters. If the model is unavailable, the previous brief stays, with the time it was written.
+
 **Using it.** Click any marker, carrier, or route for details and sources. **Key developments** (severe and corroborated) are pinned at the top of the feed. The small bar charts next to each theater show events per day over the past week. Press **H** to hide the panels, **/** to search, **Esc** to go back. On phones, drag or tap the bar at the top of the event list to collapse or expand it.
 
 ## Customizing
@@ -75,7 +77,7 @@ Everything is on one globe. The legend at the top of the left panel explains eve
 - **Sources:** `pipeline/config/sources.yaml`. The `outlets` list there says how Google News results from each outlet count: tier 1 for established outlets (processed first and preferred for headline summaries), tier 2 for other known outlets, and a `side` for state or partisan media. Each source has a `kind` and optionally a `side`; that is what drives the confidence colors, so label partisan and official channels honestly. The dashboard's Sources panel shows which ones are failing. The starter lists are thinnest for the Middle East, Africa, and the Indo-Pacific.
 - **Theaters:** `pipeline/config/theaters.yaml` (countries, map boxes, camera positions). If you add or rename a theater, update the theater list in the prompt in `pipeline/extract.py` too.
 - **Removing a wrong event:** add its id to `pipeline/config/removed.yaml` with a short note on why. The id is the part after `#` in the page address when the event is open. The next update takes it off the map.
-- **Model, provider, and budget:** the `settings` block at the top of `sources.yaml`. Any OpenAI-compatible provider works (Groq, OpenRouter, Mistral): change `llm_url` and `llm_models` and put that provider's key in the `GEMINI_API_KEY` secret.
+- **Model, provider, and budget:** the `settings` block at the top of `sources.yaml`. Every model call counts against `daily_llm_calls` (400). Extraction stops when fewer than `extraction_reserve` (30) calls are left for the day, and the brief is skipped when fewer than `brief_min_calls` (5) are left. Any OpenAI-compatible provider works (Groq, OpenRouter, Mistral): change `llm_url` and `llm_models` and put that provider's key in the `GEMINI_API_KEY` secret.
 - **Look:** `site/styles.css` and `site/app.js`. Pushing changes to `site/` redeploys immediately.
 
 ## Run it locally

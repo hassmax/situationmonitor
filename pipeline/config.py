@@ -22,6 +22,10 @@ DEFAULT_SETTINGS = {
     # Gemini's free Flash-Lite quota is about 500 requests/day; keep headroom.
     "daily_llm_calls": 400,
     "max_calls_per_run": 6,
+    # Extraction stops when fewer than this many calls are left today, keeping room for the
+    # situation brief (which is skipped when fewer than brief_min_calls are left).
+    "extraction_reserve": 30,
+    "brief_min_calls": 5,
     "seconds_between_calls": 7,
     "batch_max_items": 25,
     "batch_token_budget": 10000,

@@ -517,6 +517,7 @@
     const shift = Date.now() - Date.parse(data.generated_at);
     const move = (s) => (s ? new Date(Date.parse(s) + shift).toISOString() : s);
     data.generated_at = move(data.generated_at);
+    if (data.brief) data.brief.generated_at = move(data.brief.generated_at);
     (data.events || []).forEach((e) => {
       e.time = move(e.time); e.updated = move(e.updated);
       (e.reports || []).forEach((r) => { r.time = move(r.time); });
@@ -904,20 +905,44 @@
       </span></button></li>`;
   }
 
+  // Situation brief: machine-written from the pipeline's own events, independent of the filters.
+  function briefHtml(names) {
+    const b = S.data && S.data.brief;
+    if (!b || !((b.bullets || []).length || (b.theaters || []).length)) return "";
+    const byId = new Map(S.data.events.map((e) => [e.id, e]));
+    const cites = (ids) => {
+      const found = (ids || []).filter((i) => byId.has(i));
+      return found.length ? `<span class="cites">${found.map((i) => {
+        const e = byId.get(i);
+        const label = (e.place || typeLabel(e)).split(",")[0].slice(0, 22);
+        return `<button class="cite" type="button" data-id="${esc(i)}" title="Open: ${esc(e.summary)}">${esc(label)}</button>`;
+      }).join("")}</span>` : "";
+    };
+    const theaters = (b.theaters || []).map((t) => `<li><b>${esc(names[t.id] || t.id)}</b> ${esc(t.text)}${cites(t.ids)}</li>`).join("");
+    return `<li class="brief"><section aria-labelledby="briefTitle">
+      <div class="brief-head"><h3 id="briefTitle">What changed in the last ${esc(b.window_hours || 6)} hours</h3>
+        <time datetime="${esc(b.generated_at)}">Written ${esc(ago(Date.parse(b.generated_at)))}</time></div>
+      <ul class="brief-list">${(b.bullets || []).map((x) => `<li>${esc(x.text)}${cites(x.ids)}</li>`).join("")}</ul>
+      ${theaters ? `<details class="brief-theaters"><summary>By theater</summary><ul class="brief-list">${theaters}</ul></details>` : ""}
+      <p class="brief-note">Machine-written from the events below. Open the cited events before relying on it.</p>
+    </section></li>`;
+  }
+
   function renderFeed(events) {
     const list = $("#feedList");
     const names = Object.fromEntries(S.theaters.map((t) => [t.id, t.name]));
+    const top = briefHtml(names);
     $("#feedCount").textContent = `${events.length}`;
     if (!events.length) {
-      list.innerHTML = S.data.events.length
+      list.innerHTML = top + (S.data.events.length
         ? `<li class="empty"><strong>Nothing matches these filters.</strong>Widen the time window or turn more theaters and confidence levels back on.</li>`
-        : `<li class="empty"><strong>No events in the last 7 days yet.</strong>The pipeline is running. New events appear here as sources report them.</li>`;
+        : `<li class="empty"><strong>No events in the last 7 days yet.</strong>The pipeline is running. New events appear here as sources report them.</li>`);
       return;
     }
     const key = events.filter(isKey).slice(0, 4);
     const keyIds = new Set(key.map((e) => e.id));
     const rest = events.filter((e) => !keyIds.has(e.id)).slice(0, 250);
-    list.innerHTML = (key.length ? `<li class="group">Key developments</li>${key.map((e) => itemHtml(e, names)).join("")}<li class="group">Everything else</li>` : "")
+    list.innerHTML = top + (key.length ? `<li class="group">Key developments</li>${key.map((e) => itemHtml(e, names)).join("")}<li class="group">Everything else</li>` : "")
       + rest.map((e) => itemHtml(e, names)).join("");
   }
 

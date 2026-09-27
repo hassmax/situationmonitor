@@ -412,6 +412,21 @@ h2 {
 }
 .group:first-child { padding-top: 4px; }
 
+/* situation brief at the top of the feed */
+.brief { margin: 4px 4px 8px; padding: 11px 12px 10px; border: 1px solid var(--line); border-radius: 11px; background: rgba(122, 169, 214, 0.07); }
+.brief-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.brief-head h3 { margin: 0; font-size: 13.5px; font-weight: 650; font-stretch: 85%; color: var(--ink); }
+.brief-head time { color: var(--ink-3); font-size: 12px; white-space: nowrap; }
+.brief-list { margin: 7px 0 0; padding-left: 16px; display: grid; gap: 6px; font-size: 13.5px; line-height: 1.4; color: var(--ink); }
+.brief-list li::marker { color: var(--ink-3); }
+.cites { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; vertical-align: 1px; }
+.cite { border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); color: var(--ink-2); border-radius: 999px; padding: 0 7px; font-size: 11.5px; line-height: 18px; cursor: pointer; }
+.cite:hover { color: var(--ink); border-color: var(--line-strong); }
+.brief-theaters { margin-top: 8px; }
+.brief-theaters summary { cursor: pointer; font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
+.brief-theaters b { font-weight: 650; }
+.brief-note { margin: 8px 0 0; font-size: 11.5px; color: var(--ink-3); }
+
 .spotbar {
   display: flex;
   justify-content: space-between;
