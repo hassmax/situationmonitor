@@ -1,0 +1,32 @@
+# Corrections you make by hand. They are applied on every run before anything is published.
+#
+# Every entry needs:
+#   id     the event's id: shown at the bottom of the event's detail view on the dashboard
+#          (also the part after "#" in the page address when the event is open)
+#   note   a short reason. Edited events show a "Corrected" label with this note.
+# and one of:
+#   hide: true          take the event off the dashboard, the brief, alerts, and the archive.
+#                       Its reports can never create or join an event again.
+#   edit: {...}         change any of: summary, place, lat, lon, type, severity (1-3)
+#   drop_report: <url>  remove one report (copy its "Open the original post" link) from the
+#                       event; its confidence is recomputed without it
+#
+# Hides and edits are undone by deleting the entry. Examples:
+#
+#  - id: 74974a38ada6
+#    hide: true
+#    note: Old news. The frigate Dena was sunk on 4 March 2026; a republished article had a new date.
+#
+#  - id: 3fb55a726b74
+#    edit: {place: Kupiansk, lat: 49.71, lon: 37.62}
+#    note: The model placed this in the wrong town.
+#
+#  - id: 3fb55a726b74
+#    edit: {summary: "Ukrainian officials report fighting near Kupiansk.", severity: 2}
+#    note: The summary overstated what the sources say.
+#
+#  - id: 5b0f6f6736f9
+#    drop_report: https://news.google.com/rss/articles/CBMi...
+#    note: This article is about a different meeting.
+
+corrections: []

@@ -1116,6 +1116,7 @@
         <span class="target-meta">${x.reports} ${x.reports === 1 ? "alert" : "alerts"}</span></button></li>`).join("")}</ul>` : `<p class="muted">No specific places named.</p>`}` : "";
     showDetail(`
       <div class="detail-type">${eventIcon(e)}${esc(typeLabel(e))}</div>
+      ${(e.corrected || []).length ? `<div class="corrected"><span class="corrected-tag">Corrected</span><ul>${e.corrected.map((c) => `<li>${esc(c.change)}: ${esc(c.note)}</li>`).join("")}</ul></div>` : ""}
       <h3>${esc(e.summary)}</h3>
       <p class="detail-where">${where}<br>${e.alert ? "First alert" : "Happened"} ${esc(fmtTime(e._t))}${e._tu - e._t > 30 * 60e3 ? `, latest report ${esc(ago(e._tu))}` : ""}</p>
       <div class="verdict"><span class="conf-swatch conf-${STATUS[e.status].conf}" aria-hidden="true"></span><div><strong>${esc(STATUS[e.status].label)}</strong><p>${esc(STATUS[e.status].note(e.sources_count, e.news_nearby))}</p></div></div>
@@ -1125,6 +1126,7 @@
       ${reportsHtml(reports)}
       ${news.length ? `<h2 class="reports-title">News coverage nearby (${e.news_nearby || news.length} outlets)</h2>
         <ul class="news-links">${news.map((u) => `<li><a href="${esc(safeUrl(u))}" target="_blank" rel="noopener noreferrer">${esc(u.replace(/^https?:\/\/(www\.)?/, "").slice(0, 80))}</a></li>`).join("")}</ul>` : ""}
+      <p class="event-id">Event id <code>${esc(e.id)}</code></p>
     `, refresh);
   }
 

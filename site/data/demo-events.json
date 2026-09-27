@@ -263,7 +263,13 @@
 "sources_count": 3,
 "news_nearby": 4,
 "attacker": null,
-"origins": []
+"origins": [],
+"corrected": [
+{
+"note": "Sample correction: the model placed this in the wrong town. Not real.",
+"change": "Edited place, lat, lon"
+}
+]
 },
 {
 "id": "e894c3e65814",

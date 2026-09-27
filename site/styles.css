@@ -1177,3 +1177,10 @@ h2 {
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* corrections and event ids in the detail view */
+.corrected { display: flex; gap: 8px; align-items: flex-start; margin: 8px 0 0; font-size: 12.5px; color: var(--ink-2); }
+.corrected ul { margin: 0; padding: 0; list-style: none; display: grid; gap: 2px; }
+.corrected-tag { flex: none; font-size: 11px; font-weight: 700; letter-spacing: 0.02em; color: var(--panel-solid); background: var(--single); border-radius: 4px; padding: 1px 6px; }
+.event-id { margin: 18px 0 4px; font-size: 11.5px; color: var(--ink-3); }
+.event-id code { user-select: all; -webkit-user-select: all; font-size: 11.5px; color: var(--ink-2); background: rgba(255, 255, 255, 0.05); border-radius: 4px; padding: 1px 5px; }

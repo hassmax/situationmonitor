@@ -22,6 +22,7 @@ import alerts  # noqa: E402
 import archive  # noqa: E402
 import brief  # noqa: E402
 import config as config_mod  # noqa: E402
+import corrections  # noqa: E402
 import extract  # noqa: E402
 import fleet  # noqa: E402
 import geo  # noqa: E402
@@ -84,6 +85,9 @@ def main() -> int:
     # Events taken off the map by hand (pipeline/config/removed.yaml).
     events = [e for e in events if e.get("id") not in cfg.removed]
     cells: list[dict] = [c for c in stored.get("cells", []) if c.get("theater") in cfg.theater_ids]
+    # Corrections made by hand (pipeline/config/corrections.yaml), applied every run.
+    fixes = corrections.load(config_mod.CONFIG_DIR / "corrections.yaml")
+    hidden = corrections.hidden_ids(fixes)
 
     session = http_session()
     health: dict = state["health"]
@@ -124,7 +128,7 @@ def main() -> int:
             fresh.append(it)
     # Corroboration hunter: targeted searches for important single-source events. No model calls;
     # the results join the normal queue ahead of everything else (weight 4).
-    for it in hunter.run(events, state, session, t0):
+    for it in hunter.run([e for e in events if e["id"] not in hidden], state, session, t0):
         if it["id"] not in seen and extract.is_candidate(it):
             seen[it["id"]] = int(t0.timestamp())
             fresh.append(it)
@@ -163,19 +167,24 @@ def main() -> int:
     geocoder = geo.Geocoder(state["geocache"], session, settings["geocode_per_run"])
     candidates = [c for c in (geo.place_record(r, geocoder, cfg.theaters) for r in records) if c]
     log(f"[geo] placed {len(candidates)}/{len(records)} ({geocoder.calls} lookups)")
+    # Reports of hidden events, and dropped reports, never create or join an event again.
+    blocked = corrections.blocked_urls(events, fixes)
+    candidates = [c for c in candidates if c["report"]["url"] not in blocked]
     # One-time repair of diplomacy events that merged unrelated talks (see merge.split_mixed_talks).
     if not args.no_llm:
         events = merge.split_mixed_talks(events, state, extract.ask_json, settings, t0)
     known = {e["id"] for e in events}
     events = merge.merge(events, candidates)
     events = merge.prune(events, t0, settings["event_retention_days"], settings["max_events"])
+    events = corrections.drop_reports(events, fixes)  # before scoring, so confidence is recomputed
     merge.apply_status(events, cells)
     # Old stories that arrived with a fresh date are dropped (see recency.py).
     if not args.no_llm:
         events = recency.check(events, {e["id"] for e in events} - known, session, extract.ask_json, state, settings, t0)
 
     # 7. Situation brief: at most one model call an hour, from the same daily budget
-    published = [merge.public_event(e) for e in events]
+    # Hidden events are left out and edits applied; everything below uses this published list.
+    published = corrections.publish([merge.public_event(e) for e in events], fixes, extract.EVENT_TYPES)
     if not args.no_llm:
         brief.update(state, published, {t["id"]: t["name"] for t in cfg.theaters}, settings, t0,
                      extract.ask_json, extract.calls_remaining(state, settings, t0))
@@ -200,6 +209,7 @@ def main() -> int:
 
     # 10. Archive on the data branch: one file per day, rewritten only when that day changed
     taken_down = {str(i): None for i in cfg.removed}
+    taken_down.update({e["id"]: archive._day(e) for e in events if e["id"] in hidden})
     for d in state.get("dropped_as_old", []):
         if d.get("event"):
             taken_down[d["event"]["id"]] = archive._day(d["event"])

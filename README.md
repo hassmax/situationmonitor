@@ -105,7 +105,24 @@ Everything is on one globe. The legend at the top of the left panel explains eve
 
 - **Sources:** `pipeline/config/sources.yaml`. The `outlets` list there says how Google News results from each outlet count: tier 1 for established outlets (processed first and preferred for headline summaries), tier 2 for other known outlets, and a `side` for state or partisan media. Each source has a `kind` and optionally a `side`; that is what drives the confidence colors, so label partisan and official channels honestly. The dashboard's Sources panel shows which ones are failing. The starter lists are thinnest for the Middle East, Africa, and the Indo-Pacific.
 - **Theaters:** `pipeline/config/theaters.yaml` (countries, map boxes, camera positions). If you add or rename a theater, update the theater list in the prompt in `pipeline/extract.py` too.
-- **Removing a wrong event:** add its id to `pipeline/config/removed.yaml` with a short note on why. The id is the part after `#` in the page address when the event is open. The next update takes it off the map.
+- **Corrections:** `pipeline/config/corrections.yaml`. Every event's id is shown at the bottom of its detail view (also the part after `#` in the page address). Each entry needs the id and a short `note`, and does one of three things:
+
+  ```yaml
+  corrections:
+    - id: 74974a38ada6
+      hide: true
+      note: Old news. The frigate Dena was sunk on 4 March 2026.
+
+    - id: 3fb55a726b74
+      edit: {place: Kupiansk, lat: 49.71, lon: 37.62}
+      note: The model placed this in the wrong town.
+
+    - id: 5b0f6f6736f9
+      drop_report: https://news.google.com/rss/articles/CBMi...
+      note: This article is about a different meeting.
+  ```
+
+  `hide` takes the event off the dashboard, the brief, alerts, and the archive, and its reports can never bring it back. `edit` can change `summary`, `place`, `lat`, `lon`, `type`, and `severity` (1 to 3); the event then shows a small "Corrected" label with your note. `drop_report` removes one report (copy its "Open the original post" link) and recomputes the event's confidence without it. Hides and edits are undone by deleting the entry. Commit the file and the next update applies it. (The older `removed.yaml` still works, but new removals belong in `corrections.yaml`.)
 - **Model, provider, and budget:** the `settings` block at the top of `sources.yaml`. Every model call counts against `daily_llm_calls` (400). Extraction stops when fewer than `extraction_reserve` (30) calls are left for the day, and the brief is skipped when fewer than `brief_min_calls` (5) are left. Any OpenAI-compatible provider works (Groq, OpenRouter, Mistral): change `llm_url` and `llm_models` and put that provider's key in the `GEMINI_API_KEY` secret.
 - **Look:** `site/styles.css` and `site/app.js`. Pushing changes to `site/` redeploys immediately.
 
