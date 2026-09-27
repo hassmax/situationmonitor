@@ -43,6 +43,7 @@ class Config:
     theaters: list[dict]
     sources: dict
     settings: dict = field(default_factory=dict)
+    removed: set[str] = field(default_factory=set)  # event ids taken off the map by hand
 
     @property
     def theater_ids(self) -> set[str]:
@@ -56,4 +57,7 @@ def load() -> Config:
     settings.update(sources.pop("settings", None) or {})
     for key in ("bluesky", "telegram", "rss"):
         sources[key] = [s for s in (sources.get(key) or []) if s and not s.get("disabled")]
-    return Config(theaters=theaters, sources=sources, settings=settings)
+    removed_file = CONFIG_DIR / "removed.yaml"
+    removed = yaml.safe_load(removed_file.read_text(encoding="utf-8")) if removed_file.exists() else None
+    removed_ids = {str(r["id"]) for r in ((removed or {}).get("removed") or []) if isinstance(r, dict) and r.get("id")}
+    return Config(theaters=theaters, sources=sources, settings=settings, removed=removed_ids)

@@ -1,0 +1,8 @@
+# Events you have checked and found to be wrong. The pipeline drops them on every run.
+# An event's id is the part after "#" in the page address when the event is open
+# (for example ...github.io/situationmonitor/#74974a38ada6). Add a line, commit, and the
+# next update takes it off the map.
+
+removed:
+  - id: 74974a38ada6
+    why: Old news. A US submarine sank the Iranian frigate Dena on 4 March 2026; a republished article listed it with a fresh date.
