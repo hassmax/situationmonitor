@@ -37,7 +37,10 @@ def fetch(sources: list[dict], session, health: dict, lookback_days: int = 0) ->
                 raise ValueError("feed returned no entries")
             latest = None
             count = 0
-            for entry in feed.entries[: (100 if lookback_days else 40)]:
+            # Newest first: Google News orders search results by relevance, so a cap on the
+            # unsorted list can cut off the freshest stories.
+            entries = sorted(feed.entries, key=lambda en: _entry_time(en) or datetime.min.replace(tzinfo=UTC), reverse=True)
+            for entry in entries[:100]:
                 published = _entry_time(entry)
                 link = entry.get("link") or ""
                 if not published or not link:
