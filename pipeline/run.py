@@ -85,6 +85,16 @@ def main() -> int:
     # Events taken off the map by hand (pipeline/config/removed.yaml).
     events = [e for e in events if e.get("id") not in cfg.removed]
     cells: list[dict] = [c for c in stored.get("cells", []) if c.get("theater") in cfg.theater_ids]
+    # Nothing can have happened after this run started (repairs events stored with a feed's
+    # future-dated timestamps, which the map showed as "just now").
+    stamp = iso(t0)
+    for e in events:
+        for k in ("time", "updated"):
+            if (e.get(k) or "") > stamp:
+                e[k] = stamp
+        for r in e.get("reports", []):
+            if (r.get("time") or "") > stamp:
+                r["time"] = stamp
     # Corrections made by hand (pipeline/config/corrections.yaml), applied every run.
     fixes = corrections.load(config_mod.CONFIG_DIR / "corrections.yaml")
     hidden = corrections.hidden_ids(fixes)
