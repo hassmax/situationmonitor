@@ -115,6 +115,108 @@ telegram:
     group: ru-milbloggers
     prefilter: false
 
+outlets:
+  # Google News results come from many outlets. The outlet that published each result is
+  # read from the feed, and outlets listed here count as their own source (so Reuters and
+  # Axios reporting the same thing corroborate each other). Outlets not listed are counted
+  # together as one "Google News" source, so a story republished by dozens of small sites
+  # still counts once.
+  #   tier 1   established outlets with strong editorial standards: processed first and
+  #            preferred for an event's headline summary
+  #   tier 2   known outlets: counted as their own source, normal weight
+  #   side     state or partisan media aligned with a party to a conflict. Under the
+  #            confidence rules, sources on the same side never corroborate each other.
+  #   group    share a group with the outlet's own feed above, so it is never counted twice
+  # Wire services and international broadcasters
+  - {domain: reuters.com, name: Reuters, tier: 1}
+  - {domain: apnews.com, name: AP, tier: 1}
+  - {domain: afp.com, name: AFP, tier: 1}
+  - {domain: bbc.com, name: BBC, tier: 1, group: bbc}
+  - {domain: bbc.co.uk, name: BBC, tier: 1, group: bbc}
+  - {domain: aljazeera.com, name: Al Jazeera, tier: 1, group: aljazeera}
+  - {domain: dw.com, name: DW, tier: 1}
+  - {domain: france24.com, name: France 24, tier: 1}
+  - {domain: npr.org, name: NPR, tier: 1}
+  # US and UK press
+  - {domain: nytimes.com, name: The New York Times, tier: 1}
+  - {domain: washingtonpost.com, name: The Washington Post, tier: 1}
+  - {domain: wsj.com, name: The Wall Street Journal, tier: 1}
+  - {domain: ft.com, name: Financial Times, tier: 1, group: ft}
+  - {domain: bloomberg.com, name: Bloomberg, tier: 1}
+  - {domain: economist.com, name: The Economist, tier: 1}
+  - {domain: theguardian.com, name: The Guardian, tier: 1, group: guardian}
+  - {domain: axios.com, name: Axios, tier: 1}
+  - {domain: politico.com, name: Politico, tier: 1}
+  - {domain: politico.eu, name: Politico Europe, tier: 1}
+  - {domain: cnn.com, name: CNN, tier: 1}
+  - {domain: nbcnews.com, name: NBC News, tier: 1}
+  - {domain: cbsnews.com, name: CBS News, tier: 1}
+  - {domain: abcnews.go.com, name: ABC News, tier: 1}
+  - {domain: abcnews.com, name: ABC News, tier: 1}
+  - {domain: news.usni.org, name: USNI News, tier: 1, group: usni}
+  - {domain: defensenews.com, name: Defense News, tier: 2, group: defensenews}
+  - {domain: longwarjournal.org, name: Long War Journal, tier: 2, group: longwarjournal}
+  - {domain: independent.co.uk, name: The Independent, tier: 2}
+  - {domain: telegraph.co.uk, name: The Telegraph, tier: 2}
+  - {domain: news.sky.com, name: Sky News, tier: 2}
+  - {domain: thehill.com, name: The Hill, tier: 2}
+  - {domain: foxnews.com, name: Fox News, tier: 2}
+  - {domain: newsweek.com, name: Newsweek, tier: 2}
+  - {domain: euronews.com, name: Euronews, tier: 2}
+  - {domain: lemonde.fr, name: Le Monde, tier: 1}
+  # Middle East
+  - {domain: timesofisrael.com, name: The Times of Israel, tier: 1, group: timesofisrael}
+  - {domain: haaretz.com, name: Haaretz, tier: 1}
+  - {domain: jpost.com, name: The Jerusalem Post, tier: 2}
+  - {domain: ynetnews.com, name: Ynet, tier: 2}
+  - {domain: middleeasteye.net, name: Middle East Eye, tier: 2}
+  - {domain: al-monitor.com, name: Al-Monitor, tier: 2}
+  - {domain: thenationalnews.com, name: The National (UAE state-owned), tier: 2, side: AE}
+  - {domain: arabnews.com, name: Arab News (Saudi), tier: 2, side: SA}
+  - {domain: alarabiya.net, name: Al Arabiya (Saudi-owned), tier: 2, side: SA}
+  - {domain: presstv.ir, name: Press TV (Iranian state), tier: 2, side: IR}
+  - {domain: irna.ir, name: IRNA (Iranian state), tier: 2, side: IR}
+  - {domain: tasnimnews.com, name: Tasnim (IRGC-affiliated), tier: 2, side: IR}
+  - {domain: mehrnews.com, name: Mehr (Iranian state), tier: 2, side: IR}
+  - {domain: farsnews.ir, name: Fars (IRGC-affiliated), tier: 2, side: IR}
+  - {domain: almanar.com.lb, name: Al-Manar (Hezbollah), tier: 2, side: LB}
+  - {domain: aa.com.tr, name: Anadolu (Turkish state), tier: 2, side: TR}
+  - {domain: trtworld.com, name: TRT World (Turkish state), tier: 2, side: TR}
+  - {domain: dailysabah.com, name: Daily Sabah (pro-government), tier: 2, side: TR}
+  - {domain: anews.com.tr, name: A News (pro-government), tier: 2, side: TR}
+  # Russia and Ukraine
+  - {domain: kyivindependent.com, name: The Kyiv Independent, tier: 1, group: kyivindependent}
+  - {domain: pravda.com.ua, name: Ukrainska Pravda, tier: 2}
+  - {domain: meduza.io, name: Meduza, tier: 2}
+  - {domain: ukrinform.net, name: Ukrinform (Ukrainian state), tier: 2, side: UA}
+  - {domain: militarnyi.com, name: Militarnyi, tier: 2, side: UA, group: militarnyi}
+  - {domain: tass.com, name: TASS (Russian state), tier: 2, side: RU}
+  - {domain: tass.ru, name: TASS (Russian state), tier: 2, side: RU}
+  - {domain: ria.ru, name: RIA Novosti (Russian state), tier: 2, side: RU}
+  - {domain: rt.com, name: RT (Russian state), tier: 2, side: RU}
+  - {domain: sputnikglobe.com, name: Sputnik (Russian state), tier: 2, side: RU}
+  # Asia
+  - {domain: scmp.com, name: South China Morning Post, tier: 2}
+  - {domain: asia.nikkei.com, name: Nikkei Asia, tier: 1}
+  - {domain: kyodonews.net, name: Kyodo, tier: 1}
+  - {domain: taipeitimes.com, name: Taipei Times, tier: 2, group: taipeitimes}
+  - {domain: thediplomat.com, name: The Diplomat, tier: 2, group: thediplomat}
+  - {domain: xinhuanet.com, name: Xinhua (Chinese state), tier: 2, side: CN}
+  - {domain: news.cn, name: Xinhua (Chinese state), tier: 2, side: CN}
+  - {domain: cgtn.com, name: CGTN (Chinese state), tier: 2, side: CN}
+  - {domain: globaltimes.cn, name: Global Times (Chinese state), tier: 2, side: CN}
+  - {domain: chinadaily.com.cn, name: China Daily (Chinese state), tier: 2, side: CN}
+  - {domain: dawn.com, name: Dawn, tier: 2}
+  - {domain: thehindu.com, name: The Hindu, tier: 2}
+  # Africa and Latin America
+  - {domain: sudantribune.com, name: Sudan Tribune, tier: 2, group: sudantribune}
+  - {domain: addisstandard.com, name: Addis Standard, tier: 2, group: addisstandard}
+  - {domain: theeastafrican.co.ke, name: The EastAfrican, tier: 2}
+  - {domain: premiumtimesng.com, name: Premium Times, tier: 2}
+  - {domain: insightcrime.org, name: InSight Crime, tier: 2, group: insightcrime}
+  - {domain: elpais.com, name: El País, tier: 1}
+  - {domain: miamiherald.com, name: Miami Herald, tier: 2}
+
 rss:
   - id: aljazeera
     name: Al Jazeera

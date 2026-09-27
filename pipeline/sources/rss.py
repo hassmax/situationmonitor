@@ -4,6 +4,7 @@ from __future__ import annotations
 import re
 import time
 from datetime import datetime
+from urllib.parse import urlparse
 
 import feedparser
 
@@ -20,7 +21,23 @@ def _entry_time(entry) -> datetime | None:
         return None
 
 
-def fetch(sources: list[dict], session, health: dict, lookback_days: int = 0) -> list[dict]:
+def _outlet_src(src: dict, entry, outlets: dict) -> dict:
+    """For a Google News result, the source is the outlet that published it. Listed outlets
+    count as their own source; others stay together under the search's own group."""
+    info = entry.get("source") or {}
+    host = urlparse(info.get("href") or "").netloc.lower().removeprefix("www.")
+    title = clean_text(entry.get("title", ""))
+    name = (info.get("title") or (title.rsplit(" - ", 1)[1] if " - " in title else "")).strip()
+    known = next((outlets[d] for d in (host, host.split(".", 1)[-1]) if d in outlets), None)
+    if known:
+        out = {**src, "name": f"{known['name']} (via Google News)", "group": known.get("group") or f"outlet:{known['domain']}",
+               "kind": known.get("kind", "news"), "side": known.get("side"),
+               "weight": 3 if known.get("tier") == 1 else int(src.get("weight", 1))}
+        return out
+    return {**src, "name": f"{name} (via Google News)" if name else src.get("name")}
+
+
+def fetch(sources: list[dict], session, health: dict, lookback_days: int = 0, outlets: dict | None = None) -> list[dict]:
     items: list[dict] = []
     for src in sources:
         sid = f"rss:{src.get('id') or src['url']}"
@@ -48,7 +65,8 @@ def fetch(sources: list[dict], session, health: dict, lookback_days: int = 0) ->
                 title = clean_text(entry.get("title", ""))
                 summary = clean_text(entry.get("summary", ""))[:600]
                 text = title + (f"\n{summary}" if summary and summary != title else "")
-                items.append(make_item(src, "rss", sid, link, text, published,
+                origin = _outlet_src(src, entry, outlets or {}) if "news.google.com/" in url else src
+                items.append(make_item(origin, "rss", sid, link, text, published,
                                        uid=entry.get("id") or link))
                 count += 1
                 latest = published if latest is None or published > latest else latest
