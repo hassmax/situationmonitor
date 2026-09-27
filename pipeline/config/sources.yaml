@@ -192,64 +192,78 @@ rss:
   # Each result links to the original outlet's article.
   - id: gnews-horn
     name: Google News (Sudan, Ethiopia, Somalia)
-    url: https://news.google.com/rss/search?q=%28Sudan+OR+RSF+OR+%22El+Fasher%22+OR+Tigray+OR+Ethiopia+OR+Somalia+OR+al-Shabaab%29+%28attack+OR+strike+OR+drone+OR+fighting+OR+killed%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    url: https://news.google.com/rss/search?q=%28Sudan+OR+RSF+OR+%22El+Fasher%22+OR+Tigray+OR+Ethiopia+OR+Somalia+OR+al-Shabaab%29+%28attack+OR+strike+OR+drone+OR+fighting+OR+killed%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
     kind: news
     group: google-news
   - id: gnews-drc-sahel
     name: Google News (eastern DRC and the Sahel)
-    url: https://news.google.com/rss/search?q=%28M23+OR+Goma+OR+%22eastern+Congo%22+OR+Mali+OR+%22Burkina+Faso%22+OR+Niger+OR+JNIM+OR+%22Boko+Haram%22%29+%28attack+OR+strike+OR+drone+OR+fighting+OR+killed%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    url: https://news.google.com/rss/search?q=%28M23+OR+Goma+OR+%22eastern+Congo%22+OR+Mali+OR+%22Burkina+Faso%22+OR+Niger+OR+JNIM+OR+%22Boko+Haram%22%29+%28attack+OR+strike+OR+drone+OR+fighting+OR+killed%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
     kind: news
     group: google-news
   - id: gnews-indopac
     name: Google News (Indo-Pacific military activity)
-    url: https://news.google.com/rss/search?q=%28PLA+OR+%22Chinese+navy%22+OR+%22coast+guard%22+OR+%22US+Navy%22+OR+%22Seventh+Fleet%22%29+%28Taiwan+OR+%22South+China+Sea%22+OR+Philippines+OR+Japan+OR+Korea%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    url: https://news.google.com/rss/search?q=%28PLA+OR+%22Chinese+navy%22+OR+%22coast+guard%22+OR+%22US+Navy%22+OR+%22Seventh+Fleet%22%29+%28Taiwan+OR+%22South+China+Sea%22+OR+Philippines+OR+Japan+OR+Korea%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
     kind: news
     group: google-news
   - id: gnews-hybrid
     name: Google News (Russian sabotage and hybrid attacks)
-    url: https://news.google.com/rss/search?q=%28sabotage+OR+arson+OR+%22undersea+cable%22+OR+%22GPS+jamming%22+OR+%22drone+incursion%22+OR+%22airspace+violation%22+OR+%22hybrid+attack%22%29+%28Russia+OR+Russian%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    url: https://news.google.com/rss/search?q=%28sabotage+OR+arson+OR+%22undersea+cable%22+OR+%22GPS+jamming%22+OR+%22drone+incursion%22+OR+%22airspace+violation%22+OR+%22hybrid+attack%22%29+%28Russia+OR+Russian%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
     kind: news
     group: google-news
     weight: 2
   - id: gnews-nato-east
     name: Google News (Baltics, Finland, Poland borders)
-    url: https://news.google.com/rss/search?q=%28Latvia+OR+Estonia+OR+Lithuania+OR+Finland+OR+Poland+OR+Romania+OR+Kaliningrad%29+%28Russia+OR+Belarus%29+%28border+OR+airspace+OR+drone+OR+incursion+OR+provocation+OR+military%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    url: https://news.google.com/rss/search?q=%28Latvia+OR+Estonia+OR+Lithuania+OR+Finland+OR+Poland+OR+Romania+OR+Kaliningrad%29+%28Russia+OR+Belarus%29+%28border+OR+airspace+OR+drone+OR+incursion+OR+provocation+OR+military%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
     kind: news
     group: google-news
     weight: 2
   - id: gnews-levant
     name: Google News (Israel, Gaza, Lebanon, Syria)
-    url: https://news.google.com/rss/search?q=%28Israel+OR+IDF+OR+Gaza+OR+Lebanon+OR+Hezbollah+OR+Syria+OR+%22West+Bank%22%29+%28strike+OR+attack+OR+killed+OR+rocket+OR+drone+OR+raid%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    url: https://news.google.com/rss/search?q=%28Israel+OR+IDF+OR+Gaza+OR+Lebanon+OR+Hezbollah+OR+Syria+OR+%22West+Bank%22%29+%28strike+OR+attack+OR+killed+OR+rocket+OR+drone+OR+raid%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
     kind: news
     group: google-news
     weight: 2
   - id: gnews-iran-gulf
     name: Google News (Iran, Gulf, Yemen, Red Sea)
-    url: https://news.google.com/rss/search?q=%28Iran+OR+IRGC+OR+Houthi+OR+Yemen+OR+Hormuz+OR+%22Red+Sea%22+OR+Iraq%29+%28strike+OR+attack+OR+missile+OR+drone+OR+blockade+OR+seized%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    url: https://news.google.com/rss/search?q=%28Iran+OR+IRGC+OR+Houthi+OR+Yemen+OR+Hormuz+OR+%22Red+Sea%22+OR+Iraq%29+%28strike+OR+attack+OR+missile+OR+drone+OR+blockade+OR+seized%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
     kind: news
     group: google-news
     weight: 2
   - id: gnews-diplomacy
     name: Google News (ceasefires, talks, alliances)
-    url: https://news.google.com/rss/search?q=%28ceasefire+OR+%22peace+talks%22+OR+negotiations+OR+%22defense+pact%22+OR+%22Mecca+agreement%22+OR+summit+OR+%22Security+Council%22+OR+%22Article+4%22%29+%28Iran+OR+Israel+OR+Gaza+OR+Lebanon+OR+Yemen+OR+Houthi+OR+Saudi+OR+Sudan+OR+Ukraine+OR+Russia+OR+NATO+OR+Tigray+OR+Congo+OR+Taiwan%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    url: https://news.google.com/rss/search?q=%28ceasefire+OR+%22peace+talks%22+OR+negotiations+OR+%22defense+pact%22+OR+%22Mecca+agreement%22+OR+summit+OR+%22Security+Council%22+OR+%22Article+4%22%29+%28Iran+OR+Israel+OR+Gaza+OR+Lebanon+OR+Yemen+OR+Houthi+OR+Saudi+OR+Sudan+OR+Ukraine+OR+Russia+OR+NATO+OR+Tigray+OR+Congo+OR+Taiwan%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
     kind: news
     group: google-news
     weight: 2
-  - id: gnews-leaders
-    name: Google News (leaders' visits and meetings)
-    url: https://news.google.com/rss/search?q=%28Netanyahu+OR+Putin+OR+Zelensky+OR+Pezeshkian+OR+Khamenei+OR+Araghchi+OR+%22Xi+Jinping%22+OR+%22bin+Salman%22+OR+%22bin+Zayed%22+OR+Erdogan+OR+Lukashenko+OR+%22Kim+Jong+Un%22+OR+Modi+OR+%22Shehbaz+Sharif%22+OR+Burhan+OR+Kagame+OR+Tshisekedi+OR+Maduro%29+%28visit+OR+visits+OR+visited+OR+trip+OR+%22met+with%22+OR+meets+OR+hosts+OR+hosted%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+  # Leaders' visits and meetings, split by region: Google News returns only the top 100 results
+  # by relevance, so a broad search misses fresh stories.
+  - id: gnews-leaders-mideast
+    name: Google News (leaders' visits and meetings, Middle East)
+    url: https://news.google.com/rss/search?q=%28Netanyahu+OR+Pezeshkian+OR+Khamenei+OR+Araghchi+OR+%22bin+Salman%22+OR+%22bin+Zayed%22+OR+Erdogan+OR+al-Sharaa%29+%28visit+OR+visits+OR+visited+OR+trip+OR+%22met+with%22+OR+meets+OR+hosts+OR+hosted%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+    weight: 2
+  - id: gnews-leaders-europe
+    name: Google News (leaders' visits and meetings, Russia, Ukraine, Belarus)
+    url: https://news.google.com/rss/search?q=%28Putin+OR+Zelensky+OR+Lukashenko+OR+Lavrov+OR+Sybiha%29+%28visit+OR+visits+OR+visited+OR+trip+OR+%22met+with%22+OR+meets+OR+hosts+OR+hosted%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+    weight: 2
+  - id: gnews-leaders-asia-africa-latam
+    name: Google News (leaders' visits and meetings, Asia, Africa, Latin America)
+    url: https://news.google.com/rss/search?q=%28%22Xi+Jinping%22+OR+%22Kim+Jong+Un%22+OR+Modi+OR+%22Shehbaz+Sharif%22+OR+Burhan+OR+Kagame+OR+Tshisekedi+OR+Maduro%29+%28visit+OR+visits+OR+visited+OR+trip+OR+%22met+with%22+OR+meets+OR+hosts+OR+hosted%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
     kind: news
     group: google-news
     weight: 2
   - id: gnews-latam-us
     name: Google News (US military in Latin America)
-    url: https://news.google.com/rss/search?q=%28%22Southern+Command%22+OR+SOUTHCOM+OR+%22Southern+Spear%22+OR+Pentagon+OR+%22US+military%22+OR+%22U.S.+strike%22%29+%28Cuba+OR+Venezuela+OR+Caribbean+OR+Colombia+OR+Ecuador+OR+Mexico+OR+Haiti%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    url: https://news.google.com/rss/search?q=%28%22Southern+Command%22+OR+SOUTHCOM+OR+%22Southern+Spear%22+OR+Pentagon+OR+%22US+military%22+OR+%22U.S.+strike%22%29+%28Cuba+OR+Venezuela+OR+Caribbean+OR+Colombia+OR+Ecuador+OR+Mexico+OR+Haiti%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
     kind: news
     group: google-news
     weight: 2
   - id: gnews-latam-conflict
     name: Google News (Cuba, Venezuela, Colombia, Ecuador, Haiti)
-    url: https://news.google.com/rss/search?q=%28Cuba+OR+Havana+OR+Venezuela+OR+Colombia+OR+ELN+OR+Ecuador+OR+Haiti%29+%28attack+OR+strike+OR+clashes+OR+troops+OR+military+OR+killed+OR+blockade%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    url: https://news.google.com/rss/search?q=%28Cuba+OR+Havana+OR+Venezuela+OR+Colombia+OR+ELN+OR+Ecuador+OR+Haiti%29+%28attack+OR+strike+OR+clashes+OR+troops+OR+military+OR+killed+OR+blockade%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
     kind: news
     group: google-news
     weight: 2
@@ -266,13 +280,13 @@ rss:
     weight: 2
   - id: gnews-transfers
     name: Google News (arms transfers and air bridges)
-    url: https://news.google.com/rss/search?q=%28%22air+bridge%22+OR+airlift+OR+%22arms+shipment%22+OR+%22weapons+shipment%22+OR+%22military+aid%22+OR+%22ammunition+delivery%22+OR+%22arms+transfer%22+OR+%22weapons+delivery%22%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    url: https://news.google.com/rss/search?q=%28%22air+bridge%22+OR+airlift+OR+%22arms+shipment%22+OR+%22weapons+shipment%22+OR+%22military+aid%22+OR+%22ammunition+delivery%22+OR+%22arms+transfer%22+OR+%22weapons+delivery%22%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
     kind: news
     group: google-news
     weight: 2
   - id: gnews-legal
     name: Google News (legal basis for uses of force)
-    url: https://news.google.com/rss/search?q=%28%22Article+51%22+OR+%22War+Powers%22+OR+%22legal+basis%22+OR+%22self-defense%22+OR+%22Security+Council+resolution%22+OR+ICJ+OR+%22International+Criminal+Court%22%29+%28strike+OR+strikes+OR+attack+OR+military+OR+war%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    url: https://news.google.com/rss/search?q=%28%22Article+51%22+OR+%22War+Powers%22+OR+%22legal+basis%22+OR+%22self-defense%22+OR+%22Security+Council+resolution%22+OR+ICJ+OR+%22International+Criminal+Court%22%29+%28strike+OR+strikes+OR+attack+OR+military+OR+war%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
     kind: news
     group: google-news
   # Legal analysis outlets: most posts are analysis (skipped), but they are often first to
@@ -289,7 +303,7 @@ rss:
     group: lieber
   - id: gnews-shipping
     name: Google News (attacks on shipping)
-    url: https://news.google.com/rss/search?q=%28UKMTO+OR+Ambrey+OR+tanker+OR+%22cargo+ship%22+OR+%22merchant+vessel%22+OR+%22container+ship%22+OR+%22bulk+carrier%22%29+%28Hormuz+OR+%22Gulf+of+Oman%22+OR+%22Persian+Gulf%22+OR+%22Red+Sea%22+OR+%22Bab+el-Mandeb%22+OR+%22Gulf+of+Aden%22+OR+Fujairah+OR+%22Black+Sea%22%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    url: https://news.google.com/rss/search?q=%28UKMTO+OR+Ambrey+OR+tanker+OR+%22cargo+ship%22+OR+%22merchant+vessel%22+OR+%22container+ship%22+OR+%22bulk+carrier%22%29+%28Hormuz+OR+%22Gulf+of+Oman%22+OR+%22Persian+Gulf%22+OR+%22Red+Sea%22+OR+%22Bab+el-Mandeb%22+OR+%22Gulf+of+Aden%22+OR+Fujairah+OR+%22Black+Sea%22%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
     kind: news
     group: google-news
     weight: 3
