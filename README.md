@@ -123,6 +123,15 @@ Don't commit `site/data/events.json`; the workflow generates it on every run.
 
 Runs only look at posts from the last 36 hours. To pull in something older (after adding a source, or when the dashboard was down), go to Actions → Update conflict data → Run workflow, and enter a number of days (up to 14) in "Backfill". Older posts are then worked through over the next few runs, within the free model quota, and appear at the time the events happened. Articles that only recap older news are still skipped.
 
+## History
+
+From the day this feature was added, every run also keeps a permanent archive on the `data` branch, in an `archive/` folder:
+
+- `archive/2026-09-27.json` (one file per UTC day): that day's published events, by when they happened. Events stay here after they drop off the dashboard's 7-day view. Events taken down (hidden by a correction, or removed as old news) are taken out of the archive too.
+- `archive/fleet/2026-09-27.json`: each day's latest aircraft carrier positions.
+
+History starts from the day this merged; nothing earlier was recorded. There is no page for browsing it yet, but you can open the files on GitHub (switch the branch selector to `data`).
+
 ## Limits worth knowing
 
 - **Lag.** Expect 15–30 minutes from a post to the map. GitHub starts scheduled runs late when its servers are busy, and queued posts wait for model budget.

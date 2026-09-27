@@ -37,15 +37,25 @@ jobs:
       - name: Install dependencies
         run: pip install -r pipeline/requirements.txt
 
-      - name: Load previous state from the data branch
+      - name: Load the data branch (state and archive)
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          mkdir -p state
-          if git fetch --depth=1 origin data 2>/dev/null; then
-            for f in state.json events.json; do
-              git show "FETCH_HEAD:$f" > "state/$f" 2>/dev/null || rm -f "state/$f"
-            done
-          else
+          # The whole branch is restored, including archive/. If the branch exists but cannot be
+          # fetched, stop: saving without it would wipe the archive.
+          set +e
+          git ls-remote --exit-code --heads origin data > /dev/null
+          rc=$?
+          set -e
+          if [ "$rc" -eq 0 ]; then
+            git clone -q --depth 1 --branch data --single-branch \
+              "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" state
+          elif [ "$rc" -eq 2 ]; then
             echo "No data branch yet; starting fresh."
+            mkdir -p state
+          else
+            echo "Could not reach the data branch; stopping so nothing is overwritten."
+            exit 1
           fi
 
       - name: Run pipeline
@@ -60,17 +70,20 @@ jobs:
           DASHBOARD_URL: ${{ vars.DASHBOARD_URL }}
         run: python pipeline/run.py --state state --out out
 
-      - name: Save state to the data branch
+      - name: Save state and archive to the data branch
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          # One commit holding every file (state, events, archive/), force-pushed so the branch
+          # stays small. Only files that changed are uploaded.
           cd state
-          git init -q -b data
+          [ -d .git ] || git init -q -b data
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add state.json events.json
+          git checkout -q --orphan snapshot
+          git add -A
           git commit -q -m "State $(date -u +%Y-%m-%dT%H:%MZ)"
-          git push -q --force "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" data
+          git push -q --force "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" snapshot:data
 
       - name: Build site
         run: |

@@ -19,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import alerts  # noqa: E402
+import archive  # noqa: E402
 import brief  # noqa: E402
 import config as config_mod  # noqa: E402
 import extract  # noqa: E402
@@ -190,7 +191,15 @@ def main() -> int:
         "queue": len(leftover),
     }
 
-    # 10. Write
+    # 10. Archive on the data branch: one file per day, rewritten only when that day changed
+    taken_down = {str(i): None for i in cfg.removed}
+    for d in state.get("dropped_as_old", []):
+        if d.get("event"):
+            taken_down[d["event"]["id"]] = archive._day(d["event"])
+    written = archive.update(state_dir, published, taken_down, fleet.public(state, t0), t0)
+    log(f"[archive] {written} files updated")
+
+    # 11. Write
     save_json(state_dir / "state.json", state)
     save_json(state_dir / "events.json", {"events": events, "cells": cells})
     public = {
