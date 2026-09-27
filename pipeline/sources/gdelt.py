@@ -21,8 +21,8 @@ MAX_FILES_PER_RUN = 8
 
 # CAMEO codes kept: all "fight" (19x) and "mass violence" (20x), plus bombings and assassinations.
 VIOLENCE_EXACT = {"183", "1831", "1832", "1833", "1834", "185", "186"}
-# Military posture (demonstrations of force, raised alert, mobilisation): kept only in the
-# Indo-Pacific and only when a military actor is involved, to catch exercises and deployments.
+# Military posture (demonstrations of force, raised alert, mobilisation): kept only in theaters
+# with gdelt_posture: true, and only when a military actor is involved.
 POSTURE = {"150", "152", "154"}
 
 CAMEO_LABELS = {
@@ -82,12 +82,18 @@ def _parse_row(cols: list[str], theaters: list[dict]) -> dict | None:
     except ValueError:
         return None
     theater = theater_for_fips(lat, lon, cols[C["geo_country"]], theaters)
-    required = next((t.get("gdelt_require_actor") for t in theaters if t["id"] == theater), None)
-    if required and required not in (cols[C["a1_country"]], cols[C["a2_country"]]):
-        theater = None
-    if theater is None:
+    th = next((t for t in theaters if t["id"] == theater), None)
+    if th is None:
         return None
-    if posture and theater != "indopac":
+    rule = th.get("gdelt_require")
+    if rule:
+        countries = set(rule.get("countries", []))
+        types = set(rule.get("types", []))
+        actor_countries = {cols[C["a1_country"]], cols[C["a2_country"]]}
+        actor_types = {cols[C["a1_type"]], cols[C["a2_type"]]}
+        if not (countries & actor_countries or types & actor_types):
+            return None
+    if posture and not th.get("gdelt_posture"):
         return None
     url = cols[C["url"]]
     domain = urlparse(url).netloc.lower().removeprefix("www.")

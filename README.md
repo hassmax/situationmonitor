@@ -1,8 +1,8 @@
-# Conflict Globe
+# Global Situation Monitor
 
 A self-updating 3D globe of armed-conflict events, built from public OSINT posts and news feeds. It runs entirely on free services: GitHub Actions fetches and processes new reports every 15 minutes, Google's free Gemini API turns posts into structured events, and GitHub Pages hosts the site.
 
-Coverage: Russia–Ukraine, NATO's eastern flank and Russian-linked hybrid attacks in Europe (sabotage, cable cuts, GPS jamming, drone and airspace incursions), the Middle East (Iran, Israel, Gaza, Lebanon, Yemen, Red Sea, Hormuz), Sudan and the Horn of Africa (including Ethiopia–Tigray), eastern DRC and the Sahel, and the Indo-Pacific. Major diplomatic developments about these conflicts (ceasefires, peace talks, agreements, alliance and defense-pact meetings, Security Council action) are tracked too, and appear as flat discs you can hide with the Diplomacy layer.
+Coverage: Russia–Ukraine, NATO's eastern flank and Russian-linked hybrid attacks in Europe (sabotage, cable cuts, GPS jamming, drone and airspace incursions), the Middle East (Iran, Israel, Gaza, Lebanon, Yemen, Red Sea, Hormuz), Sudan and the Horn of Africa (including Ethiopia–Tigray), eastern DRC and the Sahel, the Indo-Pacific, and Latin America and the Caribbean (US operations around Venezuela and Cuba, boat strikes, and armed-group conflict in Colombia, Ecuador, Mexico, and Haiti). Major diplomatic developments about these conflicts (ceasefires, peace talks, agreements, alliance and defense-pact meetings, Security Council action) are tracked too, and appear as flat discs you can hide with the Diplomacy layer.
 
 Preview the layout with sample data before any real data exists: open `site/index.html?demo` through a local server (see "Run it locally") or `https://<you>.github.io/<repo>/?demo` once deployed.
 
@@ -52,7 +52,11 @@ state (seen posts, queue, caches, events) is kept on the `data` branch, overwrit
 | Violet, diamond | **One side's claim.** Only sources aligned with one party, such as a defense ministry and friendly bloggers. |
 | Teal hexagons | **News intensity.** Where GDELT's machine-coded news feed is reporting violence, weighted by the number of distinct outlets. |
 
-Taller markers are more severe. Pulsing rings mark events from the last 3 hours. Dashed arcs are launch paths when a report names where a strike came from.
+Taller markers are more severe. Pulsing rings mark events from the last 3 hours. Countries with events in view, and the countries attacking them, get warm borders and brighter land.
+
+**Attack waves.** Missile, drone, and interception reports with a known attacker are grouped into one event per direction per day (Russia → Ukraine, Ukraine → Russia, Iran → Israel, and so on; days run 09:00–09:00 UTC so an overnight attack stays together). A wave lists every location hit, launch and intercept totals when a source gives them, and the launch areas named. Dashed arcs run from launch areas to targets. When no report names a launch area, the arc starts from the nearest known one and is drawn faint.
+
+**Using it.** Click anywhere near a marker to open it; if several are close together, the globe zooms in and lists them. **Key developments** (severe and corroborated) are pinned at the top of the feed. The small bar charts next to each theater show events per day over the past week. Press **H** to hide the panels, **/** to search, **Esc** to go back. On phones, drag or tap the bar at the top of the event list to collapse or expand it.
 
 ## Customizing
 

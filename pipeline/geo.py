@@ -23,6 +23,7 @@ ISO_NUMERIC = {
     "NG": "566", "TD": "148", "MR": "478",
     "CN": "156", "TW": "158", "JP": "392", "KP": "408", "KR": "410", "PH": "608", "VN": "704",
     "MM": "104", "TH": "764", "KH": "116", "IN": "356", "PK": "586",
+    "CU": "192", "VE": "862", "CO": "170", "EC": "218", "HT": "332", "MX": "484",
 }
 
 
@@ -122,10 +123,7 @@ def place_record(rec: dict, geocoder: Geocoder, theaters: list[dict]) -> dict | 
     if theater is None:
         return None
 
-    origin = None
-    if rec["origin_lat"] is not None and rec["origin_lon"] is not None:
-        if haversine_km(rec["origin_lat"], rec["origin_lon"], lat, lon) > 25:
-            origin = {"lat": rec["origin_lat"], "lon": rec["origin_lon"], "place": rec["origin_place"]}
+    origins = [o for o in rec.get("origins", []) if haversine_km(o["lat"], o["lon"], lat, lon) > 25]
 
     return {
         "theater": theater,
@@ -136,7 +134,10 @@ def place_record(rec: dict, geocoder: Geocoder, theaters: list[dict]) -> dict | 
         "lat": lat,
         "lon": lon,
         "approx": approx,
-        "origin": origin,
+        "origins": origins,
+        "attacker": rec.get("attacker"),
+        "launched": rec.get("launched"),
+        "intercepted": rec.get("intercepted"),
         "severity": rec["severity"],
         "killed": rec["killed"],
         "injured": rec["injured"],
@@ -149,6 +150,7 @@ def place_record(rec: dict, geocoder: Geocoder, theaters: list[dict]) -> dict | 
             "group": item["group"],
             "weight": item.get("weight", 1),
             "claim": rec["claim"],
+            "launched": rec.get("launched"),
             "url": item["url"],
             "time": item["time"],
             "summary": rec["summary"],

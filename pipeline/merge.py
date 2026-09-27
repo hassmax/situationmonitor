@@ -6,6 +6,11 @@ Confidence rules (what the colors on the globe mean):
   unconfirmed   a single unaligned source so far
   claimed       only sources aligned with one side (e.g. a ministry and friendly bloggers)
 Nearby news coverage picked up by GDELT (3+ distinct outlets) counts as one unaligned source.
+
+Attack waves: missile, drone, and interception reports with a known attacker are grouped
+into one event per direction per day (e.g. Russia -> Ukraine on 26 September), listing every
+location hit and every launch area named. Days run 09:00 to 09:00 UTC so an overnight
+attack stays in one wave.
 """
 from __future__ import annotations
 
@@ -24,13 +29,29 @@ RADIUS_KM = {"strike": 30, "ground": 30, "naval": 150, "deployment": 120, "diplo
              "hybrid": 50, "incursion": 150}
 WINDOW = timedelta(hours=12)
 
+WAVE_TYPES = {"missile_drone", "air_defense", "explosion"}
+TARGET_MERGE_KM = 15
+MAX_TARGETS = 60
+MAX_REPORTS = 80
+ADJECTIVE = {"RU": "Russian", "UA": "Ukrainian", "IR": "Iranian", "IL": "Israeli", "YE": "Houthi",
+             "LB": "Hezbollah", "US": "US", "BY": "Belarusian", "PK": "Pakistani", "IN": "Indian"}
+
+
+def wave_day(t: str) -> str:
+    return (parse_time(t) - timedelta(hours=9)).strftime("%Y-%m-%d")
+
+
+def _is_wave(c: dict) -> bool:
+    return (c["type"] in WAVE_TYPES and bool(c.get("attacker")) and bool(c.get("country"))
+            and c["attacker"] != c["country"])
+
 
 def _find_match(events: list[dict], cand: dict) -> dict | None:
     fam = FAMILY.get(cand["type"], "strike")
     ct = parse_time(cand["time"])
     best, best_d = None, float("inf")
     for e in events:
-        if e["theater"] != cand["theater"] or FAMILY.get(e["type"], "strike") != fam:
+        if e.get("wave") or e["theater"] != cand["theater"] or FAMILY.get(e["type"], "strike") != fam:
             continue
         et, eu = parse_time(e["time"]), parse_time(e["updated"])
         if abs(ct - et) > WINDOW and abs(ct - eu) > WINDOW:
@@ -42,16 +63,80 @@ def _find_match(events: list[dict], cand: dict) -> dict | None:
     return best
 
 
+def _max_or_none(*vals):
+    vals = [v for v in vals if v is not None]
+    return max(vals) if vals else None
+
+
+def _add_origins(event: dict, origins: list[dict]) -> None:
+    kept = event.setdefault("origins", [])
+    for o in origins or []:
+        if not any(haversine_km(o["lat"], o["lon"], k["lat"], k["lon"]) <= 30 for k in kept):
+            kept.append(o)
+    event["origins"] = kept[:8]
+
+
+def _add_target(wave: dict, cand: dict) -> None:
+    if cand["approx"]:
+        return  # country-level statements add counts and sources, not a map location
+    for t in wave["targets"]:
+        if haversine_km(t["lat"], t["lon"], cand["lat"], cand["lon"]) <= TARGET_MERGE_KM:
+            t["reports"] += 1
+            t["severity"] = max(t["severity"], cand["severity"])
+            t["time"] = min(t["time"], cand["time"])
+            t["killed"] = _max_or_none(t.get("killed"), cand["killed"])
+            t["injured"] = _max_or_none(t.get("injured"), cand["injured"])
+            return
+    if len(wave["targets"]) < MAX_TARGETS:
+        wave["targets"].append({
+            "place": cand["place"], "lat": cand["lat"], "lon": cand["lon"], "reports": 1,
+            "severity": cand["severity"], "time": cand["time"],
+            "killed": cand["killed"], "injured": cand["injured"],
+        })
+
+
+def _merge_wave(events: list[dict], cand: dict) -> None:
+    key = "|".join([cand["theater"], cand["attacker"], cand["country"], wave_day(cand["time"])])
+    wave = next((e for e in events if e.get("wave_key") == key), None)
+    rep = cand["report"]
+    if wave is None:
+        wave = {
+            "id": short_hash("wave", key), "wave": True, "wave_key": key,
+            "theater": cand["theater"], "type": "missile_drone",
+            "attacker": cand["attacker"], "country": cand["country"],
+            "summary": cand["summary"], "place": cand["place"],
+            "lat": cand["lat"], "lon": cand["lon"], "approx": cand["approx"],
+            "origins": [], "targets": [], "severity": cand["severity"],
+            "killed": None, "injured": None, "launched": None, "intercepted": None,
+            "time": cand["time"], "updated": cand["time"], "reports": [],
+        }
+        events.append(wave)
+    if any(r["url"] == rep["url"] for r in wave["reports"]):
+        return
+    wave["reports"].append(rep)
+    wave["time"] = min(wave["time"], cand["time"])
+    wave["updated"] = max(wave["updated"], cand["time"])
+    wave["severity"] = max(wave["severity"], cand["severity"])
+    wave["launched"] = _max_or_none(wave.get("launched"), cand.get("launched"))
+    wave["intercepted"] = _max_or_none(wave.get("intercepted"), cand.get("intercepted"))
+    _add_target(wave, cand)
+    _add_origins(wave, cand.get("origins"))
+
+
 def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
     for cand in sorted(candidates, key=lambda c: c["time"]):
+        if _is_wave(cand):
+            _merge_wave(events, cand)
+            continue
         rep = cand["report"]
         match = _find_match(events, cand)
         if match is None:
             events.append({
                 "id": short_hash("event", rep["url"]),
                 "theater": cand["theater"], "type": cand["type"], "summary": cand["summary"],
-                "place": cand["place"], "country": cand["country"],
-                "lat": cand["lat"], "lon": cand["lon"], "approx": cand["approx"], "origin": cand["origin"],
+                "place": cand["place"], "country": cand["country"], "attacker": cand.get("attacker"),
+                "lat": cand["lat"], "lon": cand["lon"], "approx": cand["approx"],
+                "origins": list(cand.get("origins") or []),
                 "severity": cand["severity"],
                 "killed": cand["killed"], "injured": cand["injured"],
                 "time": cand["time"], "updated": cand["time"], "reports": [rep],
@@ -63,13 +148,12 @@ def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
         match["time"] = min(match["time"], cand["time"])
         match["updated"] = max(match["updated"], cand["time"])
         match["severity"] = max(match["severity"], cand["severity"])
+        match["attacker"] = match.get("attacker") or cand.get("attacker")
         for k in ("killed", "injured"):
-            vals = [v for v in (match.get(k), cand[k]) if v is not None]
-            match[k] = max(vals) if vals else None
+            match[k] = _max_or_none(match.get(k), cand[k])
         if match.get("approx") and not cand["approx"]:
             match.update(lat=cand["lat"], lon=cand["lon"], place=cand["place"], approx=False)
-        if not match.get("origin") and cand["origin"]:
-            match["origin"] = cand["origin"]
+        _add_origins(match, cand.get("origins"))
     return events
 
 
@@ -81,9 +165,36 @@ def _headline(event: dict) -> dict:
     )[0]
 
 
+def _finish_wave(e: dict) -> None:
+    targets = sorted(e["targets"], key=lambda t: (-t["severity"], -t["reports"], t["time"]))
+    e["targets"] = targets
+    if targets:
+        main = targets[0]
+        e.update(place=main["place"], lat=main["lat"], lon=main["lon"], approx=False)
+    killed = [t["killed"] for t in targets if t.get("killed") is not None]
+    injured = [t["injured"] for t in targets if t.get("injured") is not None]
+    e["killed"] = sum(killed) if killed else None
+    e["injured"] = sum(injured) if injured else None
+    if (e.get("launched") or 0) >= 50 or len(targets) >= 8:
+        e["severity"] = 3
+    counted = [r for r in e["reports"] if r.get("launched")]
+    if counted:
+        e["summary"] = max(counted, key=lambda r: r["launched"])["summary"]
+    elif len(targets) >= 2:
+        names = [t["place"] for t in targets if t.get("place")][:3]
+        adj = ADJECTIVE.get(e["attacker"], "")
+        lead = f"{adj} drone and missile attack" if adj else "Drone and missile attack"
+        listed = ", ".join(names[:-1]) + (" and " + names[-1] if len(names) > 1 else names[0] if names else "")
+        e["summary"] = f"{lead}: strikes reported in {len(targets)} places, including {listed}."
+    else:
+        e["summary"] = _headline(e)["summary"]
+
+
 def apply_status(events: list[dict], cells: list[dict]) -> None:
     index = CellIndex(cells)
     for e in events:
+        if e.get("wave"):
+            _finish_wave(e)
         neutral = {r["group"] for r in e["reports"] if not r.get("side")}
         sided = {r["group"] for r in e["reports"] if r.get("side")}
         sides = {r["side"] for r in e["reports"] if r.get("side")}
@@ -101,8 +212,8 @@ def apply_status(events: list[dict], cells: list[dict]) -> None:
         else:
             e["status"] = "claimed"
         e["sources_count"] = len(groups)
-        head = _headline(e)
-        e["summary"] = head["summary"]
+        if not e.get("wave"):
+            e["summary"] = _headline(e)["summary"]
 
 
 def prune(events: list[dict], now: datetime, retention_days: int, max_events: int) -> list[dict]:
@@ -114,9 +225,12 @@ def prune(events: list[dict], now: datetime, retention_days: int, max_events: in
 
 def public_event(e: dict) -> dict:
     """Strip internal fields before publishing."""
-    out = {k: v for k, v in e.items() if k not in ("reports", "us", "cn")}
+    out = {k: v for k, v in e.items() if k not in ("reports", "us", "cn", "wave_key", "origin")}
+    if e.get("origin") and not e.get("origins"):
+        out["origins"] = [e["origin"]]  # events stored before multi-origin support
+    reports = sorted(e["reports"], key=lambda r: r["time"])[-MAX_REPORTS:]
     out["reports"] = [
         {k: r.get(k) for k in ("source", "platform", "kind", "side", "claim", "url", "time", "summary")}
-        for r in sorted(e["reports"], key=lambda r: r["time"])
+        for r in reports
     ]
     return out

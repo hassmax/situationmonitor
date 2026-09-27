@@ -36,7 +36,7 @@ theaters:
       - [51.0, -4.0, 61.0, 9.5]    # North Sea
     # GDELT only: keep events in this theater only when a Russian actor is involved,
     # so ordinary crime in Western Europe doesn't flood the heat layer.
-    gdelt_require_actor: RUS
+    gdelt_require: {countries: [RUS]}
     highlight: [EE, LV, LT, FI, PL]
 
   - id: mideast
@@ -53,14 +53,14 @@ theaters:
     highlight: [IL, PS, LB, SY, IQ, IR, YE]
 
   - id: horn
-    name: Sudan and the Horn of Africa
+    name: Sudan and Horn of Africa
     camera: {lat: 11.0, lng: 36.0, altitude: 1.2}
     iso2: [SD, SS, ET, ER, SO, DJ]
     fips: [SU, OD, ET, ER, SO, DJ]
     highlight: [SD, SS, ET, ER, SO]
 
   - id: drc_sahel
-    name: Eastern DRC and the Sahel
+    name: Eastern DRC and Sahel
     camera: {lat: 8.0, lng: 10.0, altitude: 1.6}
     iso2: [CD, RW, BI, UG, ML, BF, NE, NG, TD, MR]
     fips: [CG, RW, BY, UG, ML, UV, NG, NI, CD, MR]
@@ -79,4 +79,21 @@ theaters:
       - [22.0, 117.0, 33.5, 131.0] # Taiwan Strait and East China Sea
       - [33.0, 127.5, 46.0, 142.0] # Sea of Japan
       - [8.0, 121.5, 27.0, 145.0]  # Philippine Sea
+    gdelt_posture: true   # also count shows of force, alerts, mobilisation (exercises, buildups)
     highlight: [TW, PH, KP, KR, MM]
+
+  - id: latam
+    name: Latin America
+    camera: {lat: 14.0, lng: -76.0, altitude: 1.4}
+    # US operations in the Caribbean and eastern Pacific (boat strikes, Venezuela, Cuba),
+    # plus armed-group conflict in Colombia, Ecuador, Mexico, and Haiti.
+    iso2: [CU, VE, CO, EC, MX, HT, DO, NI, PA, HN, GT, SV, GY, TT, JM, PR]
+    fips: [CU, VE, CO, EC, MX, HA, DR, NU, PM, HO, GT, ES, GY, TD, JM, RQ]
+    sea:
+      - [9.0, -89.0, 23.5, -59.0]    # Caribbean Sea
+      - [-5.0, -100.0, 17.0, -77.0]  # eastern Pacific off Central America, Colombia, Ecuador
+    # GDELT only: skip ordinary crime; keep events with a military, rebel, or insurgent
+    # actor, or with the US involved.
+    gdelt_require: {types: [MIL, REB, INS], countries: [USA]}
+    gdelt_posture: true
+    highlight: [CU, VE, CO, EC, HT]

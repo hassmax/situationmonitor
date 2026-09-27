@@ -231,3 +231,20 @@ rss:
     kind: news
     group: google-news
     weight: 2
+  - id: gnews-latam-us
+    name: Google News (US military in Latin America)
+    url: https://news.google.com/rss/search?q=%28%22Southern+Command%22+OR+SOUTHCOM+OR+%22Southern+Spear%22+OR+Pentagon+OR+%22US+military%22+OR+%22U.S.+strike%22%29+%28Cuba+OR+Venezuela+OR+Caribbean+OR+Colombia+OR+Ecuador+OR+Mexico+OR+Haiti%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+    weight: 2
+  - id: gnews-latam-conflict
+    name: Google News (Cuba, Venezuela, Colombia, Ecuador, Haiti)
+    url: https://news.google.com/rss/search?q=%28Cuba+OR+Havana+OR+Venezuela+OR+Colombia+OR+ELN+OR+Ecuador+OR+Haiti%29+%28attack+OR+strike+OR+clashes+OR+troops+OR+military+OR+killed+OR+blockade%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+    weight: 2
+  - id: insightcrime
+    name: InSight Crime
+    url: https://insightcrime.org/feed/
+    kind: news
+    group: insightcrime

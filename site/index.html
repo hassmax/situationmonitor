@@ -17,7 +17,13 @@
 
   <div class="hud">
     <header class="brand panel">
-      <h1 class="wordmark">Global Situation Monitor</h1>
+      <div class="brand-row">
+        <h1 class="wordmark">Global Situation Monitor</h1>
+        <button class="icon-btn panels-toggle" id="panelsToggle" type="button" aria-pressed="false" title="Hide panels (H)">
+          <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1.5" y="2.5" width="13" height="11" rx="2"/><path d="M5.5 2.5v11M10.5 2.5v11"/></svg>
+          <span class="sr" id="panelsToggleLabel">Hide panels</span>
+        </button>
+      </div>
       <p class="freshness"><span class="beacon" id="beacon" aria-hidden="true"></span><span id="freshText">Loading data…</span></p>
       <p class="tally" id="tally"></p>
       <button class="filters-toggle" id="filtersToggle" type="button" aria-expanded="false" aria-controls="filters">Filters</button>
@@ -29,7 +35,7 @@
         <div class="seg" role="group" aria-label="Time window" id="windowSeg"></div>
       </section>
       <section>
-        <h2>Theaters</h2>
+        <h2 class="with-note">Theaters <span class="note">7-day tempo</span></h2>
         <ul class="rows" id="theaterList"></ul>
       </section>
       <section>
@@ -39,6 +45,7 @@
       <section>
         <h2>Layers</h2>
         <ul class="rows" id="layerList"></ul>
+        <p class="hint">Faint lines start from the nearest known launch area when a report doesn't name one.</p>
       </section>
       <section class="sources">
         <button class="linkish" id="sourcesToggle" type="button" aria-expanded="false" aria-controls="sourcesList">Sources</button>
@@ -49,11 +56,14 @@
     </aside>
 
     <main class="feed panel" id="feed" aria-label="Event feed">
-      <button class="sheet-handle" id="sheetHandle" type="button" aria-expanded="false" aria-controls="feed">
-        <span class="sr">Expand the event list</span>
+      <button class="sheet-handle" id="sheetHandle" type="button" aria-expanded="true" aria-controls="feedList">
+        <span class="sr" id="sheetLabel">Collapse the event list</span>
       </button>
       <div class="feed-head" id="feedHead">
-        <h2 id="feedTitle">Latest</h2>
+        <div class="feed-top" id="feedTop">
+          <h2 id="feedTitle">Latest</h2>
+          <span class="feed-count" id="feedCount"></span>
+        </div>
         <label class="search">
           <span class="sr">Search events</span>
           <input type="search" id="search" placeholder="Search places, sources, text" autocomplete="off">
@@ -62,7 +72,6 @@
       <ol class="feed-list" id="feedList" aria-labelledby="feedTitle"></ol>
       <article class="detail" id="detail" hidden aria-live="polite"></article>
     </main>
-
   </div>
 
   <div class="demo-banner" id="demoBanner" hidden>Demo data. None of these events are real.</div>

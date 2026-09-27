@@ -50,7 +50,7 @@
 },
 {
 "id": "horn",
-"name": "Sudan and the Horn of Africa",
+"name": "Sudan and Horn of Africa",
 "camera": {
 "lat": 11.0,
 "lng": 36.0,
@@ -66,7 +66,7 @@
 },
 {
 "id": "drc_sahel",
-"name": "Eastern DRC and the Sahel",
+"name": "Eastern DRC and Sahel",
 "camera": {
 "lat": 8.0,
 "lng": 10.0,
@@ -97,6 +97,22 @@
 "410",
 "104"
 ]
+},
+{
+"id": "latam",
+"name": "Latin America",
+"camera": {
+"lat": 14,
+"lng": -76,
+"altitude": 1.4
+},
+"highlight": [
+"192",
+"862",
+"170",
+"218",
+"332"
+]
 }
 ],
 "events": [
@@ -106,11 +122,10 @@
 "type": "territory",
 "summary": "Sample territorial change near Pokrovsk, used to preview the layout.",
 "place": "Pokrovsk",
-"country": null,
+"country": "UA",
 "lat": 48.28,
 "lon": 37.18,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -150,95 +165,9 @@
 ],
 "status": "corroborated",
 "sources_count": 3,
-"news_nearby": 4
-},
-{
-"id": "10f71961bd11",
-"theater": "ukraine",
-"type": "missile_drone",
-"summary": "Sample missile or drone attack near Kharkiv, used to preview the layout.",
-"place": "Kharkiv",
-"country": null,
-"lat": 49.99,
-"lon": 36.23,
-"approx": false,
-"origin": {
-"lat": 50.6,
-"lon": 36.6,
-"place": "Belgorod"
-},
-"severity": 3,
-"killed": null,
-"injured": null,
-"time": "2026-09-26T17:24:00Z",
-"updated": "2026-09-26T17:48:00Z",
-"reports": [
-{
-"source": "Sample OSINT source A",
-"platform": "bluesky",
-"kind": "osint",
-"side": null,
-"claim": "report",
-"url": "https://example.com/sample/1/0",
-"time": "2026-09-26T17:24:00Z",
-"summary": "Sample report of a missile or drone attack near Kharkiv. Not a real event."
-},
-{
-"source": "Sample news outlet B",
-"platform": "rss",
-"kind": "news",
-"side": null,
-"claim": "report",
-"url": "https://example.com/sample/1/1",
-"time": "2026-09-26T17:36:00Z",
-"summary": "Sample report of a missile or drone attack near Kharkiv. Not a real event."
-},
-{
-"source": "Sample official channel C",
-"platform": "telegram",
-"kind": "official",
-"side": "X",
-"claim": "official_claim",
-"url": "https://example.com/sample/1/2",
-"time": "2026-09-26T17:48:00Z",
-"summary": "Sample report of a missile or drone attack near Kharkiv. Not a real event."
-}
-],
-"status": "corroborated",
-"sources_count": 3,
-"news_nearby": 4
-},
-{
-"id": "db61277694fe",
-"theater": "ukraine",
-"type": "missile_drone",
-"summary": "Sample missile or drone attack near Zaporizhzhia, used to preview the layout.",
-"place": "Zaporizhzhia",
-"country": null,
-"lat": 47.84,
-"lon": 35.14,
-"approx": false,
-"origin": null,
-"severity": 2,
-"killed": null,
-"injured": null,
-"time": "2026-09-26T16:54:00Z",
-"updated": "2026-09-26T16:54:00Z",
-"reports": [
-{
-"source": "Sample OSINT source A",
-"platform": "bluesky",
-"kind": "osint",
-"side": null,
-"claim": "report",
-"url": "https://example.com/sample/2/0",
-"time": "2026-09-26T16:54:00Z",
-"summary": "Sample report of a missile or drone attack near Zaporizhzhia. Not a real event."
-}
-],
-"status": "unconfirmed",
-"sources_count": 1,
-"news_nearby": 0
+"news_nearby": 4,
+"attacker": null,
+"origins": []
 },
 {
 "id": "94fab99d6ca8",
@@ -246,11 +175,10 @@
 "type": "artillery",
 "summary": "Sample shelling near Kherson, used to preview the layout.",
 "place": "Kherson",
-"country": null,
+"country": "UA",
 "lat": 46.64,
 "lon": 32.61,
 "approx": false,
-"origin": null,
 "severity": 1,
 "killed": null,
 "injured": null,
@@ -280,7 +208,9 @@
 ],
 "status": "claimed",
 "sources_count": 2,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": null,
+"origins": []
 },
 {
 "id": "3fb55a726b74",
@@ -288,11 +218,10 @@
 "type": "ground",
 "summary": "Sample ground fighting near Kupiansk, used to preview the layout.",
 "place": "Kupiansk",
-"country": null,
+"country": "UA",
 "lat": 49.71,
 "lon": 37.61,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -332,7 +261,9 @@
 ],
 "status": "corroborated",
 "sources_count": 3,
-"news_nearby": 4
+"news_nearby": 4,
+"attacker": null,
+"origins": []
 },
 {
 "id": "e894c3e65814",
@@ -340,11 +271,10 @@
 "type": "airstrike",
 "summary": "Sample airstrike near Kostiantynivka, used to preview the layout.",
 "place": "Kostiantynivka",
-"country": null,
+"country": "UA",
 "lat": 48.53,
 "lon": 37.71,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -364,157 +294,9 @@
 ],
 "status": "unconfirmed",
 "sources_count": 1,
-"news_nearby": 0
-},
-{
-"id": "676c1112421b",
-"theater": "ukraine",
-"type": "missile_drone",
-"summary": "Sample missile or drone attack near Sumy, used to preview the layout.",
-"place": "Sumy",
-"country": null,
-"lat": 50.91,
-"lon": 34.8,
-"approx": false,
-"origin": null,
-"severity": 1,
-"killed": null,
-"injured": null,
-"time": "2026-09-26T09:00:00Z",
-"updated": "2026-09-26T09:12:00Z",
-"reports": [
-{
-"source": "Sample official channel C",
-"platform": "telegram",
-"kind": "official",
-"side": "X",
-"claim": "official_claim",
-"url": "https://example.com/sample/6/0",
-"time": "2026-09-26T09:00:00Z",
-"summary": "Sample report of a missile or drone attack near Sumy. Not a real event."
-},
-{
-"source": "Sample aligned blog D",
-"platform": "telegram",
-"kind": "partisan",
-"side": "X",
-"claim": "report",
-"url": "https://example.com/sample/6/1",
-"time": "2026-09-26T09:12:00Z",
-"summary": "Sample report of a missile or drone attack near Sumy. Not a real event."
-}
-],
-"status": "claimed",
-"sources_count": 2,
-"news_nearby": 0
-},
-{
-"id": "cc8895f54776",
-"theater": "ukraine",
-"type": "missile_drone",
-"summary": "Sample missile or drone attack near Odesa, used to preview the layout.",
-"place": "Odesa",
-"country": null,
-"lat": 46.48,
-"lon": 30.72,
-"approx": false,
-"origin": {
-"lat": 45.0,
-"lon": 34.0,
-"place": "Crimea"
-},
-"severity": 3,
-"killed": null,
-"injured": null,
-"time": "2026-09-24T21:00:00Z",
-"updated": "2026-09-24T21:24:00Z",
-"reports": [
-{
-"source": "Sample OSINT source A",
-"platform": "bluesky",
-"kind": "osint",
-"side": null,
-"claim": "report",
-"url": "https://example.com/sample/7/0",
-"time": "2026-09-24T21:00:00Z",
-"summary": "Sample report of a missile or drone attack near Odesa. Not a real event."
-},
-{
-"source": "Sample news outlet B",
-"platform": "rss",
-"kind": "news",
-"side": null,
-"claim": "report",
-"url": "https://example.com/sample/7/1",
-"time": "2026-09-24T21:12:00Z",
-"summary": "Sample report of a missile or drone attack near Odesa. Not a real event."
-},
-{
-"source": "Sample official channel C",
-"platform": "telegram",
-"kind": "official",
-"side": "X",
-"claim": "official_claim",
-"url": "https://example.com/sample/7/2",
-"time": "2026-09-24T21:24:00Z",
-"summary": "Sample report of a missile or drone attack near Odesa. Not a real event."
-}
-],
-"status": "corroborated",
-"sources_count": 3,
-"news_nearby": 4
-},
-{
-"id": "1f0bb119fc4f",
-"theater": "ukraine",
-"type": "air_defense",
-"summary": "Sample air-defense interception near Kyiv, used to preview the layout.",
-"place": "Kyiv",
-"country": null,
-"lat": 50.45,
-"lon": 30.52,
-"approx": false,
-"origin": null,
-"severity": 2,
-"killed": null,
-"injured": null,
-"time": "2026-09-26T17:42:00Z",
-"updated": "2026-09-26T18:06:00Z",
-"reports": [
-{
-"source": "Sample OSINT source A",
-"platform": "bluesky",
-"kind": "osint",
-"side": null,
-"claim": "report",
-"url": "https://example.com/sample/8/0",
-"time": "2026-09-26T17:42:00Z",
-"summary": "Sample report of a air-defense interception near Kyiv. Not a real event."
-},
-{
-"source": "Sample news outlet B",
-"platform": "rss",
-"kind": "news",
-"side": null,
-"claim": "report",
-"url": "https://example.com/sample/8/1",
-"time": "2026-09-26T17:54:00Z",
-"summary": "Sample report of a air-defense interception near Kyiv. Not a real event."
-},
-{
-"source": "Sample official channel C",
-"platform": "telegram",
-"kind": "official",
-"side": "X",
-"claim": "official_claim",
-"url": "https://example.com/sample/8/2",
-"time": "2026-09-26T18:06:00Z",
-"summary": "Sample report of a air-defense interception near Kyiv. Not a real event."
-}
-],
-"status": "corroborated",
-"sources_count": 3,
-"news_nearby": 4
+"news_nearby": 0,
+"attacker": null,
+"origins": []
 },
 {
 "id": "9f1c4df770ef",
@@ -522,11 +304,10 @@
 "type": "naval",
 "summary": "Sample naval incident near Novorossiysk, used to preview the layout.",
 "place": "Novorossiysk",
-"country": null,
+"country": "RU",
 "lat": 44.72,
 "lon": 37.77,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -546,7 +327,9 @@
 ],
 "status": "unconfirmed",
 "sources_count": 1,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": "UA",
+"origins": []
 },
 {
 "id": "4dfe34951f23",
@@ -554,11 +337,10 @@
 "type": "explosion",
 "summary": "Sample explosion near Bryansk, used to preview the layout.",
 "place": "Bryansk",
-"country": null,
+"country": "RU",
 "lat": 53.25,
 "lon": 34.37,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -588,7 +370,9 @@
 ],
 "status": "claimed",
 "sources_count": 2,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": "UA",
+"origins": []
 },
 {
 "id": "09e581c7eecc",
@@ -596,11 +380,10 @@
 "type": "airstrike",
 "summary": "Sample airstrike near Gaza City, used to preview the layout.",
 "place": "Gaza City",
-"country": null,
+"country": "PS",
 "lat": 31.5,
 "lon": 34.47,
 "approx": false,
-"origin": null,
 "severity": 3,
 "killed": null,
 "injured": null,
@@ -640,7 +423,9 @@
 ],
 "status": "corroborated",
 "sources_count": 3,
-"news_nearby": 4
+"news_nearby": 4,
+"attacker": "IL",
+"origins": []
 },
 {
 "id": "6249cd9d78a0",
@@ -648,11 +433,10 @@
 "type": "ground",
 "summary": "Sample ground fighting near Khan Younis, used to preview the layout.",
 "place": "Khan Younis",
-"country": null,
+"country": "PS",
 "lat": 31.34,
 "lon": 34.3,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -672,7 +456,9 @@
 ],
 "status": "unconfirmed",
 "sources_count": 1,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": null,
+"origins": []
 },
 {
 "id": "0e609817115e",
@@ -680,11 +466,10 @@
 "type": "airstrike",
 "summary": "Sample airstrike near Nabatieh, used to preview the layout.",
 "place": "Nabatieh",
-"country": null,
+"country": "LB",
 "lat": 33.38,
 "lon": 35.48,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -724,7 +509,9 @@
 ],
 "status": "corroborated",
 "sources_count": 3,
-"news_nearby": 4
+"news_nearby": 4,
+"attacker": "IL",
+"origins": []
 },
 {
 "id": "a2f9d9267058",
@@ -732,11 +519,10 @@
 "type": "airstrike",
 "summary": "Sample airstrike near Tyre, used to preview the layout.",
 "place": "Tyre",
-"country": null,
+"country": "LB",
 "lat": 33.27,
 "lon": 35.2,
 "approx": false,
-"origin": null,
 "severity": 1,
 "killed": null,
 "injured": null,
@@ -766,7 +552,9 @@
 ],
 "status": "claimed",
 "sources_count": 2,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": "IL",
+"origins": []
 },
 {
 "id": "34c69d36e34b",
@@ -774,15 +562,10 @@
 "type": "air_defense",
 "summary": "Sample air-defense interception near Riyadh, used to preview the layout.",
 "place": "Riyadh",
-"country": null,
+"country": "SA",
 "lat": 24.71,
 "lon": 46.68,
 "approx": false,
-"origin": {
-"lat": 15.37,
-"lon": 44.19,
-"place": "Sanaa"
-},
 "severity": 3,
 "killed": null,
 "injured": null,
@@ -822,7 +605,15 @@
 ],
 "status": "corroborated",
 "sources_count": 3,
-"news_nearby": 4
+"news_nearby": 4,
+"attacker": "YE",
+"origins": [
+{
+"place": "Sanaa",
+"lat": 15.37,
+"lon": 44.19
+}
+]
 },
 {
 "id": "ccea341778ae",
@@ -830,11 +621,10 @@
 "type": "airstrike",
 "summary": "Sample airstrike near Hodeidah, used to preview the layout.",
 "place": "Hodeidah",
-"country": null,
+"country": "YE",
 "lat": 14.8,
 "lon": 42.95,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -854,7 +644,9 @@
 ],
 "status": "unconfirmed",
 "sources_count": 1,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": "US",
+"origins": []
 },
 {
 "id": "0fb181ef6dd2",
@@ -866,7 +658,6 @@
 "lat": 26.6,
 "lon": 56.3,
 "approx": false,
-"origin": null,
 "severity": 3,
 "killed": null,
 "injured": null,
@@ -906,7 +697,9 @@
 ],
 "status": "corroborated",
 "sources_count": 3,
-"news_nearby": 4
+"news_nearby": 4,
+"attacker": null,
+"origins": []
 },
 {
 "id": "d08f57fcc00a",
@@ -914,11 +707,10 @@
 "type": "explosion",
 "summary": "Sample explosion near Isfahan, used to preview the layout.",
 "place": "Isfahan",
-"country": null,
+"country": "IR",
 "lat": 32.65,
 "lon": 51.67,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -938,7 +730,9 @@
 ],
 "status": "unconfirmed",
 "sources_count": 1,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": null,
+"origins": []
 },
 {
 "id": "e77bd0a462ed",
@@ -946,11 +740,10 @@
 "type": "artillery",
 "summary": "Sample shelling near El Fasher, used to preview the layout.",
 "place": "El Fasher",
-"country": null,
+"country": "SD",
 "lat": 13.63,
 "lon": 25.35,
 "approx": false,
-"origin": null,
 "severity": 3,
 "killed": null,
 "injured": null,
@@ -990,7 +783,9 @@
 ],
 "status": "corroborated",
 "sources_count": 3,
-"news_nearby": 4
+"news_nearby": 4,
+"attacker": null,
+"origins": []
 },
 {
 "id": "2648df878bc2",
@@ -998,11 +793,10 @@
 "type": "missile_drone",
 "summary": "Sample missile or drone attack near Khartoum, used to preview the layout.",
 "place": "Khartoum",
-"country": null,
+"country": "SD",
 "lat": 15.5,
 "lon": 32.56,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -1022,7 +816,9 @@
 ],
 "status": "unconfirmed",
 "sources_count": 1,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": null,
+"origins": []
 },
 {
 "id": "e4bda9facae1",
@@ -1030,11 +826,10 @@
 "type": "airstrike",
 "summary": "Sample airstrike near Mekelle, used to preview the layout.",
 "place": "Mekelle",
-"country": null,
+"country": "ET",
 "lat": 13.5,
 "lon": 39.47,
 "approx": false,
-"origin": null,
 "severity": 3,
 "killed": null,
 "injured": null,
@@ -1054,7 +849,9 @@
 ],
 "status": "unconfirmed",
 "sources_count": 1,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": null,
+"origins": []
 },
 {
 "id": "9bacb002a26f",
@@ -1062,11 +859,10 @@
 "type": "ground",
 "summary": "Sample ground fighting near Adigrat, used to preview the layout.",
 "place": "Adigrat",
-"country": null,
+"country": "ET",
 "lat": 14.28,
 "lon": 39.46,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -1096,7 +892,9 @@
 ],
 "status": "claimed",
 "sources_count": 2,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": null,
+"origins": []
 },
 {
 "id": "3bc1f40627c3",
@@ -1104,11 +902,10 @@
 "type": "missile_drone",
 "summary": "Sample missile or drone attack near Port Sudan, used to preview the layout.",
 "place": "Port Sudan",
-"country": null,
+"country": "SD",
 "lat": 19.62,
 "lon": 37.22,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -1148,7 +945,9 @@
 ],
 "status": "corroborated",
 "sources_count": 3,
-"news_nearby": 4
+"news_nearby": 4,
+"attacker": null,
+"origins": []
 },
 {
 "id": "98f02cd96032",
@@ -1156,11 +955,10 @@
 "type": "explosion",
 "summary": "Sample explosion near Mogadishu, used to preview the layout.",
 "place": "Mogadishu",
-"country": null,
+"country": "SO",
 "lat": 2.05,
 "lon": 45.32,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -1180,7 +978,9 @@
 ],
 "status": "unconfirmed",
 "sources_count": 1,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": null,
+"origins": []
 },
 {
 "id": "1d0722fb1f26",
@@ -1188,11 +988,10 @@
 "type": "ground",
 "summary": "Sample ground fighting near Goma, used to preview the layout.",
 "place": "Goma",
-"country": null,
+"country": "CD",
 "lat": -1.68,
 "lon": 29.22,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -1212,7 +1011,9 @@
 ],
 "status": "unconfirmed",
 "sources_count": 1,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": null,
+"origins": []
 },
 {
 "id": "1e5fd683d05b",
@@ -1220,11 +1021,10 @@
 "type": "ground",
 "summary": "Sample ground fighting near Uvira, used to preview the layout.",
 "place": "Uvira",
-"country": null,
+"country": "CD",
 "lat": -3.4,
 "lon": 29.14,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -1254,7 +1054,9 @@
 ],
 "status": "claimed",
 "sources_count": 2,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": null,
+"origins": []
 },
 {
 "id": "5ba0dcddb1c9",
@@ -1262,11 +1064,10 @@
 "type": "ground",
 "summary": "Sample ground fighting near Djibo, used to preview the layout.",
 "place": "Djibo",
-"country": null,
+"country": "BF",
 "lat": 14.1,
 "lon": -1.63,
 "approx": false,
-"origin": null,
 "severity": 3,
 "killed": null,
 "injured": null,
@@ -1286,7 +1087,9 @@
 ],
 "status": "unconfirmed",
 "sources_count": 1,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": null,
+"origins": []
 },
 {
 "id": "9f8b4c63eda4",
@@ -1294,11 +1097,10 @@
 "type": "airstrike",
 "summary": "Sample airstrike near Menaka, used to preview the layout.",
 "place": "Menaka",
-"country": null,
+"country": "ML",
 "lat": 15.92,
 "lon": 2.4,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -1328,7 +1130,9 @@
 ],
 "status": "claimed",
 "sources_count": 2,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": null,
+"origins": []
 },
 {
 "id": "97f10201a913",
@@ -1336,11 +1140,10 @@
 "type": "explosion",
 "summary": "Sample explosion near Maiduguri, used to preview the layout.",
 "place": "Maiduguri",
-"country": null,
+"country": "NG",
 "lat": 11.85,
 "lon": 13.16,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -1380,7 +1183,9 @@
 ],
 "status": "corroborated",
 "sources_count": 3,
-"news_nearby": 4
+"news_nearby": 4,
+"attacker": null,
+"origins": []
 },
 {
 "id": "ce1850eb12a0",
@@ -1388,11 +1193,10 @@
 "type": "deployment",
 "summary": "Sample deployment or exercise near Taiwan Strait, used to preview the layout.",
 "place": "Taiwan Strait",
-"country": null,
+"country": "TW",
 "lat": 24.4,
 "lon": 119.6,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -1432,7 +1236,9 @@
 ],
 "status": "corroborated",
 "sources_count": 3,
-"news_nearby": 4
+"news_nearby": 4,
+"attacker": null,
+"origins": []
 },
 {
 "id": "ef43231d7beb",
@@ -1440,11 +1246,10 @@
 "type": "naval",
 "summary": "Sample naval incident near Second Thomas Shoal, used to preview the layout.",
 "place": "Second Thomas Shoal",
-"country": null,
+"country": "PH",
 "lat": 9.73,
 "lon": 115.87,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -1484,7 +1289,9 @@
 ],
 "status": "corroborated",
 "sources_count": 3,
-"news_nearby": 4
+"news_nearby": 4,
+"attacker": null,
+"origins": []
 },
 {
 "id": "d56446d23f2c",
@@ -1492,11 +1299,10 @@
 "type": "naval",
 "summary": "Sample naval incident near Scarborough Shoal, used to preview the layout.",
 "place": "Scarborough Shoal",
-"country": null,
+"country": "PH",
 "lat": 15.15,
 "lon": 117.76,
 "approx": false,
-"origin": null,
 "severity": 1,
 "killed": null,
 "injured": null,
@@ -1526,7 +1332,9 @@
 ],
 "status": "claimed",
 "sources_count": 2,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": null,
+"origins": []
 },
 {
 "id": "c9b7095f7c26",
@@ -1538,7 +1346,6 @@
 "lat": 20.5,
 "lon": 131.0,
 "approx": false,
-"origin": null,
 "severity": 1,
 "killed": null,
 "injured": null,
@@ -1558,7 +1365,9 @@
 ],
 "status": "unconfirmed",
 "sources_count": 1,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": null,
+"origins": []
 },
 {
 "id": "d2055878c95b",
@@ -1566,11 +1375,10 @@
 "type": "airstrike",
 "summary": "Sample airstrike near Lashio, used to preview the layout.",
 "place": "Lashio",
-"country": null,
+"country": "MM",
 "lat": 22.93,
 "lon": 97.75,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -1590,7 +1398,9 @@
 ],
 "status": "unconfirmed",
 "sources_count": 1,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": null,
+"origins": []
 },
 {
 "id": "97dece23ebc3",
@@ -1598,11 +1408,10 @@
 "type": "deployment",
 "summary": "Sample deployment or exercise near Panmunjom, used to preview the layout.",
 "place": "Panmunjom",
-"country": null,
+"country": "KR",
 "lat": 37.95,
 "lon": 126.68,
 "approx": false,
-"origin": null,
 "severity": 1,
 "killed": null,
 "injured": null,
@@ -1632,7 +1441,9 @@
 ],
 "status": "claimed",
 "sources_count": 2,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": null,
+"origins": []
 },
 {
 "id": "demoextra1",
@@ -1640,11 +1451,10 @@
 "type": "diplomacy",
 "summary": "Sample defense-pact meeting near Riyadh, used to preview the layout.",
 "place": "Riyadh",
-"country": null,
+"country": "SA",
 "lat": 24.71,
 "lon": 46.68,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -1674,7 +1484,9 @@
 ],
 "status": "corroborated",
 "sources_count": 2,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": null,
+"origins": []
 },
 {
 "id": "demoextra2",
@@ -1682,11 +1494,10 @@
 "type": "incursion",
 "summary": "Sample airspace incursion near Rēzekne, used to preview the layout.",
 "place": "Rēzekne",
-"country": null,
+"country": "LV",
 "lat": 56.51,
 "lon": 27.33,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -1706,7 +1517,9 @@
 ],
 "status": "unconfirmed",
 "sources_count": 1,
-"news_nearby": 0
+"news_nearby": 0,
+"attacker": "RU",
+"origins": []
 },
 {
 "id": "demoextra3",
@@ -1714,11 +1527,10 @@
 "type": "hybrid",
 "summary": "Sample undersea cable damage near Gulf of Finland, used to preview the layout.",
 "place": "Gulf of Finland",
-"country": null,
+"country": "FI",
 "lat": 59.8,
 "lon": 25.5,
 "approx": false,
-"origin": null,
 "severity": 2,
 "killed": null,
 "injured": null,
@@ -1734,6 +1546,296 @@
 "url": "https://example.com/sample/extra3",
 "time": "2026-09-26T09:54:00Z",
 "summary": "Sample report of a undersea cable damage near Gulf of Finland. Not a real event."
+}
+],
+"status": "unconfirmed",
+"sources_count": 1,
+"news_nearby": 0,
+"attacker": null,
+"origins": []
+},
+{
+"id": "713163914c2c",
+"wave": true,
+"theater": "ukraine",
+"type": "missile_drone",
+"attacker": "RU",
+"country": "UA",
+"summary": "Sample: 142 drones and missiles launched overnight, 118 reported intercepted. Not a real event.",
+"place": "Kyiv",
+"lat": 50.45,
+"lon": 30.52,
+"approx": false,
+"origins": [
+{
+"place": "Kursk",
+"lat": 51.73,
+"lon": 36.19
+},
+{
+"place": "Primorsko-Akhtarsk",
+"lat": 46.05,
+"lon": 38.17
+},
+{
+"place": "Hvardiiske, Crimea",
+"lat": 45.12,
+"lon": 33.97
+}
+],
+"targets": [
+{
+"place": "Kyiv",
+"lat": 50.45,
+"lon": 30.52,
+"reports": 4,
+"severity": 3,
+"time": "2026-09-26T12:54:00Z",
+"killed": 2,
+"injured": null
+},
+{
+"place": "Kharkiv",
+"lat": 49.99,
+"lon": 36.23,
+"reports": 3,
+"severity": 2,
+"time": "2026-09-26T13:14:00Z",
+"killed": 1,
+"injured": null
+},
+{
+"place": "Odesa",
+"lat": 46.48,
+"lon": 30.72,
+"reports": 2,
+"severity": 2,
+"time": "2026-09-26T13:34:00Z",
+"killed": null,
+"injured": null
+},
+{
+"place": "Zaporizhzhia",
+"lat": 47.84,
+"lon": 35.14,
+"reports": 2,
+"severity": 2,
+"time": "2026-09-26T13:54:00Z",
+"killed": null,
+"injured": null
+},
+{
+"place": "Sumy",
+"lat": 50.91,
+"lon": 34.8,
+"reports": 1,
+"severity": 1,
+"time": "2026-09-26T14:14:00Z",
+"killed": null,
+"injured": null
+},
+{
+"place": "Lviv",
+"lat": 49.84,
+"lon": 24.03,
+"reports": 1,
+"severity": 2,
+"time": "2026-09-26T14:34:00Z",
+"killed": null,
+"injured": null
+},
+{
+"place": "Dnipro",
+"lat": 48.46,
+"lon": 35.05,
+"reports": 2,
+"severity": 2,
+"time": "2026-09-26T14:54:00Z",
+"killed": null,
+"injured": null
+},
+{
+"place": "Kremenchuk",
+"lat": 49.07,
+"lon": 33.42,
+"reports": 1,
+"severity": 1,
+"time": "2026-09-26T15:14:00Z",
+"killed": null,
+"injured": null
+}
+],
+"severity": 3,
+"killed": 3,
+"injured": null,
+"launched": 142,
+"intercepted": 118,
+"time": "2026-09-26T12:54:00Z",
+"updated": "2026-09-26T13:24:00Z",
+"reports": [
+{
+"source": "Sample official channel C",
+"platform": "telegram",
+"kind": "official",
+"side": "UA",
+"claim": "official_claim",
+"url": "https://example.com/sample/wave1/C",
+"time": "2026-09-26T12:54:00Z",
+"summary": "Sample report of drone and missile strikes, including Kyiv. Not a real event."
+},
+{
+"source": "Sample OSINT source A",
+"platform": "bluesky",
+"kind": "osint",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/wave1/A",
+"time": "2026-09-26T13:09:00Z",
+"summary": "Sample report of drone and missile strikes, including Kyiv. Not a real event."
+},
+{
+"source": "Sample news outlet B",
+"platform": "rss",
+"kind": "news",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/wave1/B",
+"time": "2026-09-26T13:24:00Z",
+"summary": "Sample report of drone and missile strikes, including Kyiv. Not a real event."
+}
+],
+"status": "corroborated",
+"sources_count": 3,
+"news_nearby": 3
+},
+{
+"id": "c771a94ddda4",
+"wave": true,
+"theater": "ukraine",
+"type": "missile_drone",
+"attacker": "UA",
+"country": "RU",
+"summary": "Sample drone attack: strikes reported in 3 places, including Ryazan. Not a real event.",
+"place": "Ryazan",
+"lat": 54.63,
+"lon": 39.74,
+"approx": false,
+"origins": [],
+"targets": [
+{
+"place": "Ryazan",
+"lat": 54.63,
+"lon": 39.74,
+"reports": 1,
+"severity": 2,
+"time": "2026-09-26T10:54:00Z",
+"killed": null,
+"injured": null
+},
+{
+"place": "Bryansk",
+"lat": 53.25,
+"lon": 34.37,
+"reports": 1,
+"severity": 1,
+"time": "2026-09-26T11:14:00Z",
+"killed": null,
+"injured": null
+},
+{
+"place": "Belgorod",
+"lat": 50.6,
+"lon": 36.6,
+"reports": 1,
+"severity": 1,
+"time": "2026-09-26T11:34:00Z",
+"killed": null,
+"injured": null
+}
+],
+"severity": 2,
+"killed": null,
+"injured": null,
+"launched": null,
+"intercepted": null,
+"time": "2026-09-26T10:54:00Z",
+"updated": "2026-09-26T10:54:00Z",
+"reports": [
+{
+"source": "Sample official channel C",
+"platform": "telegram",
+"kind": "official",
+"side": "RU",
+"claim": "official_claim",
+"url": "https://example.com/sample/wave2/C",
+"time": "2026-09-26T10:54:00Z",
+"summary": "Sample report of drone and missile strikes, including Ryazan. Not a real event."
+}
+],
+"status": "claimed",
+"sources_count": 1,
+"news_nearby": 3
+},
+{
+"id": "demolatam1",
+"theater": "latam",
+"type": "deployment",
+"summary": "Sample reported military planning near Havana, used to preview the layout.",
+"place": "Havana",
+"country": "CU",
+"attacker": null,
+"lat": 23.11,
+"lon": -82.37,
+"approx": false,
+"origins": [],
+"severity": 2,
+"killed": null,
+"injured": null,
+"time": "2026-09-26T13:54:00Z",
+"updated": "2026-09-26T13:54:00Z",
+"reports": [
+{
+"source": "Sample news outlet B",
+"platform": "rss",
+"kind": "news",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/latam1",
+"time": "2026-09-26T13:54:00Z",
+"summary": "Sample report of a reported military planning near Havana. Not a real event."
+}
+],
+"status": "unconfirmed",
+"sources_count": 1,
+"news_nearby": 0
+},
+{
+"id": "demolatam2",
+"theater": "latam",
+"type": "airstrike",
+"summary": "Sample strike on a boat near Caribbean Sea, used to preview the layout.",
+"place": "Caribbean Sea",
+"country": "VE",
+"attacker": "US",
+"lat": 12.4,
+"lon": -66.8,
+"approx": false,
+"origins": [],
+"severity": 2,
+"killed": null,
+"injured": null,
+"time": "2026-09-26T07:54:00Z",
+"updated": "2026-09-26T07:54:00Z",
+"reports": [
+{
+"source": "Sample news outlet B",
+"platform": "rss",
+"kind": "news",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/latam2",
+"time": "2026-09-26T07:54:00Z",
+"summary": "Sample report of a strike on a boat near Caribbean Sea. Not a real event."
 }
 ],
 "status": "unconfirmed",

@@ -38,7 +38,7 @@ EVENT_TYPES = {
 
 SYSTEM_PROMPT = """You turn raw posts from OSINT accounts, official military channels, and news feeds into structured records for a live armed-conflict map. Reply with one JSON object and nothing else.
 
-For every input item (identified by "i"), decide whether it reports a specific, recent, concrete development in an armed conflict or a notable military action. Relevant: strikes, attacks, shelling, battles, territorial gains or losses, air-defense interceptions, missile or drone launches, naval or air incidents, significant troop deployments or military exercises, casualty reports tied to a specific attack, and hybrid-warfare incidents (sabotage, arson, cable or pipeline damage, GPS jamming, airspace or border violations, drone incursions) when a state is blamed or suspected. Arrests or charges count when they reveal a specific incident or plot. Also relevant: major diplomatic developments that bear on these conflicts, such as ceasefire or peace talks, signed agreements, summits between parties or mediators, alliance or defense-pact meetings and invocations (for example NATO Article 4 consultations or meetings under the Saudi-Pakistan-Turkey Mecca defense pact), and UN Security Council votes. Not relevant: opinion, analysis with no new event, fundraising, memes, anniversaries, domestic politics, routine condemnations or statements of concern, calls or visits with no stated outcome, and items that fit none of the theaters below.
+For every input item (identified by "i"), decide whether it reports a specific, recent, concrete development in an armed conflict or a notable military action. Relevant: strikes, attacks, shelling, battles, territorial gains or losses, air-defense interceptions, missile or drone launches, naval or air incidents, significant troop deployments or military exercises, casualty reports tied to a specific attack, and hybrid-warfare incidents (sabotage, arson, cable or pipeline damage, GPS jamming, airspace or border violations, drone incursions) when a state is blamed or suspected. Arrests or charges count when they reveal a specific incident or plot. Credible reports of preparations for military action also count (units ordered or put on notice, operational planning reported by officials, force buildups), typed as deployment. Also relevant: major diplomatic developments that bear on these conflicts, such as ceasefire or peace talks, signed agreements, summits between parties or mediators, alliance or defense-pact meetings and invocations (for example NATO Article 4 consultations or meetings under the Saudi-Pakistan-Turkey Mecca defense pact), and UN Security Council votes. Not relevant: opinion, analysis with no new event, fundraising, memes, anniversaries, domestic politics, routine condemnations or statements of concern, calls or visits with no stated outcome, and items that fit none of the theaters below.
 
 Theater ids:
 - ukraine: Russia-Ukraine war, including strikes inside Russia or Belarus and the Black Sea
@@ -47,6 +47,7 @@ Theater ids:
 - horn: Sudan, South Sudan, Ethiopia, Eritrea, Somalia, Djibouti
 - drc_sahel: eastern DR Congo, Rwanda, Burundi, Uganda border areas, Mali, Burkina Faso, Niger, Nigeria, Chad, Mauritania
 - indopac: China, Taiwan, Japan, the Koreas, the Philippines, the South and East China Seas, Vietnam, Myanmar, Thailand, Cambodia, India, Pakistan
+- latam: Latin America and the Caribbean: Cuba, Venezuela, Colombia, Ecuador, Mexico, Central America, Haiti, Guyana, the Caribbean Sea and the eastern Pacific, including US military operations there (strikes on boats, strikes on cartel or armed-group targets, deployments, planning for action against Cuba or Venezuela) and armed-group violence with political or military significance. Ordinary crime is not relevant.
 
 Event types:
 {types}
@@ -54,7 +55,7 @@ Event types:
 Output: {{"events": [one object per input item, in any order]}}
 Irrelevant item: {{"i": <n>, "relevant": false}}
 Relevant item:
-{{"i": <n>, "relevant": true, "type": "<event type id>", "summary": "<max 25 words>", "place": "<most specific place named, English spelling>" or null, "admin1": "<province, oblast, or state>" or null, "country": "<ISO 3166-1 alpha-2>" or null, "lat": <number> or null, "lon": <number> or null, "origin_place": "<launch or firing location if the item states it>" or null, "origin_lat": <number> or null, "origin_lon": <number> or null, "theater": "<theater id>", "severity": <1, 2, or 3>, "claim": "report" or "official_claim", "killed": <int> or null, "injured": <int> or null}}
+{{"i": <n>, "relevant": true, "type": "<event type id>", "summary": "<max 25 words>", "place": "<most specific place named, English spelling>" or null, "admin1": "<province, oblast, or state>" or null, "country": "<ISO 3166-1 alpha-2>" or null, "lat": <number> or null, "lon": <number> or null, "attacker": "<ISO alpha-2 of the country whose forces carried it out>" or null, "origins": [{{"place": "<launch or firing area named in the item>", "lat": <number>, "lon": <number>}}], "launched": <int> or null, "intercepted": <int> or null, "theater": "<theater id>", "severity": <1, 2, or 3>, "claim": "report" or "official_claim", "killed": <int> or null, "injured": <int> or null}}
 
 Rules:
 - Write the summary yourself in plain, neutral English. Translate non-English items. Do not copy sentences from the item.
@@ -63,6 +64,10 @@ Rules:
 - Never add facts that are not in the item. Unknown casualty numbers are null.
 - lat/lon: your best estimate for the named place; null if you cannot place it at least at city or district level.
 - severity 3 = major (10 or more killed, strike on a capital or critical infrastructure, large territorial change, direct combat between major powers, attack with dozens of missiles or drones, a ceasefire or peace deal signed or collapsing, an alliance invoked); 2 = notable (including high-level talks or emergency alliance meetings); 1 = minor or local.
+- attacker: the country whose forces carried out a strike, launch, raid, or incursion, when the item states or clearly implies it ("Russian drones" = RU, "Ukrainian drones hit a refinery" = UA, Houthi missiles = YE, Hezbollah rockets = LB, Iranian missiles = IR). For interceptions, the side whose weapons were intercepted. Otherwise null.
+- origins: launch or firing areas the item actually names (for example "launched from Kursk and Primorsko-Akhtarsk"), at most 6, with your coordinate estimate for each. Use [] when none are named. Never guess a launch site.
+- launched / intercepted: totals for a mass air attack when the item gives them ("Russia launched 120 drones, 98 were shot down" = 120 / 98). Otherwise null.
+- For preparations or buildups aimed at a country, place the event in that country (its capital if nothing more specific), and say in the summary that it is planning or preparation, not action.
 - For diplomacy, place the event where the meeting or signing happened; if no place is given, use the capital of the main party. Use the theater of the conflict it concerns, even if the meeting is elsewhere.
 - claim = "official_claim" when the item is a government, military, or armed-group statement about its own actions or results; otherwise "report".
 """.format(types="\n".join(f"- {k}: {v}" for k, v in EVENT_TYPES.items()))
@@ -78,7 +83,9 @@ _EN = (r"air ?strikes?|strikes?|struck|missiles?|drones?|uavs?|shahed|shell(?:in
        r"border guards?|provocations?|shadow fleet|hybrid|cyber ?attacks?|balloons?|espionage|spies|spy|"
        r"talks|negotiat(?:e|es|ed|ing|ions?)|agreements?|accords?|summits?|mediat(?:e|ed|or|ors|ion)|envoys?|"
        r"peace|pact|treaty|security council|article 4|article 5|foreign ministers?|defen[cs]e ministers?|"
-       r"chiefs of staff|delegations?")
+       r"chiefs of staff|delegations?|military|pentagon|southcom|southern command|deploy(?:s|ed|ing|ment|ments)?|"
+       r"build-?up|mobili[sz](?:e|ed|ation)|on notice|cartels?|guerrillas?|eln|farc|gangs?|"
+       r"ataques?|bombardeos?|enfrentamientos?|militares|ej[eé]rcito|muertos|fuerzas armadas")
 CONFLICT_RE = re.compile(
     rf"\b(?:{_EN})\b"
     r"|удар|обстр|ракет|дрон|бпла|шахед|атак|вибух|взрыв|штурм|наступ|звільн|освобо|ппо|пво|загибл|погиб|"
@@ -318,6 +325,18 @@ def _clean_record(obj: dict, item: dict) -> dict | None:
     etype = "diplomacy" if etype == "ceasefire" else etype
     etype = etype if etype in EVENT_TYPES else "explosion"
     country = str(obj.get("country") or "").upper().strip()
+    attacker = str(obj.get("attacker") or "").upper().strip()
+    origins = []
+    raw_origins = obj.get("origins") if isinstance(obj.get("origins"), list) else []
+    if not raw_origins and obj.get("origin_lat") is not None:  # older single-origin shape
+        raw_origins = [{"place": obj.get("origin_place"), "lat": obj.get("origin_lat"), "lon": obj.get("origin_lon")}]
+    for o in raw_origins[:6]:
+        if not isinstance(o, dict):
+            continue
+        olat, olon = _num(o.get("lat"), -90, 90), _num(o.get("lon"), -180, 180)
+        if olat is not None and olon is not None:
+            origins.append({"place": (str(o.get("place")).strip()[:80] if o.get("place") else None),
+                            "lat": round(olat, 3), "lon": round(olon, 3)})
     try:
         severity = min(3, max(1, int(obj.get("severity") or 1)))
     except (TypeError, ValueError):
@@ -330,9 +349,10 @@ def _clean_record(obj: dict, item: dict) -> dict | None:
         "country": country if re.fullmatch(r"[A-Z]{2}", country) else None,
         "lat": _num(obj.get("lat"), -90, 90),
         "lon": _num(obj.get("lon"), -180, 180),
-        "origin_place": (str(obj["origin_place"]).strip()[:120] if obj.get("origin_place") else None),
-        "origin_lat": _num(obj.get("origin_lat"), -90, 90),
-        "origin_lon": _num(obj.get("origin_lon"), -180, 180),
+        "origins": origins,
+        "attacker": attacker if re.fullmatch(r"[A-Z]{2}", attacker) else None,
+        "launched": _int_or_none(obj.get("launched")),
+        "intercepted": _int_or_none(obj.get("intercepted")),
         "theater": str(obj.get("theater") or "").strip(),
         "severity": severity,
         "claim": "official_claim" if obj.get("claim") == "official_claim" else "report",
