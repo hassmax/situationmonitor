@@ -1,0 +1,50 @@
+# Telegram alerts: the update job sends a message when one of the rules below matches.
+# It needs two repository secrets, TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID (see README).
+# Without them, alerts are skipped and the run log says so.
+#
+# The same thing is never alerted twice. An event is alerted again only if it later matches a
+# rule it did not match before (for example, an attack wave that grows past 100 launched).
+# The first time alerts run, everything already on the map counts as seen, and the only
+# message is "Alerts are on".
+
+# Theaters to alert on: "all", or a list of ids from theaters.yaml, for example
+# [ukraine, nato_east, mideast]. Carrier alerts are not filtered by theater.
+theaters: all
+
+# Hold alerts during these UTC hours and send them afterwards. null = off.
+# Example: {start: 22, end: 7} holds alerts from 22:00 to 07:00 UTC.
+quiet_hours: null
+
+# If more alerts than this come due in one run, they are sent as one digest message instead.
+max_messages_per_run: 8
+
+rules:
+  # A major event (severity 3) that is corroborated: two or more independent sources, at least
+  # one not aligned with a party, or sources from opposing sides that agree.
+  major_corroborated:
+    enabled: true
+
+  # A large drone and missile attack wave: this many launched, or this many locations hit.
+  attack_wave:
+    enabled: true
+    min_launched: 100
+    min_locations: 8
+
+  # A US aircraft carrier departs, starts heading to a stated destination, or moves at least
+  # this far between two reported positions.
+  carrier:
+    enabled: true
+    min_move_km: 500
+
+  # A new air or sea bridge: at least this many reported deliveries on one supplier-to-recipient
+  # route within the window. Alerted when the route first qualifies, and again only if it
+  # lapses and later restarts.
+  supply_bridge:
+    enabled: true
+    min_deliveries: 3
+    window_hours: 72
+
+  # Any new legal step: an Article 51 letter, a War Powers report, a Security Council
+  # resolution, or an ICJ or ICC action.
+  legal:
+    enabled: true

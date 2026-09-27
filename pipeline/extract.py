@@ -156,12 +156,19 @@ def build_queue(pending: list[dict], fresh: list[dict], now: datetime, settings:
     return queue[: settings["pending_max"]]
 
 
-def calls_allowed(state: dict, settings: dict, now: datetime) -> int:
+def calls_remaining(state: dict, settings: dict, now: datetime) -> int:
+    """Model calls left today under the daily budget (all model use shares this one counter)."""
     day = now.strftime("%Y-%m-%d")
     usage = state.setdefault("llm_calls", {"date": day, "count": 0})
     if usage.get("date") != day:
         usage.update(date=day, count=0)
-    remaining = int(settings["daily_llm_calls"]) - int(usage["count"])
+    return int(settings["daily_llm_calls"]) - int(usage["count"])
+
+
+def calls_allowed(state: dict, settings: dict, now: datetime, reserve: int = 0) -> int:
+    """Calls this run may make, spreading what is left over the day's remaining runs.
+    `reserve` calls are held back (extraction leaves room for the situation brief)."""
+    remaining = calls_remaining(state, settings, now) - reserve
     if remaining <= 0:
         return 0
     minutes_left = 24 * 60 - (now.hour * 60 + now.minute)
@@ -470,7 +477,7 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
         if not token:
             log("[extract] LLM_API_KEY is not set; add the GEMINI_API_KEY repository secret (see README)")
         return [], queue, 0, []
-    allowed = calls_allowed(state, settings, now)
+    allowed = calls_allowed(state, settings, now, reserve=int(settings.get("extraction_reserve", 30)))
     batches = make_batches(queue, settings)
     log(f"[extract] queue={len(queue)} batches={len(batches)} allowed_calls={allowed}")
     if not allowed or not batches:

@@ -10,6 +10,7 @@ Add --no-llm to test fetching only.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from datetime import timedelta
@@ -17,10 +18,15 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import alerts  # noqa: E402
+import archive  # noqa: E402
+import brief  # noqa: E402
 import config as config_mod  # noqa: E402
+import corrections  # noqa: E402
 import extract  # noqa: E402
 import fleet  # noqa: E402
 import geo  # noqa: E402
+import hunter  # noqa: E402
 import merge  # noqa: E402
 import recency  # noqa: E402
 from common import hours_since, http_session, iso, load_json, log, now, save_json  # noqa: E402
@@ -79,6 +85,9 @@ def main() -> int:
     # Events taken off the map by hand (pipeline/config/removed.yaml).
     events = [e for e in events if e.get("id") not in cfg.removed]
     cells: list[dict] = [c for c in stored.get("cells", []) if c.get("theater") in cfg.theater_ids]
+    # Corrections made by hand (pipeline/config/corrections.yaml), applied every run.
+    fixes = corrections.load(config_mod.CONFIG_DIR / "corrections.yaml")
+    hidden = corrections.hidden_ids(fixes)
 
     session = http_session()
     health: dict = state["health"]
@@ -117,6 +126,12 @@ def main() -> int:
         if extract.is_candidate(it):
             seen[it["id"]] = int(t0.timestamp())
             fresh.append(it)
+    # Corroboration hunter: targeted searches for important single-source events. No model calls;
+    # the results join the normal queue ahead of everything else (weight 4).
+    for it in hunter.run([e for e in events if e["id"] not in hidden], state, session, t0):
+        if it["id"] not in seen and extract.is_candidate(it):
+            seen[it["id"]] = int(t0.timestamp())
+            fresh.append(it)
     log(f"[filter] {len(fresh)} new candidates")
 
     # 3. Extract with the model (budgeted); the rest waits in the queue
@@ -152,18 +167,33 @@ def main() -> int:
     geocoder = geo.Geocoder(state["geocache"], session, settings["geocode_per_run"])
     candidates = [c for c in (geo.place_record(r, geocoder, cfg.theaters) for r in records) if c]
     log(f"[geo] placed {len(candidates)}/{len(records)} ({geocoder.calls} lookups)")
+    # Reports of hidden events, and dropped reports, never create or join an event again.
+    blocked = corrections.blocked_urls(events, fixes)
+    candidates = [c for c in candidates if c["report"]["url"] not in blocked]
     # One-time repair of diplomacy events that merged unrelated talks (see merge.split_mixed_talks).
     if not args.no_llm:
         events = merge.split_mixed_talks(events, state, extract.ask_json, settings, t0)
     known = {e["id"] for e in events}
     events = merge.merge(events, candidates)
     events = merge.prune(events, t0, settings["event_retention_days"], settings["max_events"])
+    events = corrections.drop_reports(events, fixes)  # before scoring, so confidence is recomputed
     merge.apply_status(events, cells)
     # Old stories that arrived with a fresh date are dropped (see recency.py).
     if not args.no_llm:
         events = recency.check(events, {e["id"] for e in events} - known, session, extract.ask_json, state, settings, t0)
 
-    # 7. Housekeeping
+    # 7. Situation brief: at most one model call an hour, from the same daily budget
+    # Hidden events are left out and edits applied; everything below uses this published list.
+    published = corrections.publish([merge.public_event(e) for e in events], fixes, extract.EVENT_TYPES)
+    if not args.no_llm:
+        brief.update(state, published, {t["id"]: t["name"] for t in cfg.theaters}, settings, t0,
+                     extract.ask_json, extract.calls_remaining(state, settings, t0))
+
+    # 8. Telegram alerts (skipped unless TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set)
+    alerts.run(state, published, fleet.public(state, t0), cfg.alerts, {t["id"]: t["name"] for t in cfg.theaters},
+               t0, os.environ)
+
+    # 9. Housekeeping
     cutoff = int((t0 - timedelta(days=8)).timestamp())
     state["seen"] = {k: v for k, v in seen.items() if v >= cutoff}
     configured = {f"bsky:{s['handle'].lstrip('@')}" for s in cfg.sources["bluesky"]}
@@ -177,13 +207,23 @@ def main() -> int:
         "queue": len(leftover),
     }
 
-    # 8. Write
+    # 10. Archive on the data branch: one file per day, rewritten only when that day changed
+    taken_down = {str(i): None for i in cfg.removed}
+    taken_down.update({e["id"]: archive._day(e) for e in events if e["id"] in hidden})
+    for d in state.get("dropped_as_old", []):
+        if d.get("event"):
+            taken_down[d["event"]["id"]] = archive._day(d["event"])
+    written = archive.update(state_dir, published, taken_down, fleet.public(state, t0), t0)
+    log(f"[archive] {written} files updated")
+
+    # 11. Write
     save_json(state_dir / "state.json", state)
     save_json(state_dir / "events.json", {"events": events, "cells": cells})
     public = {
         "generated_at": iso(t0),
         "theaters": theaters_meta(cfg.theaters),
-        "events": [merge.public_event(e) for e in events],
+        "events": published,
+        "brief": state.get("brief"),
         "heat": public_cells(cells),
         "fleet": fleet.public(state, t0),
         "fleet_meta": {k: (state.get("fleet_meta") or {}).get(k) for k in ("tracker_time", "tracker_url")},

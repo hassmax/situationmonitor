@@ -27,6 +27,33 @@ The pipeline reads public channels using your own Telegram account.
 
 The session string works like a password to your Telegram account. It is stored as an encrypted GitHub secret and never written to the site or the data branch, but consider using a secondary Telegram account. You will see an active session in Telegram's settings that connects from GitHub's servers. Revoking it there (or deleting the secret) switches Telegram off; the rest keeps working.
 
+### Telegram alerts (optional)
+
+The update job can message you on Telegram when something important happens. This uses a bot, which is separate from the Telegram account above.
+
+1. In Telegram, open a chat with **@BotFather**, send `/newbot`, and follow the prompts (any name; the username must end in `bot`). BotFather replies with a **token** like `123456789:AAH...`. Keep it private.
+2. Open a chat with your new bot and send it any message (for example "hi"). To get alerts in a group or channel instead, add the bot there (as an admin, for a channel) and post a message.
+3. In a browser, open `https://api.telegram.org/bot<TOKEN>/getUpdates`, with your token in place of `<TOKEN>`. Find `"chat":{"id":` in the page: that number is your **chat id** (group and channel ids start with `-`).
+4. In the repo: Settings → Secrets and variables → Actions → New repository secret. Add `TELEGRAM_BOT_TOKEN` (the token) and `TELEGRAM_CHAT_ID` (the chat id).
+5. Optional: on the Variables tab of the same page, add `DASHBOARD_URL` if the dashboard is not at `https://<owner>.github.io/<repo>/`.
+
+On the next run, the bot sends a single "Alerts are on" message. Everything already on the map counts as seen, so there is no backlog. After that, you get a message when a new event matches a rule in `pipeline/config/alerts.yaml`:
+
+- a severity-3 event that is corroborated, in any theater;
+- an attack wave with 100+ reported launched, or 8+ locations;
+- a US aircraft carrier that departs, starts heading to a stated destination, or moves 500+ km;
+- a new air or sea bridge: 3+ reported deliveries on one supplier-to-recipient route within 72 hours;
+- any new legal step (Article 51 letter, War Powers report, Security Council resolution, ICJ or ICC action).
+
+Each message says what happened, where, the confidence label and number of sources, and links to the event on the dashboard. You never get the same alert twice; an event alerts again only if it later matches a rule it did not match before (a wave that grows past 100 launched, say). If more than 8 alerts come due at once, you get one digest instead. To change a threshold, limit alerts to some theaters, or set quiet hours, edit `pipeline/config/alerts.yaml`; every setting there has a comment. For example, to hear only about the Middle East and Ukraine, and nothing between 22:00 and 07:00 UTC:
+
+```yaml
+theaters: [mideast, ukraine]
+quiet_hours: {start: 22, end: 7}
+```
+
+To switch alerts off, delete either secret.
+
 ## How it works
 
 ```
@@ -68,14 +95,35 @@ Everything is on one globe. The legend at the top of the left panel explains eve
 
 **About GDELT.** GDELT is a free database that reads news sites worldwide and logs each report of violence with a location, every 15 minutes. It is not drawn on the map. It is used for one thing: when three or more separate outlets report violence near a place where only one source has posted, that report is upgraded to corroborated. Set `gdelt: false` in `sources.yaml` to turn it off.
 
+**Looking for corroboration.** Important events (severity 2 or 3) from the last 12 hours that still rest on a single source or one side's claim get a targeted Google News search: the place name plus words for that kind of event (for a naval incident near Hormuz, `"Strait of Hormuz" (ship OR vessel OR tanker)`), limited to the last day. Up to 8 events a run, each searched at most twice and at least 3 hours apart. The results go through the same extraction, merging, and confidence rules as everything else, so they upgrade an event only if they really describe the same incident. They count as one "Google News" source, however many results turn up.
+
+**What changed in the last 6 hours.** A short brief sits at the top of the event list. It is machine-written, at most once an hour and only when events changed, from the dashboard's own events of the last 6 hours and nothing else: no outside knowledge, no predictions. Every line cites the events it rests on (click a place name to open one), keeps the confidence explicit ("a single-source report says…", "Russia's MoD claims…"), and lines citing events that don't exist are thrown out. "By theater" expands one line per theater. The brief ignores the time and theater filters. If the model is unavailable, the previous brief stays, with the time it was written.
+
 **Using it.** Click any marker, carrier, or route for details and sources. **Key developments** (severe and corroborated) are pinned at the top of the feed. The small bar charts next to each theater show events per day over the past week. Press **H** to hide the panels, **/** to search, **Esc** to go back. On phones, drag or tap the bar at the top of the event list to collapse or expand it.
 
 ## Customizing
 
 - **Sources:** `pipeline/config/sources.yaml`. The `outlets` list there says how Google News results from each outlet count: tier 1 for established outlets (processed first and preferred for headline summaries), tier 2 for other known outlets, and a `side` for state or partisan media. Each source has a `kind` and optionally a `side`; that is what drives the confidence colors, so label partisan and official channels honestly. The dashboard's Sources panel shows which ones are failing. The starter lists are thinnest for the Middle East, Africa, and the Indo-Pacific.
 - **Theaters:** `pipeline/config/theaters.yaml` (countries, map boxes, camera positions). If you add or rename a theater, update the theater list in the prompt in `pipeline/extract.py` too.
-- **Removing a wrong event:** add its id to `pipeline/config/removed.yaml` with a short note on why. The id is the part after `#` in the page address when the event is open. The next update takes it off the map.
-- **Model, provider, and budget:** the `settings` block at the top of `sources.yaml`. Any OpenAI-compatible provider works (Groq, OpenRouter, Mistral): change `llm_url` and `llm_models` and put that provider's key in the `GEMINI_API_KEY` secret.
+- **Corrections:** `pipeline/config/corrections.yaml`. Every event's id is shown at the bottom of its detail view (also the part after `#` in the page address). Each entry needs the id and a short `note`, and does one of three things:
+
+  ```yaml
+  corrections:
+    - id: 74974a38ada6
+      hide: true
+      note: Old news. The frigate Dena was sunk on 4 March 2026.
+
+    - id: 3fb55a726b74
+      edit: {place: Kupiansk, lat: 49.71, lon: 37.62}
+      note: The model placed this in the wrong town.
+
+    - id: 5b0f6f6736f9
+      drop_report: https://news.google.com/rss/articles/CBMi...
+      note: This article is about a different meeting.
+  ```
+
+  `hide` takes the event off the dashboard, the brief, alerts, and the archive, and its reports can never bring it back. `edit` can change `summary`, `place`, `lat`, `lon`, `type`, and `severity` (1 to 3); the event then shows a small "Corrected" label with your note. `drop_report` removes one report (copy its "Open the original post" link) and recomputes the event's confidence without it. Hides and edits are undone by deleting the entry. Commit the file and the next update applies it. (The older `removed.yaml` still works, but new removals belong in `corrections.yaml`.)
+- **Model, provider, and budget:** the `settings` block at the top of `sources.yaml`. Every model call counts against `daily_llm_calls` (400). Extraction stops when fewer than `extraction_reserve` (30) calls are left for the day, and the brief is skipped when fewer than `brief_min_calls` (5) are left. Any OpenAI-compatible provider works (Groq, OpenRouter, Mistral): change `llm_url` and `llm_models` and put that provider's key in the `GEMINI_API_KEY` secret.
 - **Look:** `site/styles.css` and `site/app.js`. Pushing changes to `site/` redeploys immediately.
 
 ## Run it locally
@@ -93,6 +141,15 @@ Don't commit `site/data/events.json`; the workflow generates it on every run.
 ## Backfill
 
 Runs only look at posts from the last 36 hours. To pull in something older (after adding a source, or when the dashboard was down), go to Actions → Update conflict data → Run workflow, and enter a number of days (up to 14) in "Backfill". Older posts are then worked through over the next few runs, within the free model quota, and appear at the time the events happened. Articles that only recap older news are still skipped.
+
+## History
+
+From the day this feature was added, every run also keeps a permanent archive on the `data` branch, in an `archive/` folder:
+
+- `archive/2026-09-27.json` (one file per UTC day): that day's published events, by when they happened. Events stay here after they drop off the dashboard's 7-day view. Events taken down (hidden by a correction, or removed as old news) are taken out of the archive too.
+- `archive/fleet/2026-09-27.json`: each day's latest aircraft carrier positions.
+
+History starts from the day this merged; nothing earlier was recorded. There is no page for browsing it yet, but you can open the files on GitHub (switch the branch selector to `data`).
 
 ## Limits worth knowing
 

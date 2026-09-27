@@ -263,7 +263,13 @@
 "sources_count": 3,
 "news_nearby": 4,
 "attacker": null,
-"origins": []
+"origins": [],
+"corrected": [
+{
+"note": "Sample correction: the model placed this in the wrong town. Not real.",
+"change": "Edited place, lat, lon"
+}
+]
 },
 {
 "id": "e894c3e65814",
@@ -4635,5 +4641,64 @@
 "fleet_meta": {
 "tracker_time": "2026-09-20T21:54:00Z",
 "tracker_url": "https://example.com/sample/fleet"
+},
+"brief": {
+"generated_at": "2026-09-26T17:40:00Z",
+"window_hours": 6,
+"bullets": [
+{
+"text": "Sample: a corroborated overnight drone and missile wave on Ukraine, with 142 reported launched and 118 reported intercepted. Not real.",
+"ids": [
+"713163914c2c"
+]
+},
+{
+"text": "Sample: a corroborated air-defense interception near Riyadh and a corroborated naval incident near the Strait of Hormuz. Not real.",
+"ids": [
+"34c69d36e34b",
+"0fb181ef6dd2"
+]
+},
+{
+"text": "Sample: a single-source report says there was ground fighting near Djibo. Not real.",
+"ids": [
+"5ba0dcddb1c9"
+]
+},
+{
+"text": "Sample: shelling near El Fasher is corroborated. Not real.",
+"ids": [
+"e77bd0a462ed"
+]
+}
+],
+"theaters": [
+{
+"id": "ukraine",
+"text": "Sample: the wave, plus corroborated ground fighting near Kupiansk and a territorial change near Pokrovsk. Not real.",
+"ids": [
+"713163914c2c",
+"3fb55a726b74",
+"2b370ab73e04"
+]
+},
+{
+"id": "mideast",
+"text": "Sample: the Riyadh interception and Hormuz incident; a single-source report of an explosion near Isfahan. Not real.",
+"ids": [
+"34c69d36e34b",
+"0fb181ef6dd2",
+"d08f57fcc00a"
+]
+},
+{
+"id": "horn",
+"text": "Sample: shelling near El Fasher; Adigrat fighting is claimed by one side only. Not real.",
+"ids": [
+"e77bd0a462ed",
+"9bacb002a26f"
+]
+}
+]
 }
 }
