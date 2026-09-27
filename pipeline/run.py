@@ -25,6 +25,7 @@ import config as config_mod  # noqa: E402
 import extract  # noqa: E402
 import fleet  # noqa: E402
 import geo  # noqa: E402
+import hunter  # noqa: E402
 import merge  # noqa: E402
 import recency  # noqa: E402
 from common import hours_since, http_session, iso, load_json, log, now, save_json  # noqa: E402
@@ -119,6 +120,12 @@ def main() -> int:
         # Posts that fail the keyword filter are not marked seen: feeds are re-read every run anyway,
         # so they are re-checked while still listed, and a better filter reaches recent posts at once.
         if extract.is_candidate(it):
+            seen[it["id"]] = int(t0.timestamp())
+            fresh.append(it)
+    # Corroboration hunter: targeted searches for important single-source events. No model calls;
+    # the results join the normal queue ahead of everything else (weight 4).
+    for it in hunter.run(events, state, session, t0):
+        if it["id"] not in seen and extract.is_candidate(it):
             seen[it["id"]] = int(t0.timestamp())
             fresh.append(it)
     log(f"[filter] {len(fresh)} new candidates")
