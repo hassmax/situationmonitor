@@ -29,10 +29,17 @@
       <button class="filters-toggle" id="filtersToggle" type="button" aria-expanded="false" aria-controls="filters">Filters</button>
     </header>
 
+    <nav class="lens panel" id="lensBar" role="tablist" aria-label="View">
+      <button type="button" role="tab" data-lens="fight" aria-selected="true">Fighting</button>
+      <button type="button" role="tab" data-lens="supply" aria-selected="false">Supply</button>
+      <button type="button" role="tab" data-lens="fleet" aria-selected="false">Fleet</button>
+    </nav>
+
     <aside class="filters panel" id="filters" aria-label="Filters">
       <section>
         <h2>Time</h2>
         <div class="seg" role="group" aria-label="Time window" id="windowSeg"></div>
+        <p class="hint" id="timeNote" hidden>Supply flows always cover the last 30 days.</p>
       </section>
       <section>
         <h2 class="with-note">Theaters <span class="note">7-day tempo</span></h2>
@@ -42,20 +49,16 @@
         <h2>Confidence</h2>
         <ul class="rows" id="statusList"></ul>
       </section>
-      <section>
-        <h2 class="with-note">Carrier strike groups <span class="note" id="fleetNote"></span></h2>
-        <ul class="fleet-list" id="fleetList"></ul>
-      </section>
-      <section>
+      <section id="layerSection">
         <h2>Layers</h2>
         <ul class="rows" id="layerList"></ul>
-        <p class="hint">Faint lines start from the nearest known launch area when a report doesn't name one.</p>
+        <p class="hint">Launch paths appear when you zoom into a theater or open an event. Faint lines start from the nearest known launch area when a report doesn't name one.</p>
       </section>
       <section class="sources">
         <button class="linkish" id="sourcesToggle" type="button" aria-expanded="false" aria-controls="sourcesList">Sources</button>
         <ul class="source-list" id="sourcesList" hidden></ul>
         <p class="fineprint">Built automatically from public posts and news feeds. Summaries are machine-written, so open the sources before relying on any report.</p>
-        <p class="fineprint">Places geocoded with <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> data. News intensity from <a href="https://www.gdeltproject.org/">GDELT</a>.</p>
+        <p class="fineprint">Places geocoded with <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> data. Corroboration also checks news coverage logged by <a href="https://www.gdeltproject.org/">GDELT</a>. Carrier positions from USNI News.</p>
       </section>
     </aside>
 
@@ -78,7 +81,6 @@
     </main>
   </div>
 
-  <div class="demo-banner" id="demoBanner" hidden>Demo data. None of these events are real.</div>
 
   <script src="vendor/globe.gl.min.js"></script>
   <script src="vendor/topojson-client.min.js"></script>

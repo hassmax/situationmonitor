@@ -106,7 +106,8 @@ def main() -> int:
         fleet.update(state, weekly)
         fleet.mark_deployment(state, weekly)
     moved = fleet.update(state, carrier_reports)
-    log(f"[fleet] {len(carrier_reports)} carrier reports, {moved} applied")
+    fleet.apply_home_baseline(state)
+    log(f"[fleet] {len(carrier_reports)} carrier reports, {moved} applied; {len(fleet.public(state, t0))} carriers shown")
 
     # 5. GDELT: used to corroborate reports (3+ outlets reporting violence nearby)
     if settings.get("gdelt", True):
@@ -148,6 +149,7 @@ def main() -> int:
         "events": [merge.public_event(e) for e in events],
         "heat": public_cells(cells),
         "fleet": fleet.public(state, t0),
+        "fleet_meta": {k: (state.get("fleet_meta") or {}).get(k) for k in ("tracker_time", "tracker_url")},
         "sources": [dict(id=k, **v) for k, v in sorted(state["health"].items(), key=lambda kv: kv[1]["name"].lower())],
         "run": state["last_run"],
     }

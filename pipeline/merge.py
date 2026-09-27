@@ -53,7 +53,8 @@ def _find_transfer(events: list[dict], cand: dict) -> dict | None:
     for e in events:
         et = e.get("transfer") or {}
         if (e["type"] == "arms_transfer" and et.get("supplier") == t.get("supplier")
-                and et.get("recipient") == t.get("recipient") and ct - parse_time(e["updated"]) <= TRANSFER_WINDOW):
+                and et.get("recipient") == t.get("recipient") and et.get("kind") == t.get("kind")
+                and ct - parse_time(e["updated"]) <= TRANSFER_WINDOW):
             return e
     return None
 
@@ -169,6 +170,11 @@ def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
             mt, ct_ = match["transfer"], cand["transfer"]
             mt["flights"] = _max_or_none(mt.get("flights"), ct_.get("flights"))
             mt["what"] = mt.get("what") or ct_.get("what")
+            mt["value_usd"] = _max_or_none(mt.get("value_usd"), ct_.get("value_usd"))
+            mt["from"] = mt.get("from") or ct_.get("from")
+            mt["to"] = mt.get("to") or ct_.get("to")
+            if ct_.get("via") and not mt.get("via"):
+                mt["via"] = ct_["via"]
             if mt.get("mode") == "unspecified":
                 mt["mode"] = ct_.get("mode")
         for k in ("killed", "injured"):
@@ -238,9 +244,13 @@ def apply_status(events: list[dict], cells: list[dict]) -> None:
             e["summary"] = _headline(e)["summary"]
 
 
+SUPPLY_RETENTION_DAYS = 30  # arms transfers are shown as 30-day flows
+
+
 def prune(events: list[dict], now: datetime, retention_days: int, max_events: int) -> list[dict]:
     cutoff = iso(now - timedelta(days=retention_days))
-    kept = [e for e in events if e["updated"] >= cutoff]
+    supply_cutoff = iso(now - timedelta(days=max(retention_days, SUPPLY_RETENTION_DAYS)))
+    kept = [e for e in events if e["updated"] >= (supply_cutoff if e["type"] == "arms_transfer" else cutoff)]
     kept.sort(key=lambda e: e["updated"], reverse=True)
     return kept[:max_events]
 

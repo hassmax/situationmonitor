@@ -1843,136 +1843,6 @@
 "news_nearby": 0
 },
 {
-"id": "demox1",
-"theater": "mideast",
-"type": "arms_transfer",
-"summary": "Sample air bridge: cargo flights carrying munitions to an airbase.",
-"place": "Nevatim",
-"country": "IL",
-"attacker": null,
-"lat": 31.21,
-"lon": 35.01,
-"approx": false,
-"origins": [],
-"severity": 2,
-"killed": null,
-"injured": null,
-"time": "2026-09-26T09:54:00Z",
-"updated": "2026-09-26T12:54:00Z",
-"reports": [
-{
-"source": "Sample news outlet B",
-"platform": "rss",
-"kind": "news",
-"side": null,
-"claim": "report",
-"url": "https://example.com/sample/x1/0",
-"time": "2026-09-26T09:54:00Z",
-"summary": "Sample air bridge: cargo flights carrying munitions to an airbase. Not a real event."
-},
-{
-"source": "Sample OSINT source A",
-"platform": "bluesky",
-"kind": "osint",
-"side": null,
-"claim": "report",
-"url": "https://example.com/sample/x1/1",
-"time": "2026-09-26T10:54:00Z",
-"summary": "Sample air bridge: cargo flights carrying munitions to an airbase. Not a real event."
-},
-{
-"source": "Sample flight tracker E",
-"platform": "bluesky",
-"kind": "osint",
-"side": null,
-"claim": "report",
-"url": "https://example.com/sample/x1/2",
-"time": "2026-09-26T11:54:00Z",
-"summary": "Sample air bridge: cargo flights carrying munitions to an airbase. Not a real event."
-},
-{
-"source": "Sample news outlet B",
-"platform": "rss",
-"kind": "news",
-"side": null,
-"claim": "report",
-"url": "https://example.com/sample/x1/3",
-"time": "2026-09-26T12:54:00Z",
-"summary": "Sample air bridge: cargo flights carrying munitions to an airbase. Not a real event."
-}
-],
-"status": "corroborated",
-"sources_count": 3,
-"news_nearby": 0,
-"transfer": {
-"supplier": "US",
-"recipient": "IL",
-"mode": "air",
-"from": {
-"place": "Dover AFB",
-"lat": 39.13,
-"lon": -75.47
-},
-"to": {
-"place": "Nevatim",
-"lat": 31.21,
-"lon": 35.01
-},
-"what": "munitions",
-"flights": 9
-}
-},
-{
-"id": "demox2",
-"theater": "ukraine",
-"type": "arms_transfer",
-"summary": "Sample sea shipment of artillery ammunition reported by satellite imagery.",
-"place": "Vostochny",
-"country": "RU",
-"attacker": null,
-"lat": 42.75,
-"lon": 133.07,
-"approx": false,
-"origins": [],
-"severity": 2,
-"killed": null,
-"injured": null,
-"time": "2026-09-25T11:54:00Z",
-"updated": "2026-09-25T11:54:00Z",
-"reports": [
-{
-"source": "Sample news outlet B",
-"platform": "rss",
-"kind": "news",
-"side": null,
-"claim": "report",
-"url": "https://example.com/sample/x2/0",
-"time": "2026-09-25T11:54:00Z",
-"summary": "Sample sea shipment of artillery ammunition reported by satellite imagery. Not a real event."
-}
-],
-"status": "unconfirmed",
-"sources_count": 1,
-"news_nearby": 0,
-"transfer": {
-"supplier": "KP",
-"recipient": "RU",
-"mode": "sea",
-"from": {
-"place": "Rajin",
-"lat": 42.25,
-"lon": 130.3
-},
-"to": {
-"place": "Vostochny",
-"lat": 42.75,
-"lon": 133.07
-},
-"what": "artillery shells",
-"flights": null
-}
-},
-{
 "id": "demox3",
 "theater": "latam",
 "type": "legal",
@@ -2015,6 +1885,478 @@
 "sources_count": 2,
 "news_nearby": 0,
 "legal_basis": "self-defense under UN Charter Article 51"
+},
+{
+"id": "demot1",
+"theater": "mideast",
+"type": "arms_transfer",
+"summary": "Sample: cargo flights carrying munitions land at an Israeli airbase.",
+"place": "Nevatim",
+"country": "IL",
+"attacker": null,
+"lat": 31.21,
+"lon": 35.01,
+"approx": false,
+"origins": [],
+"severity": 2,
+"killed": null,
+"injured": null,
+"time": "2026-09-26T11:54:00Z",
+"updated": "2026-09-26T12:54:00Z",
+"reports": [
+{
+"source": "Sample flight tracker E",
+"platform": "bluesky",
+"kind": "osint",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/t1/0",
+"time": "2026-09-26T11:54:00Z",
+"summary": "Sample: cargo flights carrying munitions land at an Israeli airbase. Not a real event."
+},
+{
+"source": "Sample news outlet B",
+"platform": "rss",
+"kind": "news",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/t1/1",
+"time": "2026-09-26T12:24:00Z",
+"summary": "Sample: cargo flights carrying munitions land at an Israeli airbase. Not a real event."
+},
+{
+"source": "Sample OSINT source A",
+"platform": "bluesky",
+"kind": "osint",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/t1/2",
+"time": "2026-09-26T12:54:00Z",
+"summary": "Sample: cargo flights carrying munitions land at an Israeli airbase. Not a real event."
+}
+],
+"status": "corroborated",
+"sources_count": 3,
+"news_nearby": 0,
+"transfer": {
+"kind": "delivery",
+"supplier": "US",
+"recipient": "IL",
+"mode": "air",
+"from": {
+"place": "Dover AFB",
+"lat": 39.13,
+"lon": -75.47
+},
+"to": {
+"place": "Nevatim",
+"lat": 31.21,
+"lon": 35.01
+},
+"via": [
+{
+"place": "Ramstein",
+"lat": 49.44,
+"lon": 7.6
+}
+],
+"what": "munitions",
+"flights": 6,
+"value_usd": null
+}
+},
+{
+"id": "demot2",
+"theater": "mideast",
+"type": "arms_transfer",
+"summary": "Sample: further transport flights reported on the same route.",
+"place": "Nevatim",
+"country": "IL",
+"attacker": null,
+"lat": 31.21,
+"lon": 35.01,
+"approx": false,
+"origins": [],
+"severity": 2,
+"killed": null,
+"injured": null,
+"time": "2026-09-23T09:54:00Z",
+"updated": "2026-09-23T10:24:00Z",
+"reports": [
+{
+"source": "Sample flight tracker E",
+"platform": "bluesky",
+"kind": "osint",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/t2/0",
+"time": "2026-09-23T09:54:00Z",
+"summary": "Sample: further transport flights reported on the same route. Not a real event."
+},
+{
+"source": "Sample news outlet B",
+"platform": "rss",
+"kind": "news",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/t2/1",
+"time": "2026-09-23T10:24:00Z",
+"summary": "Sample: further transport flights reported on the same route. Not a real event."
+}
+],
+"status": "corroborated",
+"sources_count": 2,
+"news_nearby": 0,
+"transfer": {
+"kind": "delivery",
+"supplier": "US",
+"recipient": "IL",
+"mode": "air",
+"from": {
+"place": "Dover AFB",
+"lat": 39.13,
+"lon": -75.47
+},
+"to": {
+"place": "Nevatim",
+"lat": 31.21,
+"lon": 35.01
+},
+"via": [
+{
+"place": "Ramstein",
+"lat": 49.44,
+"lon": 7.6
+}
+],
+"what": "air-defense interceptors",
+"flights": 4,
+"value_usd": null
+}
+},
+{
+"id": "demot3",
+"theater": "mideast",
+"type": "arms_transfer",
+"summary": "Sample: sealift of armored vehicles arrives at port.",
+"place": "Haifa",
+"country": "IL",
+"attacker": null,
+"lat": 32.82,
+"lon": 34.99,
+"approx": false,
+"origins": [],
+"severity": 2,
+"killed": null,
+"injured": null,
+"time": "2026-09-14T05:54:00Z",
+"updated": "2026-09-14T05:54:00Z",
+"reports": [
+{
+"source": "Sample flight tracker E",
+"platform": "bluesky",
+"kind": "osint",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/t3/0",
+"time": "2026-09-14T05:54:00Z",
+"summary": "Sample: sealift of armored vehicles arrives at port. Not a real event."
+}
+],
+"status": "unconfirmed",
+"sources_count": 1,
+"news_nearby": 0,
+"transfer": {
+"kind": "delivery",
+"supplier": "US",
+"recipient": "IL",
+"mode": "sea",
+"from": {
+"place": "Sunny Point",
+"lat": 34.0,
+"lon": -77.95
+},
+"to": {
+"place": "Haifa",
+"lat": 32.82,
+"lon": 34.99
+},
+"via": [],
+"what": "armored vehicles",
+"flights": null,
+"value_usd": 1200000000.0
+}
+},
+{
+"id": "demot4",
+"theater": "ukraine",
+"type": "arms_transfer",
+"summary": "Sample: ammunition shipment imaged leaving port.",
+"place": "Vostochny",
+"country": "RU",
+"attacker": null,
+"lat": 42.75,
+"lon": 133.07,
+"approx": false,
+"origins": [],
+"severity": 2,
+"killed": null,
+"injured": null,
+"time": "2026-09-16T17:54:00Z",
+"updated": "2026-09-16T17:54:00Z",
+"reports": [
+{
+"source": "Sample flight tracker E",
+"platform": "bluesky",
+"kind": "osint",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/t4/0",
+"time": "2026-09-16T17:54:00Z",
+"summary": "Sample: ammunition shipment imaged leaving port. Not a real event."
+}
+],
+"status": "unconfirmed",
+"sources_count": 1,
+"news_nearby": 0,
+"transfer": {
+"kind": "delivery",
+"supplier": "KP",
+"recipient": "RU",
+"mode": "sea",
+"from": {
+"place": "Rajin",
+"lat": 42.25,
+"lon": 130.3
+},
+"to": {
+"place": "Vostochny",
+"lat": 42.75,
+"lon": 133.07
+},
+"via": [],
+"what": "artillery shells",
+"flights": null,
+"value_usd": null
+}
+},
+{
+"id": "demot5",
+"theater": "ukraine",
+"type": "arms_transfer",
+"summary": "Sample: drone components reported delivered; route not named.",
+"place": "Moscow",
+"country": "RU",
+"attacker": null,
+"lat": 55.75,
+"lon": 37.62,
+"approx": false,
+"origins": [],
+"severity": 2,
+"killed": null,
+"injured": null,
+"time": "2026-09-24T15:54:00Z",
+"updated": "2026-09-24T15:54:00Z",
+"reports": [
+{
+"source": "Sample flight tracker E",
+"platform": "bluesky",
+"kind": "osint",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/t5/0",
+"time": "2026-09-24T15:54:00Z",
+"summary": "Sample: drone components reported delivered; route not named. Not a real event."
+}
+],
+"status": "unconfirmed",
+"sources_count": 1,
+"news_nearby": 0,
+"transfer": {
+"kind": "delivery",
+"supplier": "IR",
+"recipient": "RU",
+"mode": "unspecified",
+"from": null,
+"to": null,
+"via": [],
+"what": "drone components",
+"flights": null,
+"value_usd": null
+}
+},
+{
+"id": "demot6",
+"theater": "ukraine",
+"type": "arms_transfer",
+"summary": "Sample: air-defense systems arrive via a logistics hub.",
+"place": "Rzeszow",
+"country": "PL",
+"attacker": null,
+"lat": 50.11,
+"lon": 22.02,
+"approx": false,
+"origins": [],
+"severity": 2,
+"killed": null,
+"injured": null,
+"time": "2026-09-25T11:54:00Z",
+"updated": "2026-09-25T12:24:00Z",
+"reports": [
+{
+"source": "Sample flight tracker E",
+"platform": "bluesky",
+"kind": "osint",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/t6/0",
+"time": "2026-09-25T11:54:00Z",
+"summary": "Sample: air-defense systems arrive via a logistics hub. Not a real event."
+},
+{
+"source": "Sample news outlet B",
+"platform": "rss",
+"kind": "news",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/t6/1",
+"time": "2026-09-25T12:24:00Z",
+"summary": "Sample: air-defense systems arrive via a logistics hub. Not a real event."
+}
+],
+"status": "corroborated",
+"sources_count": 2,
+"news_nearby": 0,
+"transfer": {
+"kind": "delivery",
+"supplier": "DE",
+"recipient": "UA",
+"mode": "air",
+"from": {
+"place": "Leipzig",
+"lat": 51.42,
+"lon": 12.24
+},
+"to": {
+"place": "Rzeszow",
+"lat": 50.11,
+"lon": 22.02
+},
+"via": [],
+"what": "air-defense systems",
+"flights": 3,
+"value_usd": null
+}
+},
+{
+"id": "demot7",
+"theater": "ukraine",
+"type": "arms_transfer",
+"summary": "Sample: a new military aid package is announced.",
+"place": "Kyiv",
+"country": "UA",
+"attacker": null,
+"lat": 50.45,
+"lon": 30.52,
+"approx": false,
+"origins": [],
+"severity": 2,
+"killed": null,
+"injured": null,
+"time": "2026-09-25T21:54:00Z",
+"updated": "2026-09-25T22:24:00Z",
+"reports": [
+{
+"source": "Sample flight tracker E",
+"platform": "bluesky",
+"kind": "osint",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/t7/0",
+"time": "2026-09-25T21:54:00Z",
+"summary": "Sample: a new military aid package is announced. Not a real event."
+},
+{
+"source": "Sample news outlet B",
+"platform": "rss",
+"kind": "news",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/t7/1",
+"time": "2026-09-25T22:24:00Z",
+"summary": "Sample: a new military aid package is announced. Not a real event."
+}
+],
+"status": "corroborated",
+"sources_count": 2,
+"news_nearby": 0,
+"transfer": {
+"kind": "pledge",
+"supplier": "US",
+"recipient": "UA",
+"mode": "unspecified",
+"from": null,
+"to": null,
+"via": [],
+"what": "artillery and air defense",
+"flights": null,
+"value_usd": 400000000.0
+}
+},
+{
+"id": "demot8",
+"theater": "mideast",
+"type": "arms_transfer",
+"summary": "Sample: naval forces seize a weapons shipment bound for Yemen.",
+"place": "Gulf of Aden",
+"country": "YE",
+"attacker": null,
+"lat": 13.2,
+"lon": 48.5,
+"approx": false,
+"origins": [],
+"severity": 2,
+"killed": null,
+"injured": null,
+"time": "2026-09-26T01:54:00Z",
+"updated": "2026-09-26T02:24:00Z",
+"reports": [
+{
+"source": "Sample flight tracker E",
+"platform": "bluesky",
+"kind": "osint",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/t8/0",
+"time": "2026-09-26T01:54:00Z",
+"summary": "Sample: naval forces seize a weapons shipment bound for Yemen. Not a real event."
+},
+{
+"source": "Sample news outlet B",
+"platform": "rss",
+"kind": "news",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/t8/1",
+"time": "2026-09-26T02:24:00Z",
+"summary": "Sample: naval forces seize a weapons shipment bound for Yemen. Not a real event."
+}
+],
+"status": "corroborated",
+"sources_count": 2,
+"news_nearby": 0,
+"transfer": {
+"kind": "interdiction",
+"supplier": "IR",
+"recipient": "YE",
+"mode": "sea",
+"from": null,
+"to": null,
+"via": [],
+"what": "missile components",
+"flights": null,
+"value_usd": null
+}
 }
 ],
 "heat": [
@@ -3828,39 +4170,56 @@
 "run": {},
 "fleet": [
 {
-"hull": "CVN-78",
-"name": "USS Gerald R. Ford",
-"short": "Ford",
-"lat": 15.2,
-"lon": -72.5,
-"place": "Caribbean Sea",
-"status": "operating",
-"as_of": "2026-09-25T21:54:00Z",
-"source": "Sample tracker",
-"url": "https://example.com/sample/fleet",
-"heading_to": null,
-"deployed": true,
-"maintenance": false,
-"prev": {
+"hull": "CVN-68",
+"name": "USS Nimitz",
+"short": "Nimitz",
 "lat": 36.95,
 "lon": -76.33,
-"place": "Norfolk",
-"as_of": "2026-09-18T09:54:00Z"
-},
-"moved_at": "2026-09-25T21:54:00Z",
+"place": "Norfolk, Va.",
+"status": "home",
+"as_of": "2026-09-20T21:54:00Z",
+"source": "Sample fleet tracker",
+"url": "https://example.com/sample/fleet",
+"heading_to": null,
+"deployed": false,
+"maintenance": false,
+"at_home": true,
+"prev": null,
+"moved_at": null,
 "departed_at": null,
 "track": [
 {
 "lat": 36.95,
 "lon": -76.33,
-"place": "Norfolk",
-"time": "2026-09-18T09:54:00Z"
+"place": "Norfolk, Va.",
+"time": "2026-09-20T21:54:00Z"
+}
+]
 },
 {
-"lat": 15.2,
-"lon": -72.5,
-"place": "Caribbean Sea",
-"time": "2026-09-25T21:54:00Z"
+"hull": "CVN-69",
+"name": "USS Dwight D. Eisenhower",
+"short": "Eisenhower",
+"lat": 36.95,
+"lon": -76.33,
+"place": "Norfolk, Va.",
+"status": "home",
+"as_of": "2026-09-20T21:54:00Z",
+"source": "Sample fleet tracker",
+"url": "https://example.com/sample/fleet",
+"heading_to": null,
+"deployed": false,
+"maintenance": false,
+"at_home": true,
+"prev": null,
+"moved_at": null,
+"departed_at": null,
+"track": [
+{
+"lat": 36.95,
+"lon": -76.33,
+"place": "Norfolk, Va.",
+"time": "2026-09-20T21:54:00Z"
 }
 ]
 },
@@ -3868,40 +4227,53 @@
 "hull": "CVN-70",
 "name": "USS Carl Vinson",
 "short": "Vinson",
-"lat": 21.0,
-"lon": -150.0,
-"place": "east of Hawaii",
-"status": "underway",
-"as_of": "2026-09-26T11:54:00Z",
-"source": "Sample news outlet B",
-"url": "https://example.com/sample/vinson",
-"heading_to": {
-"place": "Western Pacific",
-"lat": 20.0,
-"lon": 136.0
-},
-"deployed": true,
+"lat": 32.7,
+"lon": -117.19,
+"place": "San Diego (North Island)",
+"status": "home",
+"as_of": "2026-09-20T21:54:00Z",
+"source": "Sample fleet tracker",
+"url": "https://example.com/sample/fleet",
+"heading_to": null,
+"deployed": false,
 "maintenance": false,
-"prev": {
-"lat": 32.69,
-"lon": -117.2,
-"place": "San Diego",
-"as_of": "2026-09-22T23:54:00Z"
-},
-"moved_at": "2026-09-26T11:54:00Z",
-"departed_at": "2026-09-22T23:54:00Z",
+"at_home": true,
+"prev": null,
+"moved_at": null,
+"departed_at": null,
 "track": [
 {
-"lat": 32.69,
-"lon": -117.2,
-"place": "San Diego",
-"time": "2026-09-22T23:54:00Z"
+"lat": 32.7,
+"lon": -117.19,
+"place": "San Diego (North Island)",
+"time": "2026-09-20T21:54:00Z"
+}
+]
 },
 {
-"lat": 21.0,
-"lon": -150.0,
-"place": "east of Hawaii",
-"time": "2026-09-26T11:54:00Z"
+"hull": "CVN-71",
+"name": "USS Theodore Roosevelt",
+"short": "Roosevelt",
+"lat": 32.7,
+"lon": -117.19,
+"place": "San Diego (North Island)",
+"status": "home",
+"as_of": "2026-09-20T21:54:00Z",
+"source": "Sample fleet tracker",
+"url": "https://example.com/sample/fleet",
+"heading_to": null,
+"deployed": false,
+"maintenance": false,
+"at_home": true,
+"prev": null,
+"moved_at": null,
+"departed_at": null,
+"track": [
+{
+"lat": 32.7,
+"lon": -117.19,
+"place": "San Diego (North Island)",
+"time": "2026-09-20T21:54:00Z"
 }
 ]
 },
@@ -3910,24 +4282,40 @@
 "name": "USS Abraham Lincoln",
 "short": "Lincoln",
 "lat": 17.5,
-"lon": 61.5,
-"place": "Arabian Sea",
-"status": "operating",
-"as_of": "2026-09-21T17:54:00Z",
-"source": "Sample tracker",
+"lon": 137.0,
+"place": "Philippine Sea",
+"status": "underway",
+"as_of": "2026-09-20T21:54:00Z",
+"source": "Sample fleet tracker",
 "url": "https://example.com/sample/fleet",
-"heading_to": null,
+"heading_to": {
+"place": "San Diego",
+"lat": 32.7,
+"lon": -117.19
+},
 "deployed": true,
 "maintenance": false,
-"prev": null,
-"moved_at": null,
+"at_home": false,
+"prev": {
+"lat": 13.44,
+"lon": 144.65,
+"place": "Apra Harbor, Guam",
+"as_of": "2026-09-18T19:54:00Z"
+},
+"moved_at": "2026-09-20T21:54:00Z",
 "departed_at": null,
 "track": [
 {
+"lat": 13.44,
+"lon": 144.65,
+"place": "Apra Harbor, Guam",
+"time": "2026-09-18T19:54:00Z"
+},
+{
 "lat": 17.5,
-"lon": 61.5,
-"place": "Arabian Sea",
-"time": "2026-09-21T17:54:00Z"
+"lon": 137.0,
+"place": "Philippine Sea",
+"time": "2026-09-20T21:54:00Z"
 }
 ]
 },
@@ -3935,20 +4323,55 @@
 "hull": "CVN-73",
 "name": "USS George Washington",
 "short": "Washington",
-"lat": 35.29,
-"lon": 139.67,
-"place": "Yokosuka",
-"status": "in port",
-"as_of": "2026-09-21T17:54:00Z",
-"source": "Sample tracker",
+"lat": 17.2,
+"lon": 63.5,
+"place": "Arabian Sea",
+"status": "operating",
+"as_of": "2026-09-20T21:54:00Z",
+"source": "Sample fleet tracker",
+"url": "https://example.com/sample/fleet",
+"heading_to": null,
+"deployed": true,
+"maintenance": false,
+"at_home": false,
+"prev": null,
+"moved_at": null,
+"departed_at": null,
+"track": [
+{
+"lat": 17.2,
+"lon": 63.5,
+"place": "Arabian Sea",
+"time": "2026-09-20T21:54:00Z"
+}
+]
+},
+{
+"hull": "CVN-74",
+"name": "USS John C. Stennis",
+"short": "Stennis",
+"lat": 36.98,
+"lon": -76.43,
+"place": "Newport News shipyard (refueling overhaul)",
+"status": "home",
+"as_of": "2026-09-20T21:54:00Z",
+"source": "Sample fleet tracker",
 "url": "https://example.com/sample/fleet",
 "heading_to": null,
 "deployed": false,
 "maintenance": false,
+"at_home": true,
 "prev": null,
 "moved_at": null,
 "departed_at": null,
-"track": []
+"track": [
+{
+"lat": 36.98,
+"lon": -76.43,
+"place": "Newport News shipyard (refueling overhaul)",
+"time": "2026-09-20T21:54:00Z"
+}
+]
 },
 {
 "hull": "CVN-75",
@@ -3956,18 +4379,122 @@
 "short": "Truman",
 "lat": 36.95,
 "lon": -76.33,
-"place": "Norfolk",
-"status": "in port",
-"as_of": "2026-09-21T17:54:00Z",
-"source": "Sample tracker",
+"place": "Norfolk, Va.",
+"status": "home",
+"as_of": "2026-09-20T21:54:00Z",
+"source": "Sample fleet tracker",
 "url": "https://example.com/sample/fleet",
 "heading_to": null,
 "deployed": false,
-"maintenance": true,
+"maintenance": false,
+"at_home": true,
 "prev": null,
 "moved_at": null,
 "departed_at": null,
-"track": []
+"track": [
+{
+"lat": 36.95,
+"lon": -76.33,
+"place": "Norfolk, Va.",
+"time": "2026-09-20T21:54:00Z"
 }
 ]
+},
+{
+"hull": "CVN-76",
+"name": "USS Ronald Reagan",
+"short": "Reagan",
+"lat": 47.56,
+"lon": -122.63,
+"place": "Bremerton, Wash.",
+"status": "home",
+"as_of": "2026-09-20T21:54:00Z",
+"source": "Sample fleet tracker",
+"url": "https://example.com/sample/fleet",
+"heading_to": null,
+"deployed": false,
+"maintenance": false,
+"at_home": true,
+"prev": null,
+"moved_at": null,
+"departed_at": null,
+"track": [
+{
+"lat": 47.56,
+"lon": -122.63,
+"place": "Bremerton, Wash.",
+"time": "2026-09-20T21:54:00Z"
+}
+]
+},
+{
+"hull": "CVN-77",
+"name": "USS George H.W. Bush",
+"short": "Bush",
+"lat": 15.6,
+"lon": 61.2,
+"place": "Arabian Sea",
+"status": "operating",
+"as_of": "2026-09-20T21:54:00Z",
+"source": "Sample fleet tracker",
+"url": "https://example.com/sample/fleet",
+"heading_to": null,
+"deployed": true,
+"maintenance": false,
+"at_home": false,
+"prev": null,
+"moved_at": null,
+"departed_at": null,
+"track": [
+{
+"lat": 15.6,
+"lon": 61.2,
+"place": "Arabian Sea",
+"time": "2026-09-20T21:54:00Z"
+}
+]
+},
+{
+"hull": "CVN-78",
+"name": "USS Gerald R. Ford",
+"short": "Ford",
+"lat": 36.95,
+"lon": -76.33,
+"place": "Norfolk, Va.",
+"status": "home",
+"as_of": "2026-09-25T21:54:00Z",
+"source": "Sample fleet tracker",
+"url": "https://example.com/sample/fleet",
+"heading_to": null,
+"deployed": false,
+"maintenance": false,
+"at_home": true,
+"prev": {
+"lat": 15.2,
+"lon": -72.5,
+"place": "Caribbean Sea",
+"as_of": "2026-09-10T01:54:00Z"
+},
+"moved_at": "2026-09-25T21:54:00Z",
+"departed_at": null,
+"track": [
+{
+"lat": 15.2,
+"lon": -72.5,
+"place": "Caribbean Sea",
+"time": "2026-09-10T01:54:00Z"
+},
+{
+"lat": 36.95,
+"lon": -76.33,
+"place": "Norfolk, Va.",
+"time": "2026-09-25T21:54:00Z"
+}
+]
+}
+],
+"fleet_meta": {
+"tracker_time": "2026-09-20T21:54:00Z",
+"tracker_url": "https://example.com/sample/fleet"
+}
 }

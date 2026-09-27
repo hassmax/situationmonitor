@@ -13,10 +13,12 @@ Positions are never extrapolated: the map shows the last report and its date.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta
+from datetime import datetime
 
-from common import clean_text, haversine_km, iso, log
+from common import UTC, clean_text, haversine_km, iso, log
 
+# Active carriers as of late September 2026. CVN-79 (Kennedy) is not due to commission until 2027;
+# add it here when it does. Nimitz shifted home port to Norfolk in July 2026 ahead of inactivation.
 CARRIERS = {
     "CVN-68": ("USS Nimitz", "Nimitz"),
     "CVN-69": ("USS Dwight D. Eisenhower", "Eisenhower"),
@@ -29,15 +31,29 @@ CARRIERS = {
     "CVN-76": ("USS Ronald Reagan", "Reagan"),
     "CVN-77": ("USS George H.W. Bush", "Bush"),
     "CVN-78": ("USS Gerald R. Ford", "Ford"),
-    "CVN-79": ("USS John F. Kennedy", "Kennedy"),
 }
+NORFOLK = ("Norfolk, Va.", 36.95, -76.33)
+SAN_DIEGO = ("San Diego (North Island)", 32.70, -117.19)
+HOME = {
+    "CVN-68": NORFOLK,
+    "CVN-69": NORFOLK,
+    "CVN-70": SAN_DIEGO,
+    "CVN-71": SAN_DIEGO,
+    "CVN-72": SAN_DIEGO,
+    "CVN-73": ("Yokosuka, Japan", 35.29, 139.67),
+    "CVN-74": ("Newport News shipyard (refueling overhaul)", 36.98, -76.43),
+    "CVN-75": NORFOLK,
+    "CVN-76": ("Bremerton, Wash.", 47.56, -122.63),
+    "CVN-77": NORFOLK,
+    "CVN-78": NORFOLK,
+}
+FLEET_TRACKER_FEED = "https://news.usni.org/category/fleet-tracker/feed"
 MOVE_KM = 150          # smaller changes are treated as the same position
 TRACK_LEN = 12
-SHOW_DAYS = 45         # hide carriers with no report for this long
 
 TRACKER_PROMPT = """You read a USNI News Fleet and Marine Tracker article and list every US Navy aircraft carrier (hull CVN-##) it mentions, with its current location. Reply with one JSON object and nothing else:
-{"as_of": "YYYY-MM-DD", "carriers": [{"hull": "CVN-78", "status": "deployed" | "underway" | "operating" | "in port" | "in maintenance", "place": "<sea area or port, as stated>", "lat": <number>, "lon": <number>, "heading_to": {"place": "...", "lat": <number>, "lon": <number>} or null}]}
-Rules: use only what the article says. "deployed" = on a deployment away from home waters; "underway" = at sea for training or transit; "operating" = on station in a named area; "in port" = pierside; "in maintenance" = in a shipyard or major maintenance. Give your best coordinate estimate for each named place (a sea area's center is fine). heading_to only if the article states a destination."""
+{"as_of": "YYYY-MM-DD", "carriers": [{"hull": "CVN-78", "deployed": <true if on a deployment, including one returning home>, "status": "underway" | "operating" | "in port" | "in maintenance", "place": "<sea area or port, as stated>", "lat": <number>, "lon": <number>, "heading_to": {"place": "...", "lat": <number>, "lon": <number>} or null}]}
+Rules: use only what the article says. "underway" = at sea in transit; "operating" = on station in a named area; "in port" = pierside; "in maintenance" = in a shipyard or major maintenance. Give your best coordinate estimate for each named place (a sea area's center is fine). heading_to only if the article states a destination; a carrier "returning from deployment" is heading to its home port if the article names it."""
 
 
 def _hull(v) -> str | None:
@@ -58,6 +74,8 @@ def update(state: dict, reports: list[dict]) -> int:
         c = fleet.setdefault(hull, {"hull": hull, "name": name, "short": short, "track": []})
         if c.get("as_of") and r["time"] < c["as_of"]:
             continue  # older than what we already know
+        if r["status"] != "home":
+            c["at_home"] = False
         moved = c.get("lat") is not None and haversine_km(c["lat"], c["lon"], r["lat"], r["lon"]) > MOVE_KM
         if moved:
             c["prev"] = {"lat": c["lat"], "lon": c["lon"], "place": c.get("place"), "as_of": c.get("as_of")}
@@ -80,19 +98,49 @@ def update(state: dict, reports: list[dict]) -> int:
 
 
 def _article_text(html: str) -> str:
-    html = re.sub(r"(?is)<(script|style|nav|header|footer|aside)[^>]*>.*?</\1>", " ", html)
+    html = re.sub(r"(?is)<(head|script|style|nav|header|footer|aside|form)[^>]*>.*?</\1>", " ", html)
     text = clean_text(html)
-    start = text.lower().find("fleet and marine tracker")
-    return text[start if start >= 0 else 0:][:14000]
+    low = text.lower()
+    start = low.find("these are the approximate positions")
+    if start < 0:
+        start = max(0, low.find("fleet and marine tracker"))
+    end = low.find("in addition to these major formations", start)
+    return text[start:(end if end > 0 else start + 24000)][:24000]
+
+
+def _latest_edition(items: list[dict], session) -> dict | None:
+    """Newest Fleet and Marine Tracker: from USNI's Fleet Tracker category feed, else the main feed."""
+    try:
+        import feedparser
+        from datetime import datetime as _dt
+        r = session.get(FLEET_TRACKER_FEED, timeout=25)
+        r.raise_for_status()
+        best = None
+        for e in feedparser.parse(r.content).entries[:10]:
+            title = e.get("title", "")
+            st = e.get("published_parsed") or e.get("updated_parsed")
+            if "tracker" not in title.lower() or not st or not e.get("link"):
+                continue
+            t = iso(_dt(*st[:6], tzinfo=UTC))
+            if best is None or t > best["time"]:
+                best = {"url": e["link"], "time": t, "title": title}
+        if best:
+            return best
+    except Exception as exc:  # noqa: BLE001
+        log(f"[fleet] tracker feed: {exc}")
+    editions = [it for it in items if it["platform"] == "rss" and "fleet and marine tracker" in it["text"][:160].lower()]
+    if not editions:
+        return None
+    it = max(editions, key=lambda x: x["time"])
+    return {"url": it["url"], "time": it["time"], "title": it["text"][:120]}
 
 
 def read_weekly_tracker(state: dict, items: list[dict], session, settings: dict, now: datetime, ask_json) -> list[dict]:
     """If USNI published a new Fleet and Marine Tracker, turn it into position reports (one model call)."""
     meta = state.setdefault("fleet_meta", {})
-    editions = [it for it in items if it["platform"] == "rss" and "fleet and marine tracker" in it["text"][:160].lower()]
-    if not editions:
+    latest = _latest_edition(items, session)
+    if not latest:
         return []
-    latest = max(editions, key=lambda it: it["time"])
     if latest["url"] == meta.get("tracker_url"):
         return []
     try:
@@ -107,7 +155,8 @@ def read_weekly_tracker(state: dict, items: list[dict], session, settings: dict,
         return []
     meta["tracker_url"] = latest["url"]
     meta["tracker_time"] = latest["time"]
-    status_map = {"deployed": "operating", "in maintenance": "in port"}
+    meta["tracker_hulls"] = sorted({h for h in (_hull(c.get("hull")) for c in out["carriers"] if isinstance(c, dict)) if h})
+    status_map = {"deployed": "operating", "in maintenance": "in port"}  # older model replies may still say "deployed"
     reports = []
     for c in out["carriers"]:
         if not isinstance(c, dict):
@@ -125,7 +174,7 @@ def read_weekly_tracker(state: dict, items: list[dict], session, settings: dict,
         raw_status = c.get("status", "operating")
         reports.append({
             "hull": c.get("hull"), "status": status_map.get(raw_status, raw_status),
-            "deployed": raw_status == "deployed", "maintenance": raw_status == "in maintenance",
+            "deployed": bool(c.get("deployed", raw_status == "deployed")), "maintenance": raw_status == "in maintenance",
             "place": c.get("place"), "lat": lat, "lon": lon, "heading_to": heading,
             "time": latest["time"], "source": "USNI News Fleet and Marine Tracker", "url": latest["url"],
         })
@@ -133,15 +182,53 @@ def read_weekly_tracker(state: dict, items: list[dict], session, settings: dict,
     return reports
 
 
+def apply_home_baseline(state: dict) -> None:
+    """Carriers the latest weekly tracker does not list as deployed are shown at home port.
+
+    USNI's tracker lists every deployed carrier strike group, so absence means the carrier is
+    in home waters (in port, in maintenance, or training locally). A carrier reported somewhere
+    by news more recently than the tracker keeps that newer position.
+    """
+    fleet = state.setdefault("fleet", {})
+    meta = state.get("fleet_meta") or {}
+    listed = set(meta.get("tracker_hulls") or [])
+    tracker_time = meta.get("tracker_time")
+    reports = []
+    for hull, (place, lat, lon) in HOME.items():
+        c = fleet.get(hull)
+        if hull in listed:
+            continue
+        if c and c.get("lat") is not None:
+            newer_news = tracker_time and (c.get("as_of") or "") > tracker_time and not c.get("at_home")
+            at_home = haversine_km(c["lat"], c["lon"], lat, lon) < MOVE_KM
+            if newer_news or at_home or not tracker_time:
+                if at_home:
+                    c["at_home"] = True
+                continue
+        reports.append({"hull": hull, "status": "home", "place": place, "lat": lat, "lon": lon, "heading_to": None,
+                        "time": tracker_time or "1970-01-01T00:00:00Z",
+                        "source": "Home port (not listed as deployed in USNI's latest Fleet Tracker)" if tracker_time
+                        else "Home port (no position reports yet)",
+                        "url": meta.get("tracker_url")})
+    update(state, reports)
+    for r in reports:
+        c = fleet.get(r["hull"])
+        if c:
+            c["at_home"] = True
+            c["deployed"] = False
+    for hull in listed:
+        if hull in fleet:
+            fleet[hull]["at_home"] = False
+
+
 def public(state: dict, now: datetime) -> list[dict]:
-    cutoff = iso(now - timedelta(days=SHOW_DAYS))
     out = []
     for c in (state.get("fleet") or {}).values():
-        if c.get("lat") is None or (c.get("as_of") or "") < cutoff:
+        if c.get("lat") is None or c.get("hull") not in CARRIERS:
             continue
         out.append({k: c.get(k) for k in ("hull", "name", "short", "lat", "lon", "place", "status", "as_of",
                                           "source", "url", "heading_to", "prev", "moved_at", "departed_at", "track",
-                                          "deployed", "maintenance")})
+                                          "deployed", "maintenance", "at_home")})
     return sorted(out, key=lambda c: c["hull"])
 
 

@@ -63,7 +63,7 @@ Optional key for any item (relevant or not): if the item says where a US Navy ai
 "carrier": {{"hull": "CVN-78", "status": "departed" | "underway" | "operating" | "arrived" | "in port", "place": "<where it is now>", "lat": <number>, "lon": <number>, "heading_to": {{"place": "<stated destination>", "lat": <number>, "lon": <number>}} or null}}
 Include it even when the item is otherwise not relevant (then keep "relevant": false). Only US aircraft carriers; ignore other ships.
 
-Transfer object: {{"supplier": "<ISO alpha-2>", "recipient": "<ISO alpha-2>", "mode": "air" | "sea" | "land" | "unspecified", "from": {{"place": "...", "lat": <number>, "lon": <number>}}, "to": {{"place": "...", "lat": <number>, "lon": <number>}}, "what": "<max 8 words>", "flights": <int> or null}}
+Transfer object: {{"kind": "delivery" | "pledge" | "interdiction", "supplier": "<ISO alpha-2>", "recipient": "<ISO alpha-2>", "mode": "air" | "sea" | "land" | "unspecified", "from": {{"place": "...", "lat": <number>, "lon": <number>}} or null, "to": {{"place": "...", "lat": <number>, "lon": <number>}} or null, "via": [{{"place": "<named transit hub>", "lat": <number>, "lon": <number>}}], "what": "<max 8 words>", "flights": <int> or null, "value_usd": <number> or null}}
 
 Rules:
 - Write the summary yourself in plain, neutral English. Translate non-English items. Do not copy sentences from the item.
@@ -77,7 +77,9 @@ Rules:
 - launched / intercepted: totals for a mass air attack when the item gives them ("Russia launched 120 drones, 98 were shot down" = 120 / 98). Otherwise null.
 - For preparations or buildups aimed at a country, place the event in that country (its capital if nothing more specific), and say in the summary that it is planning or preparation, not action.
 - For diplomacy, place the event where the meeting or signing happened; if no place is given, use the capital of the main party. Use the theater of the conflict it concerns, even if the meeting is elsewhere.
-- transfer: "from" is the departure airfield, port, or area if named, otherwise the supplier's capital; "to" is the arrival point if named, otherwise the recipient's capital. Put the event's own place and lat/lon at "to". Use the theater of the conflict the weapons are for.
+- transfer kind: "delivery" = weapons observed or reported moving or arriving (tracked flights, imaged ships, confirmed arrivals); "pledge" = a package announced, approved, or sold but not yet reported delivered; "interdiction" = a shipment seized, intercepted, or destroyed in transit.
+- transfer from / to: only departure and arrival points the item names (airfield, port, city). Use null when none is named; never substitute a capital. via: transit hubs the item names (for example Ramstein, Rzeszow), else [].
+- For an arms_transfer, put the event's own place and lat/lon at the named arrival point, or for an interdiction where it was seized; if none is named, use the recipient country's capital. Use the theater of the conflict the weapons are for.
 - legal_basis: only when the item states the justification the acting state gives for using force (for example "self-defense under UN Charter Article 51", "host-state consent", "2001 AUMF"). Never infer one. For legal-type events, place them where the step happened (UN headquarters, The Hague, Washington) but use the theater of the conflict concerned.
 - claim = "official_claim" when the item is a government, military, or armed-group statement about its own actions or results; otherwise "report".
 """.format(types="\n".join(f"- {k}: {v}" for k, v in EVENT_TYPES.items()))
@@ -345,7 +347,11 @@ def _iso2(v) -> str | None:
 def _clean_transfer(t) -> dict | None:
     if not isinstance(t, dict):
         return None
+    via = [v for v in (_place(x) for x in (t.get("via") or [])[:3]) if v]
     out = {
+        "kind": t.get("kind") if t.get("kind") in ("delivery", "pledge", "interdiction") else "delivery",
+        "via": via,
+        "value_usd": _num(t.get("value_usd"), 0, 1e13),
         "supplier": _iso2(t.get("supplier")),
         "recipient": _iso2(t.get("recipient")),
         "mode": t.get("mode") if t.get("mode") in ("air", "sea", "land") else "unspecified",

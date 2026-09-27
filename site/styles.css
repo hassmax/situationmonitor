@@ -301,26 +301,24 @@ h2 {
 
 /* ------------------------------------------------------------------ carriers */
 
-.fleet-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 1px; }
 .fleet-row {
   width: 100%;
   display: grid;
-  grid-template-columns: 8px auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 9px;
+  grid-template-columns: 8px minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 11px;
   border: 0;
   background: transparent;
-  border-radius: 8px;
-  padding: 5px 6px;
-  margin: 0 -6px;
+  border-radius: 10px;
+  padding: 9px 10px;
   text-align: left;
-  font-size: 13.5px;
 }
 .fleet-row:hover, .fleet-row.is-selected { background: rgba(255, 255, 255, 0.05); }
-.fleet-name { font-weight: 600; font-stretch: 88%; }
-.fleet-place { color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12.5px; }
+.fleet-main { display: grid; gap: 2px; min-width: 0; }
+.fleet-name { font-weight: 600; font-size: 14px; font-stretch: 90%; }
+.fleet-place { color: var(--ink-2); font-size: 13px; }
 .fleet-age { color: var(--ink-3); font-size: 12px; }
-.fleet-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--ice); }
+.fleet-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ice); margin-top: 6px; }
 .fleet-dot--underway { box-shadow: 0 0 0 3px rgba(205, 228, 255, 0.22); }
 .fleet-dot--port { background: transparent; border: 1.5px solid var(--ink-3); }
 .small { font-size: 12.5px; }
@@ -345,6 +343,8 @@ h2 {
   transition: opacity 0.2s ease, border-color 0.2s ease;
 }
 .cvn svg { width: 20px; height: 10px; flex: none; }
+.cvn--mini { padding: 2px 4px; opacity: 0.85; }
+.cvn--mini svg { width: 16px; height: 8px; }
 .cvn:hover, .cvn.is-selected { border-color: var(--ink); background: rgba(12, 34, 57, 0.95); }
 .cvn--underway { box-shadow: 0 0 0 3px rgba(205, 228, 255, 0.14); }
 .cvn--port { --c: var(--ink-3); border-color: rgba(150, 188, 224, 0.3); }
@@ -596,6 +596,133 @@ h2 {
 .tip-foot .mark { width: 9px; height: 9px; }
 .tip-foot .mark--claimed { width: 7px; height: 7px; }
 
+/* ------------------------------------------------------------------ lens switch */
+
+.lens {
+  grid-column: 2;
+  grid-row: 1;
+  justify-self: center;
+  align-self: start;
+  display: flex;
+  gap: 3px;
+  padding: 4px;
+  border-radius: 12px;
+  z-index: 2;
+}
+.lens button {
+  border: 0;
+  background: transparent;
+  color: var(--ink-2);
+  font-size: 14px;
+  font-weight: 600;
+  font-stretch: 88%;
+  padding: 7px 18px;
+  border-radius: 9px;
+}
+.lens button:hover { color: var(--ink); }
+.lens button[aria-selected="true"] { background: var(--ink); color: var(--panel-solid); }
+.lens button[data-lens="supply"][aria-selected="true"] { background: var(--news); }
+.lens button[data-lens="fleet"][aria-selected="true"] { background: var(--ice); }
+
+/* ------------------------------------------------------------------ globe badges */
+
+.cluster {
+  --c: var(--corroborated);
+  width: var(--size, 28px);
+  height: var(--size, 28px);
+  padding: 0;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: rgba(8, 22, 39, 0.84);
+  border: 2px solid var(--c);
+  color: var(--ink);
+  font: 700 12px/1 var(--font);
+  font-stretch: 85%;
+  box-shadow: 0 0 0 4px rgba(8, 22, 39, 0.32);
+  cursor: pointer;
+}
+.cluster--unconfirmed { --c: var(--single); }
+.cluster--claimed { --c: var(--claim); }
+.cluster:hover { background: rgba(14, 38, 64, 0.95); }
+.cluster.is-new::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border-radius: 50%;
+  border: 1.5px solid var(--c);
+  animation: badge-pulse 2.4s ease-out infinite;
+  pointer-events: none;
+}
+@keyframes badge-pulse { from { transform: scale(0.85); opacity: 0.7; } to { transform: scale(1.4); opacity: 0; } }
+
+.chip-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px dashed rgba(63, 193, 201, 0.85);
+  background: rgba(8, 22, 39, 0.86);
+  color: #bdeef2;
+  font: 600 11px/1.1 var(--font);
+  font-stretch: 88%;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.chip-badge span { color: var(--ink); }
+.seize-mark {
+  width: 20px; height: 20px;
+  display: grid; place-items: center;
+  padding: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--news);
+  background: rgba(8, 22, 39, 0.86);
+  color: var(--news);
+  cursor: pointer;
+}
+.seize-mark svg { width: 11px; height: 11px; }
+
+/* ------------------------------------------------------------------ supply panel */
+
+.flow-row {
+  width: 100%;
+  display: grid;
+  gap: 3px;
+  text-align: left;
+  border: 0;
+  background: transparent;
+  border-radius: 10px;
+  padding: 9px 10px;
+}
+.flow-row:hover, .flow-row.is-selected { background: rgba(255, 255, 255, 0.05); }
+.flow-top { display: flex; align-items: center; gap: 9px; }
+.flow-name { flex: 1; min-width: 0; font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-dot { width: 14px; height: 3px; border-radius: 2px; background: var(--news); flex: none; }
+.flow-dot.is-dashed { background: repeating-linear-gradient(90deg, var(--news) 0 3px, transparent 3px 5px); }
+.flow-dot.is-active { box-shadow: 0 0 0 3px rgba(63, 193, 201, 0.25); }
+.flow-dot--pledge { width: 10px; height: 10px; border-radius: 50%; background: transparent; border: 1.5px dashed var(--news); margin: 0 2px; }
+.flow-spark rect { fill: rgba(63, 193, 201, 0.5); }
+.flow-spark rect.today { fill: var(--news); }
+.flow-meta { display: flex; flex-wrap: wrap; gap: 3px 10px; padding-left: 23px; font-size: 12.5px; color: var(--ink-3); }
+.flow-live { color: #9fe8ee; font-weight: 650; }
+.flow-cargo { padding-left: 23px; font-size: 12.5px; color: var(--ink-2); }
+.flow-chart { margin: 4px 0 10px; }
+.flow-bars rect { fill: rgba(63, 193, 201, 0.55); }
+.flow-bars rect.today { fill: var(--news); }
+.panel-note { padding: 14px 10px 18px; font-size: 12px; line-height: 1.45; color: var(--ink-3); }
+
+.item.is-new .item-type::after {
+  content: "New";
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: var(--ink);
+  color: var(--panel-solid);
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
 /* ------------------------------------------------------------------ fine print + banner */
 
 .fineprint a { color: var(--ink-2); text-underline-offset: 2px; }
@@ -665,6 +792,8 @@ h2 {
   .filters.open { display: block; }
 
   .panels-toggle { display: none; }
+  .lens { grid-column: 1; grid-row: 2; justify-self: center; align-self: start; }
+  .lens button { padding: 6px 14px; font-size: 13.5px; }
 
   .feed {
     grid-column: 1;
@@ -704,4 +833,5 @@ h2 {
 
 @media (prefers-reduced-motion: reduce) {
   .feed { transition: none; }
+  .cluster.is-new::after { animation: none; opacity: 0.5; }
 }
