@@ -91,3 +91,16 @@ def test_prompt_input_carries_confidence_and_side():
     facts = brief._facts(claimed, {"ukraine": "Russia-Ukraine"})
     assert facts["confidence"] == "claimed only by sources aligned with one side"
     assert facts["aligned_with"] == ["RU"]
+
+
+def test_uncorroborated_lines_must_be_attributed():
+    events = [ev("c1"), ev("u1", status="unconfirmed"), ev("k1", status="claimed")]
+    reply = {"bullets": [{"text": "Drones hit Kyiv.", "ids": ["c1"]},                                  # corroborated: plain is fine
+                         {"text": "Taiwan announced new missiles.", "ids": ["u1"]},                    # single source stated as fact
+                         {"text": "A single-source report says Taiwan announced new missiles.", "ids": ["u1"]},
+                         {"text": "Russia's MoD claims it took a village.", "ids": ["k1"]}],
+             "theaters": [{"id": "ukraine", "text": "Tensions persist across the front.", "ids": ["c1", "u1"]}]}
+    out = brief.validate(reply, events)
+    assert [b["text"] for b in out["bullets"]] == ["Drones hit Kyiv.", "A single-source report says Taiwan announced new missiles.",
+                                                   "Russia's MoD claims it took a village."]
+    assert out["theaters"] == []
