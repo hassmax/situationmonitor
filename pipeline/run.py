@@ -99,12 +99,15 @@ def main() -> int:
         # A backfill reconsiders older posts, which normal runs skipped; anything recent was already handled.
         if it["id"] in seen and not (lookback_h and older_than_normal):
             continue
-        seen[it["id"]] = int(t0.timestamp())
         if older_than_normal:
             if not lookback_h or age > lookback_h:
+                seen[it["id"]] = int(t0.timestamp())
                 continue
             it["max_age_h"] = lookback_h
+        # Posts that fail the keyword filter are not marked seen: feeds are re-read every run anyway,
+        # so they are re-checked while still listed, and a better filter reaches recent posts at once.
         if extract.is_candidate(it):
+            seen[it["id"]] = int(t0.timestamp())
             fresh.append(it)
     log(f"[filter] {len(fresh)} new candidates")
 
