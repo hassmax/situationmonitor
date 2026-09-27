@@ -22,6 +22,7 @@ import extract  # noqa: E402
 import fleet  # noqa: E402
 import geo  # noqa: E402
 import merge  # noqa: E402
+import recency  # noqa: E402
 from common import hours_since, http_session, iso, load_json, log, now, save_json  # noqa: E402
 from sources import bluesky, gdelt, rss, telegram  # noqa: E402
 
@@ -137,20 +138,16 @@ def main() -> int:
     if len(fresh_records) < len(records):
         log(f"[extract] dropped {len(records) - len(fresh_records)} reports about older events")
     records = fresh_records
-    # Google News can list an old article with a fresh date; drop headlines it already showed days ago.
-    checks = 0
-    for r in list(records):
-        if checks >= 10 or r["severity"] < 2 or not rss.is_google_news(r["item"]):
-            continue
-        checks += 1
-        if rss.republished(r["item"], session):
-            records.remove(r)
     geocoder = geo.Geocoder(state["geocache"], session, settings["geocode_per_run"])
     candidates = [c for c in (geo.place_record(r, geocoder, cfg.theaters) for r in records) if c]
     log(f"[geo] placed {len(candidates)}/{len(records)} ({geocoder.calls} lookups)")
+    known = {e["id"] for e in events}
     events = merge.merge(events, candidates)
     events = merge.prune(events, t0, settings["event_retention_days"], settings["max_events"])
     merge.apply_status(events, cells)
+    # Old stories that arrived with a fresh date are dropped (see recency.py).
+    if not args.no_llm:
+        events = recency.check(events, {e["id"] for e in events} - known, session, extract.ask_json, state, settings, t0)
 
     # 7. Housekeeping
     cutoff = int((t0 - timedelta(days=8)).timestamp())
