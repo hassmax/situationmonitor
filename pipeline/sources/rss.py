@@ -27,8 +27,8 @@ def fetch(sources: list[dict], session, health: dict, lookback_days: int = 0) ->
         name = src.get("name") or src.get("id") or src["url"]
         url = src["url"]
         if lookback_days:
-            # Google News searches: widen "when:1d" to the backfill period
-            url = re.sub(r"when%3A\d+d", f"when%3A{lookback_days}d", url)
+            # Google News searches: widen the "when:" window to the backfill period
+            url = re.sub(r"when%3A\d+[hd]", f"when%3A{lookback_days}d", url)
         try:
             r = session.get(url, timeout=25)
             r.raise_for_status()
