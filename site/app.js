@@ -158,7 +158,7 @@
   const S = {
     data: null,
     theaters: FALLBACK_THEATERS,
-    windowH: 6,
+    windowH: 24,
     theaterOn: new Set(FALLBACK_THEATERS.map((t) => t.id)),
     statusOn: new Set(Object.keys(STATUS)),
     layers: { paths: true, supply: true, carriers: true, diplomacy: true },
