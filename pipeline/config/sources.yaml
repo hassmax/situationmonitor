@@ -281,3 +281,9 @@ rss:
     url: https://lieber.westpoint.edu/feed/
     kind: news
     group: lieber
+  - id: gnews-shipping
+    name: Google News (attacks on shipping)
+    url: https://news.google.com/rss/search?q=%28UKMTO+OR+Ambrey+OR+tanker+OR+%22cargo+ship%22+OR+%22merchant+vessel%22+OR+%22container+ship%22+OR+%22bulk+carrier%22%29+%28Hormuz+OR+%22Gulf+of+Oman%22+OR+%22Persian+Gulf%22+OR+%22Red+Sea%22+OR+%22Bab+el-Mandeb%22+OR+%22Gulf+of+Aden%22+OR+Fujairah+OR+%22Black+Sea%22%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+    weight: 3

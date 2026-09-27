@@ -53,7 +53,7 @@ Everything is on one globe. The legend at the top of the left panel explains eve
 - **Recent events (last 6 hours, or new since your last visit) are animated by type:** impact bursts for drone and missile strikes, a diving chevron for airstrikes, rapid double flashes for shelling, a clash flicker for ground fighting, ripples at sea.
 - **Moving lines:** red dashed lines run from launch areas to targets (faint when the launch area wasn't named and the line starts from the nearest known one); teal lines are 30-day supply routes, thicker with more deliveries, solid when corroborated, with moving particles when a delivery arrived in the last 72 hours; pale lines are carrier tracks and stated destinations.
 - **Numbers on the whole-globe view.** Where three or more events sit close together, they collapse into the icon of the most important one with a count; click it to zoom in. Closer in, overlapping markers fan out around their shared spot, with a thin line back to each true location.
-- **Opening view.** The dashboard opens on the last 6 hours (24 if the last 6 were quiet) and flies to the busiest, most serious area of activity, with a short note naming it.
+- **Opening view.** The dashboard opens on the last 24 hours (3 days if the last 24 were quiet) and flies to the busiest, most serious area of activity, with a short note naming it.
 - **Times are when events happened,** not when the latest article about them appeared. The model reads the event date from each report and drops articles that only recap older news, so a two-day-old Security Council vote stays two days old. Later reports still attach to the original event; the detail view shows when the latest one arrived.
 
 **Attack waves.** Missile, drone, and interception reports with a known attacker are grouped into one event per direction per day (Russia → Ukraine, Ukraine → Russia, Iran → Israel, and so on; days run 09:00–09:00 UTC so an overnight attack stays together). The wave's icon sits on the main target, the other locations hit are small red dots, and the panel lists every location, launch and intercept totals, and launch areas.
@@ -86,6 +86,10 @@ python -m http.server --directory site 8000   # then open http://localhost:8000 
 ```
 
 Don't commit `site/data/events.json`; the workflow generates it on every run.
+
+## Backfill
+
+Runs only look at posts from the last 36 hours. To pull in something older (after adding a source, or when the dashboard was down), go to Actions → Update conflict data → Run workflow, and enter a number of days (up to 14) in "Backfill". Older posts are then worked through over the next few runs, within the free model quota, and appear at the time the events happened. Articles that only recap older news are still skipped.
 
 ## Limits worth knowing
 

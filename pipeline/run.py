@@ -55,6 +55,8 @@ def main() -> int:
     ap.add_argument("--state", default="state", help="directory holding state.json and events.json")
     ap.add_argument("--out", default="out", help="directory to write the public events.json")
     ap.add_argument("--no-llm", action="store_true", help="skip the model step")
+    ap.add_argument("--lookback-days", type=int, default=0,
+                    help="backfill: also process posts up to this many days old (a manual one-off run)")
     args = ap.parse_args()
 
     started = time.time()
@@ -62,6 +64,10 @@ def main() -> int:
     cfg = config_mod.load()
     settings = cfg.settings
     state_dir, out_dir = Path(args.state), Path(args.out)
+    lookback_h = max(0, min(args.lookback_days, 14)) * 24
+    if lookback_h:
+        settings["max_calls_per_run"] = max(settings["max_calls_per_run"], 20)
+        log(f"[backfill] looking back {lookback_h // 24} days")
 
     state = load_json(state_dir / "state.json", default_state())
     for k, v in default_state().items():
@@ -77,7 +83,7 @@ def main() -> int:
     # 1. Fetch
     items = []
     items += bluesky.fetch(cfg.sources["bluesky"], session, health)
-    items += rss.fetch(cfg.sources["rss"], session, health)
+    items += rss.fetch(cfg.sources["rss"], session, health, lookback_h // 24)
     items += telegram.fetch(cfg.sources["telegram"], state, health)
     log(f"[fetch] {len(items)} items")
 
@@ -85,11 +91,16 @@ def main() -> int:
     seen = state["seen"]
     fresh = []
     for it in items:
-        if it["id"] in seen:
+        age = hours_since(it["time"], t0)
+        older_than_normal = age > settings["max_item_age_hours"]
+        # A backfill reconsiders older posts, which normal runs skipped; anything recent was already handled.
+        if it["id"] in seen and not (lookback_h and older_than_normal):
             continue
         seen[it["id"]] = int(t0.timestamp())
-        if hours_since(it["time"], t0) > settings["max_item_age_hours"]:
-            continue
+        if older_than_normal:
+            if not lookback_h or age > lookback_h:
+                continue
+            it["max_age_h"] = lookback_h
         if extract.is_candidate(it):
             fresh.append(it)
     log(f"[filter] {len(fresh)} new candidates")
@@ -119,7 +130,8 @@ def main() -> int:
         health.pop("gdelt", None)
 
     # 6. Geocode, merge, score. Records about events that happened long ago are recaps, not news.
-    fresh_records = [r for r in records if hours_since(r.get("happened") or r["item"]["time"], t0) <= settings["max_item_age_hours"]]
+    fresh_records = [r for r in records if hours_since(r.get("happened") or r["item"]["time"], t0)
+                     <= r["item"].get("max_age_h", settings["max_item_age_hours"])]
     if len(fresh_records) < len(records):
         log(f"[extract] dropped {len(records) - len(fresh_records)} reports about older events")
     records = fresh_records

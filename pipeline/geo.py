@@ -97,6 +97,23 @@ class Geocoder:
         return cands[0]
 
 
+# Last-resort coordinates for events placed only by a named sea or strait.
+SEAS = {
+    "strait of hormuz": (26.57, 56.25), "hormuz": (26.57, 56.25), "gulf of oman": (24.5, 58.5),
+    "persian gulf": (27.0, 51.5), "arabian gulf": (27.0, 51.5), "red sea": (20.0, 38.5),
+    "bab el-mandeb": (12.6, 43.4), "bab al-mandab": (12.6, 43.4), "gulf of aden": (12.5, 47.5),
+    "arabian sea": (16.0, 63.0), "black sea": (43.5, 34.0), "sea of azov": (46.0, 36.5),
+    "baltic sea": (57.0, 19.0), "gulf of finland": (59.8, 25.5), "south china sea": (12.0, 114.0),
+    "taiwan strait": (24.4, 119.6), "east china sea": (29.0, 125.0), "sea of japan": (40.0, 135.0),
+    "philippine sea": (20.0, 130.0), "caribbean sea": (15.0, -75.0), "eastern mediterranean": (33.5, 33.5),
+}
+
+
+def _sea(name: str | None):
+    low = (name or "").lower()
+    return next((v for k, v in SEAS.items() if k in low), None)
+
+
 def place_record(rec: dict, geocoder: Geocoder, theaters: list[dict]) -> dict | None:
     """Turn an extracted record into an event candidate with coordinates, or None."""
     item = rec["item"]
@@ -114,7 +131,11 @@ def place_record(rec: dict, geocoder: Geocoder, theaters: list[dict]) -> dict | 
         lat, lon = hint
         approx = True
     if lat is None:
-        return None
+        sea = _sea(rec["place"]) or _sea(rec["admin1"])
+        if not sea:
+            return None
+        lat, lon = sea
+        approx = True
 
     ids = {t["id"] for t in theaters}
     theater = rec["theater"] if rec["theater"] in ids else None

@@ -71,7 +71,8 @@ Rules:
 - When the source is a party to the conflict, attribute the claim in the summary (for example "Russian MoD claims...", "IDF says...").
 - For hybrid incidents and incursions, say who blames whom exactly as the item does (for example "Polish officials suspect Russian involvement"). Never state attribution the item does not make.
 - Never add facts that are not in the item. Unknown casualty numbers are null.
-- lat/lon: your best estimate for the named place; null if you cannot place it at least at city or district level.
+- lat/lon: your best estimate for the named place; null if you cannot place it at least at city or district level. Incidents at sea always get coordinates: work them out from the stated reference ("23 nautical miles northeast of Khasab", "off Fujairah"), or use the center of the named strait or sea. Put the sea area's name (for example "Strait of Hormuz") in place.
+- Ship attacks: when a report says "unknown projectile", keep it unknown; name an attacker only when a source does (for example "US Central Command says an Iranian drone struck the tanker").
 - severity 3 = major (10 or more killed, strike on a capital or critical infrastructure, large territorial change, direct combat between major powers, attack with dozens of missiles or drones, a ceasefire or peace deal signed or collapsing, an alliance invoked); 2 = notable (including high-level talks or emergency alliance meetings); 1 = minor or local.
 - attacker: the country whose forces carried out a strike, launch, raid, or incursion, when the item states or clearly implies it ("Russian drones" = RU, "Ukrainian drones hit a refinery" = UA, Houthi missiles = YE, Hezbollah rockets = LB, Iranian missiles = IR). For interceptions, the side whose weapons were intercepted. Otherwise null.
 - origins: launch or firing areas the item actually names (for example "launched from Kursk and Primorsko-Akhtarsk"), at most 6, with your coordinate estimate for each. Use [] when none are named. Never guess a launch site.
@@ -101,7 +102,10 @@ _EN = (r"air ?strikes?|strikes?|struck|missiles?|drones?|uavs?|shahed|shell(?:in
        r"ataques?|bombardeos?|enfrentamientos?|militares|ej[eé]rcito|muertos|fuerzas armadas|"
        r"carriers?|strike group|cvn|uss|airlift|air ?bridge|shipments?|deliver(?:y|ies|ed)|military aid|"
        r"c-17|il-76|antonov|arms|weapons|munitions|ammunition|article 51|war powers|aumf|icj|icc|"
-       r"self-defen[cs]e|warrants?|rulings?|provisional measures|legal basis")
+       r"self-defen[cs]e|warrants?|rulings?|provisional measures|legal basis|"
+       r"tankers?|vessels?|ships?|shipping|cargo|freighters?|bulk carrier|container ship|merchant|mariners?|seafarers?|"
+       r"crew|ukmto|ambrey|jmic|projectiles?|hormuz|bab el-mandeb|red sea|gulf of aden|hijack(?:ed|ing)?|boarded|"
+       r"mines?|limpet|sank|sinking|ablaze|adrift|hits?")
 CONFLICT_RE = re.compile(
     rf"\b(?:{_EN})\b"
     r"|удар|обстр|ракет|дрон|бпла|шахед|атак|вибух|взрыв|штурм|наступ|звільн|освобо|ппо|пво|загибл|погиб|"
@@ -131,7 +135,8 @@ def _ts(item: dict) -> float:
 def build_queue(pending: list[dict], fresh: list[dict], now: datetime, settings: dict) -> list[dict]:
     by_id: dict[str, dict] = {}
     for it in pending + fresh:
-        if hours_since(it.get("time"), now) <= settings["max_item_age_hours"]:
+        # backfilled items carry their own, longer age limit
+        if hours_since(it.get("time"), now) <= it.get("max_age_h", settings["max_item_age_hours"]):
             by_id[it["id"]] = it
     queue = sorted(by_id.values(), key=lambda it: (-int(it.get("weight", 1)), -_ts(it)))
     return queue[: settings["pending_max"]]

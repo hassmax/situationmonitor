@@ -479,12 +479,30 @@
   // ------------------------------------------------------------------ data
   async function load() {
     const url = DEMO ? "data/demo-events.json" : `data/events.json?t=${Date.now()}`;
+    let data;
     try {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) throw new Error(res.status === 404 ? "missing" : `HTTP ${res.status}`);
-      ingest(await res.json());
+      data = await res.json();
     } catch (err) {
       showLoadError(err);
+      return;
+    }
+    try { ingest(data); } catch (err) { fatal(err); }
+  }
+
+  // If anything breaks while starting or drawing, say so on the page instead of hanging on "Loading".
+  function fatal(err) {
+    console.error(err);
+    const msg = (err && (err.stack || err.message)) || String(err);
+    const ft = document.getElementById("freshText");
+    if (ft) ft.textContent = "The dashboard hit an error";
+    const b = document.getElementById("beacon");
+    if (b) b.className = "beacon dead";
+    const list = document.getElementById("feedList");
+    if (list) {
+      list.hidden = false;
+      list.innerHTML = `<li class="empty"><strong>The dashboard didn't start properly.</strong>Try a hard refresh: Cmd + Shift + R on a Mac, Ctrl + Shift + R on Windows. Right after an update, a browser can mix old and new files. If this message stays, send this error text:<pre class="err">${esc(String(msg).slice(0, 600))}</pre></li>`;
     }
   }
 
@@ -545,8 +563,8 @@
 
     if (S.firstLoad) {
       S.firstLoad = false;
-      // Opens on the last 6 hours; if that's empty, widen to 24 so the first view isn't blank.
-      if (!data.events.some((e) => onMap(e) && e._t >= Date.now() - 6 * HOUR)) { setWindow(24); render(); }
+      // Opens on the last 24 hours; if that's empty, widen to 3 days so the first view isn't blank.
+      if (!data.events.some((e) => onMap(e) && e._t >= Date.now() - 24 * HOUR)) { setWindow(72); render(); }
       const hash = decodeURIComponent(location.hash.slice(1));
       if (hash && data.events.some((e) => e.id === hash)) select(hash, true);
       else if (/^CVN-\d{2}$/.test(hash) && S.fleet.some((c) => c.hull === hash)) selectCarrier(hash, true);
@@ -1270,12 +1288,16 @@
   const markSeen = () => { try { localStorage.setItem("gsm_lastSeen", String(Date.now())); } catch (_) { /* ignore */ } };
   window.addEventListener("pagehide", markSeen);
   setInterval(markSeen, 10 * 60e3);
-  buildStaticControls();
-  renderTheaters();
-  wire();
-  if (isMobile()) setSheet(1, true);
-  layout();
-  load();
+  try {
+    buildStaticControls();
+    renderTheaters();
+    wire();
+    if (isMobile()) setSheet(1, true);
+    layout();
+    load();
+  } catch (err) {
+    fatal(err);
+  }
   if (!DEMO) setInterval(load, REFRESH_MS);
   setInterval(() => {
     updateFreshness();

@@ -1,6 +1,7 @@
 """Read news RSS/Atom feeds."""
 from __future__ import annotations
 
+import re
 import time
 from datetime import datetime
 
@@ -19,20 +20,24 @@ def _entry_time(entry) -> datetime | None:
         return None
 
 
-def fetch(sources: list[dict], session, health: dict) -> list[dict]:
+def fetch(sources: list[dict], session, health: dict, lookback_days: int = 0) -> list[dict]:
     items: list[dict] = []
     for src in sources:
         sid = f"rss:{src.get('id') or src['url']}"
         name = src.get("name") or src.get("id") or src["url"]
+        url = src["url"]
+        if lookback_days:
+            # Google News searches: widen "when:1d" to the backfill period
+            url = re.sub(r"when%3A\d+d", f"when%3A{lookback_days}d", url)
         try:
-            r = session.get(src["url"], timeout=25)
+            r = session.get(url, timeout=25)
             r.raise_for_status()
             feed = feedparser.parse(r.content)
             if not feed.entries:
                 raise ValueError("feed returned no entries")
             latest = None
             count = 0
-            for entry in feed.entries[:40]:
+            for entry in feed.entries[: (100 if lookback_days else 40)]:
                 published = _entry_time(entry)
                 link = entry.get("link") or ""
                 if not published or not link:
