@@ -3,13 +3,14 @@
 Written from the dashboard's own events only, at most once an hour and only when those events
 changed. One model call, from the shared daily budget; skipped when fewer than brief_min_calls
 calls are left. Every bullet must cite the events it is based on, and bullets citing events that
-don't exist are dropped. If the call fails or nothing valid is left, the previous brief stays,
+don't exist, or that state an uncorroborated event without attributing it, are dropped. If the call fails or nothing valid is left, the previous brief stays,
 with its original timestamp.
 """
 from __future__ import annotations
 
 import hashlib
 import json
+import re
 from datetime import timedelta
 
 from common import iso, log, parse_time
@@ -34,7 +35,9 @@ PROMPT = """You write a short situation brief for a live armed-conflict map. You
 
 Rules:
 - Use only the supplied events. No outside knowledge, no background, no predictions, no speculation about intent or what may happen next.
-- Keep confidence explicit. Each event has a "confidence" field. Never state a single-source report or a one-sided claim as fact: write "a single-source report says...", "Russia's MoD claims...", "Ukrainian sources report...". Only events marked corroborated may be stated plainly, and even then keep the wording close to the summary.
+- Keep confidence explicit, in every bullet and every theater line. Each event has a "confidence" field. Never state a single-source report or a one-sided claim as fact: every clause drawn from such an event needs its own attribution ("a single-source report says...", "Russia's MoD claims...", "Ukrainian officials report...", "X reportedly..."). Only events marked corroborated may be stated plainly, and even then keep the wording close to the summary.
+- Every statement must be supported by the summary of an event it cites. Don't combine events into a claim that no single event makes.
+- Don't characterize the overall situation or trends ("tensions persist", "escalating", "a volatile day"). Say what the events report, and nothing more.
 - Neutral, plain language. No adjectives that add drama. Keep numbers exactly as given.
 - Every bullet and every theater line must cite the ids of the events it is based on, and only ids from the input.
 - At most 6 overall bullets, most significant first (severity, corroboration, scale). At most one line per theater that had activity.
@@ -79,6 +82,17 @@ def fingerprint(events: list[dict]) -> str:
     return hashlib.sha1(json.dumps(rows, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
+# A line that cites anything not corroborated must attribute it in words.
+_ATTRIBUTION = re.compile(r"\b(?:report\w*|claim\w*|say|says|said|stat(?:e|es|ed|ing)|according|alleg\w*|"
+                          r"single-source|unconfirmed|unverified|aligned|reportedly|assert\w*|accus\w*)\b", re.IGNORECASE)
+
+
+def _attributed(text: str, ids: list[str], by_id: dict) -> bool:
+    if all(by_id[i].get("status") == "corroborated" for i in ids):
+        return True
+    return bool(_ATTRIBUTION.search(text))
+
+
 def _ids(v) -> list[str] | None:
     if not isinstance(v, list) or not all(isinstance(i, str) for i in v):
         return None
@@ -98,7 +112,7 @@ def validate(reply, events: list[dict]) -> dict | None:
             continue
         if not ids:
             uncited.append({"text": text[:300], "ids": []})
-        elif all(i in by_id for i in ids):
+        elif all(i in by_id for i in ids) and _attributed(text, ids, by_id):
             bullets.append({"text": text[:300], "ids": ids[:10]})
     theaters, done = [], set()
     for t in reply.get("theaters") or []:
@@ -106,6 +120,8 @@ def validate(reply, events: list[dict]) -> dict | None:
             continue
         tid, text, ids = t.get("id"), str(t.get("text") or "").strip(), _ids(t.get("ids"))
         if not text or not ids or tid in done or not all(i in by_id and by_id[i].get("theater") == tid for i in ids):
+            continue
+        if not _attributed(text, ids, by_id):
             continue
         done.add(tid)
         theaters.append({"id": tid, "text": text[:300], "ids": ids[:10]})
