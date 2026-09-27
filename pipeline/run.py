@@ -86,7 +86,7 @@ def main() -> int:
     # 1. Fetch
     items = []
     items += bluesky.fetch(cfg.sources["bluesky"], session, health)
-    items += rss.fetch(cfg.sources["rss"], session, health, lookback_h // 24)
+    items += rss.fetch(cfg.sources["rss"], session, health, lookback_h // 24, cfg.outlets)
     items += telegram.fetch(cfg.sources["telegram"], state, health)
     log(f"[fetch] {len(items)} items")
 

@@ -363,16 +363,22 @@ def apply_status(events: list[dict], cells: list[dict]) -> None:
         if len(news) >= 3:
             neutral.add("gdelt")
         groups = neutral | sided
-        if len(groups) >= 2 and (neutral or len(sides) >= 2):
+        # Google News results from outlets not listed in sources.yaml share one group. Much of it
+        # is syndicated copy (local sites republishing Reuters), so it only counts when no listed
+        # outlet has reported the event.
+        counted = groups - WEAK_GROUPS if groups - WEAK_GROUPS else groups
+        if len(counted) >= 2 and ((neutral & counted) or len(sides) >= 2):
             e["status"] = "corroborated"
         elif neutral:
             e["status"] = "unconfirmed"
         else:
             e["status"] = "claimed"
-        e["sources_count"] = len(groups)
+        e["sources_count"] = len(counted)
         if not e.get("wave") and not e.get("alert"):
             e["summary"] = _headline(e)["summary"]
 
+
+WEAK_GROUPS = {"google-news"}
 
 SUPPLY_RETENTION_DAYS = 30  # arms transfers are shown as 30-day flows
 
