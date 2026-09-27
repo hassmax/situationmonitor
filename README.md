@@ -44,6 +44,7 @@ On the next run, the bot sends a single "Alerts are on" message. Everything alre
 - a US aircraft carrier that departs, starts heading to a stated destination, or moves 500+ km;
 - a new air or sea bridge: 3+ reported deliveries on one supplier-to-recipient route within 72 hours;
 - any new legal step (Article 51 letter, War Powers report, Security Council resolution, ICJ or ICC action).
+- an event reported both by Shin (`@shin_persian`) and by at least one other OSINT Telegram channel (any Telegram source with `kind: osint` in `sources.yaml`, such as DeepState).
 
 Each message says what happened, where, the confidence label and number of sources, and links to the event on the dashboard. You never get the same alert twice; an event alerts again only if it later matches a rule it did not match before (a wave that grows past 100 launched, say). If more than 8 alerts come due at once, you get one digest instead. To change a threshold, limit alerts to some theaters, or set quiet hours, edit `pipeline/config/alerts.yaml`; every setting there has a comment. For example, to hear only about the Middle East and Ukraine, and nothing between 22:00 and 07:00 UTC:
 

@@ -44,6 +44,14 @@ rules:
     min_deliveries: 3
     window_hours: 72
 
+  # An event reported both by the channel below and by at least one other OSINT Telegram
+  # channel (a Telegram source with kind: osint in sources.yaml, for example DeepState),
+  # of at least this severity.
+  telegram_osint_pair:
+    enabled: true
+    channel: shin_persian
+    min_severity: 1
+
   # Any new legal step: an Article 51 letter, a War Powers report, a Security Council
   # resolution, or an ICJ or ICC action.
   legal:

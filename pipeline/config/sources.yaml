@@ -119,6 +119,16 @@ telegram:
     side: RU
     group: ru-milbloggers
     prefilter: false
+  - username: shin_persian
+    # Shin (شین): Iran-focused OSINT in Persian and English (flight tracking, HF radio, imagery),
+    # run by the former "Aleph" account. Not marked as aligned with a party; if you judge it
+    # partisan, add a side (for example side: IL or side: IR) so it can't corroborate sources
+    # on that side. Every post goes to the model because the keyword filter is English-heavy.
+    name: Shin (Persian-language OSINT)
+    kind: osint
+    group: shin
+    weight: 2
+    prefilter: false
 
 outlets:
   # Google News results come from many outlets. The outlet that published each result is
