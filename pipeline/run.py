@@ -10,6 +10,7 @@ Add --no-llm to test fetching only.
 from __future__ import annotations
 
 import argparse
+import os
 import sys
 import time
 from datetime import timedelta
@@ -17,6 +18,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
+import alerts  # noqa: E402
 import brief  # noqa: E402
 import config as config_mod  # noqa: E402
 import extract  # noqa: E402
@@ -170,7 +172,11 @@ def main() -> int:
         brief.update(state, published, {t["id"]: t["name"] for t in cfg.theaters}, settings, t0,
                      extract.ask_json, extract.calls_remaining(state, settings, t0))
 
-    # 8. Housekeeping
+    # 8. Telegram alerts (skipped unless TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set)
+    alerts.run(state, published, fleet.public(state, t0), cfg.alerts, {t["id"]: t["name"] for t in cfg.theaters},
+               t0, os.environ)
+
+    # 9. Housekeeping
     cutoff = int((t0 - timedelta(days=8)).timestamp())
     state["seen"] = {k: v for k, v in seen.items() if v >= cutoff}
     configured = {f"bsky:{s['handle'].lstrip('@')}" for s in cfg.sources["bluesky"]}
@@ -184,7 +190,7 @@ def main() -> int:
         "queue": len(leftover),
     }
 
-    # 9. Write
+    # 10. Write
     save_json(state_dir / "state.json", state)
     save_json(state_dir / "events.json", {"events": events, "cells": cells})
     public = {

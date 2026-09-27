@@ -27,6 +27,33 @@ The pipeline reads public channels using your own Telegram account.
 
 The session string works like a password to your Telegram account. It is stored as an encrypted GitHub secret and never written to the site or the data branch, but consider using a secondary Telegram account. You will see an active session in Telegram's settings that connects from GitHub's servers. Revoking it there (or deleting the secret) switches Telegram off; the rest keeps working.
 
+### Telegram alerts (optional)
+
+The update job can message you on Telegram when something important happens. This uses a bot, which is separate from the Telegram account above.
+
+1. In Telegram, open a chat with **@BotFather**, send `/newbot`, and follow the prompts (any name; the username must end in `bot`). BotFather replies with a **token** like `123456789:AAH...`. Keep it private.
+2. Open a chat with your new bot and send it any message (for example "hi"). To get alerts in a group or channel instead, add the bot there (as an admin, for a channel) and post a message.
+3. In a browser, open `https://api.telegram.org/bot<TOKEN>/getUpdates`, with your token in place of `<TOKEN>`. Find `"chat":{"id":` in the page: that number is your **chat id** (group and channel ids start with `-`).
+4. In the repo: Settings → Secrets and variables → Actions → New repository secret. Add `TELEGRAM_BOT_TOKEN` (the token) and `TELEGRAM_CHAT_ID` (the chat id).
+5. Optional: on the Variables tab of the same page, add `DASHBOARD_URL` if the dashboard is not at `https://<owner>.github.io/<repo>/`.
+
+On the next run, the bot sends a single "Alerts are on" message. Everything already on the map counts as seen, so there is no backlog. After that, you get a message when a new event matches a rule in `pipeline/config/alerts.yaml`:
+
+- a severity-3 event that is corroborated, in any theater;
+- an attack wave with 100+ reported launched, or 8+ locations;
+- a US aircraft carrier that departs, starts heading to a stated destination, or moves 500+ km;
+- a new air or sea bridge: 3+ reported deliveries on one supplier-to-recipient route within 72 hours;
+- any new legal step (Article 51 letter, War Powers report, Security Council resolution, ICJ or ICC action).
+
+Each message says what happened, where, the confidence label and number of sources, and links to the event on the dashboard. You never get the same alert twice; an event alerts again only if it later matches a rule it did not match before (a wave that grows past 100 launched, say). If more than 8 alerts come due at once, you get one digest instead. To change a threshold, limit alerts to some theaters, or set quiet hours, edit `pipeline/config/alerts.yaml`; every setting there has a comment. For example, to hear only about the Middle East and Ukraine, and nothing between 22:00 and 07:00 UTC:
+
+```yaml
+theaters: [mideast, ukraine]
+quiet_hours: {start: 22, end: 7}
+```
+
+To switch alerts off, delete either secret.
+
 ## How it works
 
 ```
