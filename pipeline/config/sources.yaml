@@ -129,16 +129,6 @@ telegram:
     group: shin
     weight: 2
     prefilter: false
-  - username: GeoConfirmed
-    # GeoConfirmed: volunteer OSINT project that geolocates and verifies conflict footage
-    # (satellite imagery, street-level photos), including the Middle East. Independent;
-    # not marked as aligned with a party. (Aurora Intel's Telegram channel was tried here
-    # but has not posted since June 2025; Aurora is still read on Bluesky.)
-    name: GeoConfirmed (geolocation OSINT)
-    kind: osint
-    group: geoconfirmed
-    weight: 2
-    prefilter: false
 
 outlets:
   # Google News results come from many outlets. The outlet that published each result is
