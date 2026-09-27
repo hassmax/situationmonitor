@@ -129,6 +129,15 @@ telegram:
     group: shin
     weight: 2
     prefilter: false
+  - username: Auroraintel
+    # Aurora Intel's official Telegram channel: English-language OSINT focused on the Middle East.
+    # Shares the "aurora" group with its Bluesky account above, so the two never corroborate
+    # each other. Not marked as aligned with a party.
+    name: Aurora Intel (Telegram)
+    kind: osint
+    group: aurora
+    weight: 2
+    prefilter: false
 
 outlets:
   # Google News results come from many outlets. The outlet that published each result is

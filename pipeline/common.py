@@ -119,6 +119,10 @@ def save_json(path: Path, data, pretty: bool = False) -> None:
 def make_item(src: dict, platform: str, source_id: str, url: str, text: str,
               published: datetime, uid: str | None = None) -> dict:
     """Normalise a post/article into the shape the extractor expects."""
+    # A post can't be newer than the moment we read it. Some feeds give only a date, stamped as
+    # midnight of a day that hasn't started yet in UTC (Taipei Times), which the map would show
+    # as "just now" until the clock caught up.
+    published = min(published if published.tzinfo else published.replace(tzinfo=UTC), now())
     return {
         "id": short_hash(platform, uid or url),
         "source_id": source_id,
