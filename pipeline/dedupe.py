@@ -20,10 +20,17 @@ the earliest event.
   many separate strikes a day.
 - Diplomacy and legal steps are grouped by who takes part, not by country or theater (a German
   minister's visit to the ICC was filed once under the NATO flank and once under Ukraine; one
-  meeting was pinned to New York, Berlin and Moscow): events with the same parties, or two
-  parties in common, and some wording in common.
-- A group is shown again only when it contains a pair not judged before; answers are
+  meeting was pinned to New York, Berlin and Moscow): events whose parties are the same, one
+  within the other (["EU"] and ["EU", "RU"]), or two in common, and some wording in common.
+  Hybrid and deployment events that name parties join these groups too, since a statement is
+  sometimes filed under the kind of event it is about (the EU's top diplomat warning of Russian
+  sabotage was filed as a hybrid attack).
+- A group is shown again only when it contains a pair not settled yet; answers are
   remembered for a week, and pairs judged the same are folded again if both come back.
+- "Different" gets one second look after SECOND_LOOK: when Google's usual model is busy the
+  check runs on a weaker backup, which once called nearly every pair different (among them two
+  reports of the same EU fund release), and a first "different" used to stand for a week.
+  After the second answer the pair is settled either way.
 """
 from __future__ import annotations
 
@@ -37,6 +44,7 @@ MIN_INTERVAL = timedelta(hours=1)
 RETRY = timedelta(minutes=15)
 LOOKBACK = timedelta(hours=72)
 PAIR_WINDOW = timedelta(hours=48)
+SECOND_LOOK = timedelta(hours=6)
 VIOLENCE_OVERLAP = 0.2
 TALKS_OVERLAP = 0.2  # with the same (or two shared) parties
 TALKS_BARE_OVERLAP = 0.4  # when either event lists no parties
@@ -47,10 +55,12 @@ KEEP_DAYS = 7
 GROUP = {"strike": "violence", "ground": "violence", "naval": "naval", "deployment": "deployment",
          "hybrid": "hybrid", "incursion": "incursion", "diplomacy": "talks", "legal": "talks"}
 WHOLE = {"naval", "deployment", "hybrid", "incursion"}  # shown as one group per country
+STATEMENT_KINDS = {"hybrid", "deployment"}  # with parties named, also grouped with talks
 
 PROMPT = """You check a live conflict map for duplicates. Each case is a list of events from the map in the same country, or diplomatic and legal events between the same parties, each with an id, its summary, place, and time.
 
 Group the events that describe the same specific incident or statement: the same arrests, the same strike, the same seizure, the same exercise, the same announcement, the same meeting, visit or call, the same vote, filing or ruling, including follow-up coverage of it over the following days (new details, reactions, questioning of suspects, denials). Places can differ (a city, the base it is about, the capital that spoke, or the whole country) and wording can differ.
+Reports often tell one event from different angles or with different details (who gets the money, what was said first, who attended); that is still one event.
 Keep events apart when they are separate incidents that resemble each other (two strikes on the same city, two drills, arrests in two different cases, two meetings between the same countries), when one is only background to the other, or when you are unsure. For meetings, statements and legal steps, a response by another government or body is its own event (a third country criticizing a meeting is not the meeting).
 
 Reply with one JSON object and nothing else, with one entry for every case. In "groups" list only groups of two or more ids; events in no group stay separate. Use "groups": [] when a case has no duplicates:
@@ -73,21 +83,39 @@ def _linked(e: dict, f: dict, group: str) -> bool:
     if group == "talks":
         a, b = set(e.get("parties") or []), set(f.get("parties") or [])
         if a and b:
-            return (a == b or len(a & b) >= 2) and _overlap(e, f) >= TALKS_OVERLAP
+            return (a <= b or b <= a or len(a & b) >= 2) and _overlap(e, f) >= TALKS_OVERLAP
         return _overlap(e, f) >= TALKS_BARE_OVERLAP
     return group in WHOLE or _overlap(e, f) >= VIOLENCE_OVERLAP
 
 
+def _answers(v: dict | None) -> int:
+    """How many times a pair has been answered (entries from before the count was kept: once)."""
+    return int(v.get("n", 1)) if v else 0
+
+
+def _settled(v: dict | None, now) -> bool:
+    """A pair needs no (further) question: judged the same, judged different twice, or judged
+    different less than SECOND_LOOK ago."""
+    if not v:
+        return False
+    if v.get("same") or _answers(v) >= 2:
+        return True
+    return now - (parse_time(v.get("at")) or now) < SECOND_LOOK
+
+
 def groups(events: list[dict], judged: dict, now) -> list[list[dict]]:
-    """Groups worth asking about (some pair in them not judged yet), newest first."""
+    """Groups worth asking about (some pair in them not settled yet), newest first."""
     since = now - LOOKBACK
     buckets: dict[tuple, list[dict]] = {}
     for e in events:
+        if e.get("wave") or e.get("alert") or (parse_time(e.get("time")) or since) <= since:
+            continue
         g = GROUP.get(FAMILY.get(e["type"]))
-        if (g and not e.get("wave") and not e.get("alert") and (e.get("country") or g == "talks")
-                and (parse_time(e.get("time")) or since) > since):
-            # talks are linked by who takes part, wherever they were pinned
-            buckets.setdefault(("" if g == "talks" else e["country"], g), []).append(e)
+        if g and g != "talks" and e.get("country"):
+            buckets.setdefault((e["country"], g), []).append(e)
+        # talks are linked by who takes part, wherever they were pinned
+        if g == "talks" or (g in STATEMENT_KINDS and e.get("parties")):
+            buckets.setdefault(("", "talks"), []).append(e)
     out = []
     for (_, g), pool in buckets.items():
         pool.sort(key=lambda e: e["time"])
@@ -104,13 +132,24 @@ def groups(events: list[dict], judged: dict, now) -> list[list[dict]]:
                     if f["id"] not in seen and _linked(e, f, g):
                         seen.add(f["id"])
                         todo.append(f)
-            comp = sorted(comp, key=lambda e: e["time"])[-MAX_GROUP:]
-            if len(comp) > 1 and any(_key(a["id"], b["id"]) not in judged
-                                     for i, a in enumerate(comp) for b in comp[i + 1:]):
-                out.append(comp)
+            for part in _chunks(sorted(comp, key=lambda e: e["time"])):
+                if len(part) > 1 and any(not _settled(judged.get(_key(a["id"], b["id"])), now)
+                                         for i, a in enumerate(part) for b in part[i + 1:]):
+                    out.append(part)
     # biggest groups first (a story reported many times over is the likeliest duplicate), then newest
     out.sort(key=lambda c: (len(c), c[-1]["time"]), reverse=True)
     return out
+
+
+def _chunks(comp: list[dict]) -> list[list[dict]]:
+    """A group too big to show at once, in time order, as overlapping runs of MAX_GROUP (each
+    event is shown next to the ones reported around the same time; keeping only the newest
+    left the first reports of a story out)."""
+    if len(comp) <= MAX_GROUP:
+        return [comp]
+    step = MAX_GROUP // 2
+    starts = list(range(0, len(comp) - MAX_GROUP, step)) + [len(comp) - MAX_GROUP]
+    return [comp[i:i + MAX_GROUP] for i in starts]
 
 
 def _fold(events: list[dict], same: list[tuple[str, str]], skip: set[str]) -> tuple[list[dict], list[dict]]:
@@ -179,6 +218,7 @@ def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: in
     st.pop("failed", None)
     same = []
     answered = set()
+    now_seen: set[str] = set()  # a pair shown in two overlapping cases counts as one answer
     for res in reply["results"]:
         n_case = _case_number(res)
         if n_case is None or not 0 <= n_case < len(cases) or n_case in answered:
@@ -195,7 +235,12 @@ def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: in
         for x, a in enumerate(comp):
             for b in comp[x + 1:]:
                 hit = a["id"] in where and where.get(a["id"]) == where.get(b["id"])
-                judged[_key(a["id"], b["id"])] = {"same": hit, "at": iso(now)}
+                k = _key(a["id"], b["id"])
+                if k in now_seen:
+                    judged[k]["same"] = judged[k]["same"] or hit
+                else:
+                    now_seen.add(k)
+                    judged[k] = {"same": hit, "at": iso(now), "n": _answers(judged.get(k)) + 1}
                 if hit:
                     same.append((a["id"], b["id"]))
         for n in sorted(set(where.values())):

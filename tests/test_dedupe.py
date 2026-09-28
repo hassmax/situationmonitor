@@ -105,3 +105,37 @@ def test_biggest_group_is_asked_first():
              ev("s2", "A depot was hit by drones.", country="UA", type_="hybrid", hours_ago=1)]
     first = dedupe.groups(fresh() + small, {}, NOW)[0]
     assert [e["id"] for e in first] == ["a", "b", "c", "d"]      # 4 UK events before 2 newer Ukrainian ones
+
+
+def test_one_party_within_the_other_links_and_statements_filed_as_hybrid_join_talks():
+    talks = [ev("k1", "EU foreign policy chief Kallas warns Russia is preparing a sabotage campaign.",
+                type_="diplomacy", place="Brussels", country="BE", parties=["EU", "RU"], hours_ago=6),
+             ev("k2", "Kallas urges vigilance against increasing Russian sabotage in Europe.",
+                type_="diplomacy", place="Brussels", country="BE", parties=["EU"], hours_ago=5),
+             ev("k3", "The EU's top diplomat said Russia is planning more sabotage in Europe.",
+                type_="hybrid", place="Brussels", country="BE", parties=["EU", "RU"], hours_ago=4)]
+    got = [sorted(e["id"] for e in g) for g in dedupe.groups(talks, {}, NOW)]
+    assert ["k1", "k2", "k3"] in got
+
+
+def test_different_gets_one_second_look_after_six_hours():
+    evs = [ev("a", "Five men arrested near RAF Fairford."), ev("b", "Arrests near the Fairford air base.")]
+    first = {"a|b": {"same": False, "at": (NOW - timedelta(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")}}
+    assert dedupe.groups(evs, first, NOW) == []
+    old = {"a|b": {"same": False, "at": (NOW - timedelta(hours=7)).strftime("%Y-%m-%dT%H:%M:%SZ")}}
+    assert len(dedupe.groups(evs, old, NOW)) == 1
+    twice = {"a|b": dict(old["a|b"], n=2)}
+    assert dedupe.groups(evs, twice, NOW) == []
+    state = {"dedupe": {"judged": dict(old)}}
+    ask = lambda *a, **k: {"results": [{"i": 0, "groups": []}]}
+    dedupe.run(evs, state, SETTINGS, NOW, ask, 100, set())
+    assert state["dedupe"]["judged"]["a|b"]["n"] == 2
+
+
+def test_big_groups_are_shown_in_overlapping_runs_so_early_reports_are_compared():
+    evs = [ev(f"h{n:02d}", f"Hybrid incident report number {n}.", hours_ago=60 - n) for n in range(30)]
+    parts = dedupe.groups(evs, {}, NOW)
+    assert all(len(p) <= dedupe.MAX_GROUP for p in parts)
+    shown = {e["id"] for p in parts for e in p}
+    assert shown == {e["id"] for e in evs}
+    assert any({"h00", "h01"} <= {e["id"] for e in p} for p in parts)
