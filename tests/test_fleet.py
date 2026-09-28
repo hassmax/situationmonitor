@@ -95,9 +95,9 @@ def test_tracker_is_read_without_the_model():
     assert got["CVN-78"]["place"] == "Mediterranean Sea"            # a bold paragraph works as a section title
     assert got["CVN-78"]["heading_to"]["place"] == "Eastern Mediterranean"
     assert got["CVN-73"]["place"] == "Western Pacific"
-    assert got["CVN-71"]["lat"] is None                             # "departs San Diego for a patrol in ...": not there yet
+    assert (got["CVN-71"]["place"], got["CVN-71"]["status"]) == ("San Diego", "departed")  # last known point: departed
     assert got["CVN-68"]["lat"] is None                             # "the Pacific" is not a position,
-    assert len([c for c in got.values() if c["lat"] is not None]) == 4  # but both still count as listed
+    assert len([c for c in got.values() if c["lat"] is not None]) == 5  # but Nimitz still counts as listed
     assert any(n.startswith("CVN-72: near Hawaii (from section") for n in notes)
 
 
@@ -120,3 +120,58 @@ def test_vague_report_still_gives_the_destination():
     fleet.update(state, [news("CVN-71", "Middle East", 25.0, 55.0, "2026-09-28T08:45:00Z", heading=h)])
     c = state["fleet"]["CVN-71"]
     assert c["place"].startswith("San Diego") and c["heading_to"] == h
+
+
+
+REAL = """<h2>In the Pacific</h2>
+<p>The Abraham Lincoln Carrier Strike Group departed last Sunday from Apra Harbor, Guam, and is transiting the Pacific Ocean en route to California.</p>
+<h2>In the Arabian Sea</h2>
+<p>Aircraft carrier USS\xa0 George Washington \xa0(CVN-73), along with embarked Carrier Air Wing (CVW) 5\xa0and USS\xa0 Shoup\xa0 (DDG-86), are operating in the Arabian Sea.</p>
+<h2>In the Atlantic</h2>
+<p>Carrier \nUSS\xa0 George H. W. Bush \xa0(CVN-77), homeported at Naval Station Norfolk, Va., is conducting sea trials.</p>
+<h2>In the Eastern Pacific</h2>
+<p>Aircraft carrier USS Theodore Roosevelt\xa0 (CVN-71) departed on deployment Sunday from San Diego, Calif.</p>"""
+
+
+def test_real_tracker_sentences_28_sept():
+    got = {c["hull"]: c for c in fleet.parse_tracker(REAL)}
+    lincoln = got["CVN-72"]
+    assert (lincoln["place"], lincoln["status"], lincoln["heading_to"]["place"]) == ("Guam", "departed", "California")
+    assert got["CVN-73"]["place"] == "Arabian Sea"
+    assert got["CVN-77"]["lat"] is None                  # "homeported at Norfolk" is not where it is; "H. W." still matches
+    assert got["CVN-71"]["place"] == "Eastern Pacific"
+
+
+def test_listed_without_position_and_nothing_stored_shows_home_port():
+    state = {"fleet_meta": {"tracker_time": "2026-09-28T18:01:35Z", "tracker_hulls": ["CVN-77"]}}
+    fleet.apply_home_baseline(state, datetime(2026, 9, 28, 19, tzinfo=timezone.utc))
+    assert state["fleet"]["CVN-77"]["place"] == "Norfolk, Va."
+
+
+LINCOLN = ("<h2>In the Pacific</h2>"
+           "<p>The Abraham Lincoln Carrier Strike Group departed last Sunday from Apra Harbor, Guam, and is transiting "
+           "the Pacific Ocean en route to California.</p>")
+
+
+def lincoln(extra):
+    c = next(c for c in fleet.parse_tracker(LINCOLN + extra) if c["hull"] == "CVN-72")
+    return c["place"], c["status"], (c["heading_to"] or {}).get("place")
+
+
+def test_near_hawaii_in_the_same_sentence():
+    html = LINCOLN.replace("the Pacific Ocean en route", "the Pacific Ocean near Hawaii en route")
+    c = next(c for c in fleet.parse_tracker(html) if c["hull"] == "CVN-72")
+    assert (c["place"], c["heading_to"]["place"]) == ("near Hawaii", "California")
+
+
+def test_near_hawaii_in_a_follow_on_sentence_about_the_strike_group():
+    assert lincoln("<p>The strike group was operating near Hawaii on Sunday, a Navy official said.</p>") == \
+        ("near Hawaii", "underway", "California")
+
+
+def test_near_hawaii_in_a_later_paragraph_naming_the_carrier():
+    assert lincoln("<h2>Elsewhere</h2><p>USS Abraham Lincoln (CVN-72) was near Hawaii on Monday.</p>")[0] == "near Hawaii"
+
+
+def test_departure_point_only_when_nothing_says_where_it_is():
+    assert lincoln("") == ("Guam", "departed", "California")
