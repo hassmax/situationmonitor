@@ -31,8 +31,9 @@
 
     <aside class="filters panel" id="filters" aria-label="Filters">
       <section class="legend-section">
-        <h2>On the map</h2>
+        <h2 class="with-note">On the map <span class="note">tap to hide or show</span></h2>
         <ul class="legend-grid" id="legend"></ul>
+        <button class="linkish legend-reset" id="legendReset" type="button" hidden>Show everything</button>
       </section>
       <section>
         <h2>Time</h2>
@@ -45,10 +46,6 @@
       <section>
         <h2>Confidence</h2>
         <ul class="rows" id="statusList"></ul>
-      </section>
-      <section>
-        <h2>Layers</h2>
-        <ul class="rows" id="layerList"></ul>
       </section>
       <section>
         <details class="side-box" id="fleetBox" open>

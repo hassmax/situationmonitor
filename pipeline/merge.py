@@ -23,6 +23,7 @@ from __future__ import annotations
 import json
 import re
 from datetime import datetime, timedelta
+from pathlib import Path
 
 from common import haversine_km, iso, log, parse_time, short_hash
 from sources.gdelt import CellIndex, news_domains_near
@@ -38,6 +39,27 @@ RADIUS_KM = {"strike": 30, "ground": 30, "naval": 150, "deployment": 120, "diplo
 TRANSFER_WINDOW = timedelta(hours=72)  # repeated flights or sailings on one route become one "bridge"
 WINDOW = timedelta(hours=18)  # measured from when the event first happened, never from later reports
 BUILDUP_OVERLAP = 0.25  # share of words two deployment summaries need in common (see _same_buildup)
+# Families whose reports are often pinned to a whole country or sea ("England", "South China Sea")
+# while others name the exact spot; see _same_story. Strikes and fighting are left out: their
+# country-level reports are grouped as attack waves or alerts instead.
+LOOSE_FAMILIES = {"deployment", "hybrid", "naval", "incursion"}
+STORY_OVERLAP = 0.25
+STORY_MAX_KM = 2500
+_SEA = re.compile(r"\b(?:sea|ocean|gulf|strait|straits|bay|channel)\b", re.IGNORECASE)
+_REGIONS = {"england", "scotland", "wales", "northern ireland", "uk", "britain", "great britain", "us", "usa",
+            "united states", "america", "europe", "middle east", "gaza strip", "west bank", "sahel",
+            "horn of africa", "indo-pacific", "caribbean", "baltic", "black sea region", "persian gulf region"}
+
+
+def _country_names() -> set[str]:
+    try:
+        topo = json.loads((Path(__file__).resolve().parents[1] / "site/assets/countries-110m.json").read_text(encoding="utf-8"))
+        return {str(g["properties"]["name"]).lower() for g in topo["objects"]["countries"]["geometries"]}
+    except (OSError, ValueError, KeyError):
+        return set()
+
+
+_BROAD_NAMES = _REGIONS | _country_names()
 
 WAVE_TYPES = {"missile_drone", "air_defense", "explosion"}
 TARGET_MERGE_KM = 15
@@ -97,7 +119,40 @@ report according officials official state states stated new following""".split()
 
 
 def _words(text: str) -> set[str]:
-    return {w.rstrip("s") for w in re.findall(r"[a-z][a-z'-]+", (text or "").lower()) if w not in _WORD_STOP}
+    words = (w.replace("-", "") for w in re.findall(r"[a-z][a-z'-]+", (text or "").lower()) if w not in _WORD_STOP)
+    return {w.rstrip("s") for w in words if w}
+
+
+def _broad(e: dict) -> bool:
+    """Pinned to a whole country, region, or sea rather than a spot."""
+    place = re.sub(r"\s*\(.*?\)", "", str(e.get("place") or "")).strip().lower()
+    return bool(e.get("approx")) or not place or place in _BROAD_NAMES or bool(_SEA.search(place))
+
+
+def _same_story(e: dict, cand: dict) -> bool:
+    """One of the two is pinned to a whole country, region, or sea; they are in the same country
+    (a sea counts for any), the acting side doesn't conflict, and the wording is similar. For
+    hybrid attacks the suspected culprit often differs between reports, so it is not compared."""
+    if not (_broad(e) or _broad(cand)):
+        return False
+    if haversine_km(e["lat"], e["lon"], cand["lat"], cand["lon"]) > STORY_MAX_KM:
+        return False
+    a, b = e.get("country"), cand.get("country")
+    sea = any(_SEA.search(str(x.get("place") or "")) for x in (e, cand) if _broad(x))
+    if a and b and a != b and not sea:
+        return False
+    x, y = e.get("attacker"), cand.get("attacker")
+    if FAMILY.get(cand["type"]) != "hybrid" and x and y and x != y:
+        return False
+    return _similar(e, cand)
+
+
+def _similar(e: dict, cand: dict) -> bool:
+    """Similar wording, not counting the place names themselves ("Strait of Hormuz" is in every
+    report from there)."""
+    places = _words(" ".join(str(x.get("place") or "") for x in (e, cand)))
+    a, b = _words(e["summary"]) - places, _words(cand["summary"]) - places
+    return bool(a and b) and len(a & b) / min(len(a), len(b)) >= STORY_OVERLAP
 
 
 def _overlap(a: str, b: str) -> float:
@@ -142,8 +197,11 @@ def _find_match(events: list[dict], cand: dict) -> dict | None:
             continue
         d = haversine_km(e["lat"], e["lon"], cand["lat"], cand["lon"])
         radius = RADIUS_KM[fam] * (2 if (e.get("approx") or cand["approx"]) else 1)
+        if d <= radius and fam in LOOSE_FAMILIES and _broad(e) and _broad(cand) and not _similar(e, cand):
+            continue  # two reports that only share a region or sea pin need similar wording too
         if d > radius:
-            if fam != "deployment" or not _same_buildup(e, cand):
+            far = (fam == "deployment" and _same_buildup(e, cand)) or (fam in LOOSE_FAMILIES and _same_story(e, cand))
+            if not far:
                 continue
             d += 100_000  # a match, but ranked after any event that is actually nearby
         if d < best_d:
@@ -183,13 +241,40 @@ def _add_target(wave: dict, cand: dict) -> None:
         })
 
 
-def _merge_wave(events: list[dict], cand: dict) -> None:
-    key = "|".join([cand["theater"], cand["attacker"], cand["country"], wave_day(cand["time"])])
-    wave = next((e for e in events if e.get("wave_key") == key), None)
+def _wave_for(events: list[dict], cand: dict, attacker: str | None) -> dict | None:
+    """The attack wave a report belongs to: same attacker and target country, within WINDOW of
+    when the wave began (a fixed day boundary used to split one night's attack in two)."""
+    ct = parse_time(cand["time"])
+    best, best_dt = None, WINDOW
+    for e in events:
+        if (e.get("wave") and e["theater"] == cand["theater"] and e.get("country") == cand.get("country")
+                and (attacker is None or e.get("attacker") == attacker)):
+            dt = abs(ct - parse_time(e["time"]))
+            if dt <= best_dt:
+                best, best_dt = e, dt
+    return best
+
+
+def _hit_in_wave(events: list[dict], cand: dict) -> dict | None:
+    """A strike report that names no attacker ("drones hit Erbil") joins an attack wave on the
+    same country when it hit one of the wave's places."""
+    if cand["type"] not in WAVE_TYPES or not cand.get("country") or cand.get("attacker") or cand.get("approx"):
+        return None
+    wave = _wave_for(events, cand, None)
+    if wave and any(haversine_km(t["lat"], t["lon"], cand["lat"], cand["lon"]) <= TARGET_MERGE_KM
+                    for t in wave["targets"] + [{"lat": wave["lat"], "lon": wave["lon"]}]):
+        return wave
+    return None
+
+
+def _merge_wave(events: list[dict], cand: dict, wave: dict | None = None) -> None:
+    key = "|".join([cand["theater"], cand.get("attacker") or "", cand["country"], wave_day(cand["time"])])
+    wave = wave or _wave_for(events, cand, cand.get("attacker"))
     rep = cand["report"]
     if wave is None:
         wave = {
-            "id": short_hash("wave", key), "wave": True, "wave_key": key,
+            "id": short_hash("wave", key) if not any(e.get("wave_key") == key for e in events)
+            else short_hash("wave", key, cand["time"]), "wave": True, "wave_key": key,
             "theater": cand["theater"], "type": "missile_drone",
             "attacker": cand["attacker"], "country": cand["country"],
             "summary": cand["summary"], "place": cand["place"],
@@ -260,6 +345,10 @@ def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
         if _is_wave(cand):
             _merge_wave(events, cand)
             continue
+        wave = _hit_in_wave(events, cand)
+        if wave is not None:
+            _merge_wave(events, cand, wave)
+            continue
         rep = cand["report"]
         match = _find_match(events, cand)
         if match is None:
@@ -283,26 +372,52 @@ def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
     return events
 
 
+def _fold_into_wave(wave: dict, e: dict) -> None:
+    """Add a stored event (another wave, or a strike that named no attacker) to a wave."""
+    for t in e.get("targets") or ([] if e.get("approx") else [{**e, "reports": 1}]):
+        _add_target(wave, {"approx": False, "place": t.get("place"), "lat": t["lat"], "lon": t["lon"],
+                           "severity": t.get("severity") or e["severity"], "time": t.get("time") or e["time"],
+                           "killed": t.get("killed"), "injured": t.get("injured")})
+    wave["launched"] = _max_or_none(wave.get("launched"), e.get("launched"))
+    wave["intercepted"] = _max_or_none(wave.get("intercepted"), e.get("intercepted"))
+
+
 def consolidate(events: list[dict], skip: set[str]) -> tuple[list[dict], list[dict]]:
-    """Fold stored deployment events into each other when the matching rules join them (events
-    stored before a rule existed, or pinned apart). The earliest event keeps its id. Events in
-    `skip` (hidden by a correction) are left alone. Returns (events, the events folded away)."""
+    """Fold stored events into each other when today's matching rules join them: events stored
+    before a rule existed, reports pinned to a whole country or sea next to ones naming the spot,
+    and attack waves split by the old day boundary. Deployments, hybrid attacks, naval incidents
+    and incursions are folded, and waves and the unattributed strikes on their targets; other
+    kinds already follow their rules when reports arrive. The earliest event keeps its id.
+    Events in `skip` (hidden by a correction) are left alone. Returns (events, the events folded away)."""
     kept: list[dict] = []
     folded: list[dict] = []
     for e in sorted(events, key=lambda e: e["time"]):
+        pool = [k for k in kept if k["id"] not in skip]
         match = None
-        if FAMILY.get(e["type"]) == "deployment" and not e.get("wave") and not e.get("alert") and e["id"] not in skip:
-            match = _find_match([k for k in kept if k["id"] not in skip], e)
+        if e["id"] in skip or e.get("alert"):
+            pass
+        elif e.get("wave"):
+            match = _wave_for(pool, e, e.get("attacker"))
+        elif FAMILY.get(e["type"]) in LOOSE_FAMILIES:
+            match = _find_match(pool, e)
+        else:
+            match = _hit_in_wave(pool, e)
         if match is None:
             kept.append(e)
             continue
         urls = {r["url"] for r in match["reports"]}
         match["reports"] += [r for r in e["reports"] if r["url"] not in urls]
-        _absorb(match, e)
+        if match.get("wave"):
+            _fold_into_wave(match, e)
+            match["time"] = min(match["time"], e["time"])
+            match["severity"] = max(match["severity"], e["severity"])
+            _add_origins(match, e.get("origins"))
+        else:
+            _absorb(match, e)
         match["updated"] = max(match["updated"], e["updated"])
         folded.append(e)
     if folded:
-        log(f"[merge] folded {len(folded)} deployment events into the stories they belong to")
+        log(f"[merge] folded {len(folded)} events into the stories they belong to")
     gone = {id(e) for e in folded}
     return [e for e in events if id(e) not in gone], folded
 
@@ -328,7 +443,7 @@ def _absorb(match: dict, cand: dict) -> None:
             mt["mode"] = ct_.get("mode")
     for k in ("killed", "injured"):
         match[k] = _max_or_none(match.get(k), cand.get(k))
-    if match.get("approx") and not cand.get("approx"):
+    if _broad(match) and not _broad(cand):
         match.update(lat=cand["lat"], lon=cand["lon"], place=cand["place"], approx=False)
     _add_origins(match, cand.get("origins"))
 

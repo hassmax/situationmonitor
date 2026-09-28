@@ -23,6 +23,7 @@ import archive  # noqa: E402
 import brief  # noqa: E402
 import config as config_mod  # noqa: E402
 import corrections  # noqa: E402
+import dedupe  # noqa: E402
 import extract  # noqa: E402
 import fleet  # noqa: E402
 import geo  # noqa: E402
@@ -202,6 +203,12 @@ def main() -> int:
     # Old stories that arrived with a fresh date are dropped (see recency.py).
     if not args.no_llm:
         events = recency.check(events, {e["id"] for e in events} - known, session, extract.ask_json, state, settings, t0)
+        # Same story reported in different words or places: at most one model call an hour.
+        events, same = dedupe.run(events, state, settings, t0, extract.ask_json,
+                                  extract.calls_remaining(state, settings, t0), hidden)
+        folded += same
+        if same:
+            merge.apply_status(events, cells)
 
     # 7. Situation brief: at most one model call an hour, from the same daily budget
     # Hidden events are left out and edits applied; everything below uses this published list.

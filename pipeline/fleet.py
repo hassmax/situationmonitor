@@ -20,17 +20,17 @@ from common import UTC, clean_text, haversine_km, iso, log
 # Active carriers as of late September 2026. CVN-79 (Kennedy) is not due to commission until 2027;
 # add it here when it does. Nimitz shifted home port to Norfolk in July 2026 ahead of inactivation.
 CARRIERS = {
-    "CVN-68": ("USS Nimitz", "Nimitz"),
-    "CVN-69": ("USS Dwight D. Eisenhower", "Eisenhower"),
-    "CVN-70": ("USS Carl Vinson", "Vinson"),
-    "CVN-71": ("USS Theodore Roosevelt", "Roosevelt"),
-    "CVN-72": ("USS Abraham Lincoln", "Lincoln"),
-    "CVN-73": ("USS George Washington", "Washington"),
-    "CVN-74": ("USS John C. Stennis", "Stennis"),
-    "CVN-75": ("USS Harry S. Truman", "Truman"),
-    "CVN-76": ("USS Ronald Reagan", "Reagan"),
-    "CVN-77": ("USS George H.W. Bush", "Bush"),
-    "CVN-78": ("USS Gerald R. Ford", "Ford"),
+    "CVN-68": ("U.S.S. Nimitz", "U.S.S. Nimitz"),
+    "CVN-69": ("U.S.S. Dwight D. Eisenhower", "U.S.S. Eisenhower"),
+    "CVN-70": ("U.S.S. Carl Vinson", "U.S.S. Vinson"),
+    "CVN-71": ("U.S.S. Theodore Roosevelt", "U.S.S. Roosevelt"),
+    "CVN-72": ("U.S.S. Abraham Lincoln", "U.S.S. Lincoln"),
+    "CVN-73": ("U.S.S. George Washington", "U.S.S. Washington"),
+    "CVN-74": ("U.S.S. John C. Stennis", "U.S.S. Stennis"),
+    "CVN-75": ("U.S.S. Harry S. Truman", "U.S.S. Truman"),
+    "CVN-76": ("U.S.S. Ronald Reagan", "U.S.S. Reagan"),
+    "CVN-77": ("U.S.S. George H.W. Bush", "U.S.S. Bush"),
+    "CVN-78": ("U.S.S. Gerald R. Ford", "U.S.S. Ford"),
 }
 NORFOLK = ("Norfolk, Va.", 36.95, -76.33)
 SAN_DIEGO = ("San Diego (North Island)", 32.70, -117.19)
@@ -226,9 +226,11 @@ def public(state: dict, now: datetime) -> list[dict]:
     for c in (state.get("fleet") or {}).values():
         if c.get("lat") is None or c.get("hull") not in CARRIERS:
             continue
-        out.append({k: c.get(k) for k in ("hull", "name", "short", "lat", "lon", "place", "status", "as_of",
-                                          "source", "url", "heading_to", "prev", "moved_at", "departed_at", "track",
-                                          "deployed", "maintenance", "at_home")})
+        row = {k: c.get(k) for k in ("hull", "name", "short", "lat", "lon", "place", "status", "as_of",
+                                     "source", "url", "heading_to", "prev", "moved_at", "departed_at", "track",
+                                     "deployed", "maintenance", "at_home")}
+        row["name"], row["short"] = CARRIERS[c["hull"]]  # names always from the list above
+        out.append(row)
     return sorted(out, key=lambda c: c["hull"])
 
 
