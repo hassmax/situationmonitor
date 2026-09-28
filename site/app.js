@@ -59,11 +59,13 @@
     alert: '<path d="M4.4 12.2V9a3.6 3.6 0 0 1 7.2 0v3.2z" fill="currentColor"/><rect x="2.6" y="12.7" width="10.8" height="1.9" rx=".6" fill="currentColor"/><path d="M8 1.4v2.1M2.8 3.6l1.5 1.5M13.2 3.6l-1.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
   };
   const svgIcon = (name) => `<svg viewBox="0 0 16 16" aria-hidden="true">${ICONS[name] || ICONS.blast}</svg>`;
+  // "On the map": each entry is also a filter. The key is the marker's icon (see legendKey).
   const LEGEND = [
-    ["missile", "strike", "Drone or missile"], ["alert", "strike", "Drone alerts"], ["air", "strike", "Airstrike"], ["artillery", "ground", "Shelling"],
+    ["missile", "strike", "Drone or missile"], ["alert", "strike", "Drone alerts"], ["air", "strike", "Airstrike"],
+    ["blast", "strike", "Explosion"], ["shield", "strike", "Air defense"], ["artillery", "ground", "Shelling"],
     ["ground", "ground", "Ground fighting"], ["territory", "ground", "Territory change"], ["naval", "naval", "Naval"],
-    ["hybrid", "hybrid", "Hybrid attack"], ["deploy", "deploy", "Deployment"], ["diplo", "diplo", "Diplomacy, legal"],
-    ["crate", "supply", "Arms transfer"], ["carrier", "fleet", "US carrier at sea"],
+    ["hybrid", "hybrid", "Hybrid attack"], ["incursion", "hybrid", "Incursion"], ["deploy", "deploy", "Deployment"],
+    ["diplo", "diplo", "Diplomacy, legal"], ["crate", "supply", "Arms transfer"], ["carrier", "fleet", "US carrier at sea"],
   ];
   const MODE = { air: "by air", sea: "by sea", land: "overland", unspecified: "" };
   const PLATFORM = { bluesky: "Bluesky", telegram: "Telegram", rss: "News feed", gdelt: "GDELT" };
@@ -141,6 +143,8 @@
   const fmtMoney = (v) => (v >= 1e9 ? `$${(v / 1e9).toFixed(1)} billion` : v >= 1e6 ? `$${Math.round(v / 1e6)} million` : `$${Math.round(v).toLocaleString()}`);
   // Alerts (drones or missiles reported in flight, grouped per country per day) get a siren and never animate.
   const catOf = (e) => (e.alert ? ["strike", "alert", ""] : CAT[e.type] || ["strike", "blast", ""]);
+  // Which "On the map" entry an event belongs to (legal steps share the diplomacy entry).
+  const legendKey = (e) => { const icon = catOf(e)[1]; return icon === "legal" ? "diplo" : icon; };
   const alertsText = (e) => { const n = e.alerts || (e.reports || []).length || 1; return `${n} ${n === 1 ? "alert" : "alerts"}`; };
   const isDiplomacy = (e) => e.type === "diplomacy" || e.type === "ceasefire" || e.type === "legal";
   const tkind = (e) => (e.transfer && e.transfer.kind) || "delivery";
@@ -161,8 +165,17 @@
   const eventIcon = (e) => { const [cat, icon] = catOf(e); return iconBadge(icon, cat, STATUS[e.status].conf); };
   let lastSeen = 0;
   try { lastSeen = Number(localStorage.getItem("gsm_lastSeen")) || 0; } catch (_) { /* storage blocked */ }
-  const isNew = (e) => e._t > Date.now() - HOUR || (lastSeen && e._t > lastSeen && e._t > Date.now() - DAY);
-  const isLive = (e) => Date.now() - e._t < LIVE_MS || isNew(e);
+  // Events you have opened stop pulsing and lose the "new" mark (remembered in this browser for a week).
+  let viewed = {};
+  try { viewed = JSON.parse(localStorage.getItem("gsm_viewed") || "{}") || {}; } catch (_) { viewed = {}; }
+  function markViewed(id) {
+    viewed[id] = Date.now();
+    const cutoff = Date.now() - 7 * DAY;
+    for (const k of Object.keys(viewed)) if (!(viewed[k] > cutoff)) delete viewed[k];
+    try { localStorage.setItem("gsm_viewed", JSON.stringify(viewed)); } catch (_) { /* storage blocked */ }
+  }
+  const isNew = (e) => !viewed[e.id] && (e._t > Date.now() - HOUR || (lastSeen && e._t > lastSeen && e._t > Date.now() - DAY));
+  const isLive = (e) => !viewed[e.id] && (Date.now() - e._t < LIVE_MS || isNew(e));
 
   // ------------------------------------------------------------------ state
   const S = {
@@ -171,7 +184,8 @@
     windowH: 24,
     theaterOn: new Set(FALLBACK_THEATERS.map((t) => t.id)),
     statusOn: new Set(Object.keys(STATUS)),
-    layers: { paths: true, supply: true, carriers: true, diplomacy: true },
+    layers: { paths: true, supply: true, carriers: true },
+    off: new Set(),  // "On the map" entries switched off
     query: "",
     selectedId: null,
     selectedHull: null,
@@ -244,7 +258,7 @@
     return { lat: (Math.atan2(z, Math.hypot(x, y)) * 180) / Math.PI, lon: (Math.atan2(y, x) * 180) / Math.PI };
   }
   const countryCenter = (iso2) => REP_POINT[iso2] || centers.get(ISO_NUM.get(iso2)) || null;
-  const landColor = (f) => (S.active.has(f.id) ? "#7aaddd" : S.hot.has(f.id) ? "#35618b" : "#244465");
+  const landColor = (f) => (S.active.has(f.id) ? "#3a6a98" : S.hot.has(f.id) ? "#2a4f75" : "#1e3a59");
   const borderColor = (id) => (S.active.has(id) ? "rgba(255,166,122,0.8)" : S.hot.has(id) ? "rgba(150,195,235,0.3)" : "rgba(150,190,230,0.12)");
 
   fetch("assets/countries-110m.json")
@@ -256,9 +270,9 @@
       const borders = [];
       for (const f of land) for (const poly of f.geometry.coordinates) for (const ring of poly) borders.push({ fid: f.id, pts: ring });
       world
-        .hexPolygonsData(land).hexPolygonResolution(3).hexPolygonMargin(0.3).hexPolygonUseDots(true).hexPolygonAltitude(0.002)
-        .hexPolygonDotResolution(PHONE ? 6 : 12)
-        .hexPolygonColor((f) => landColor(f))
+        .polygonsData(land).polygonAltitude(0.002).polygonCapCurvatureResolution(5)
+        .polygonCapColor((f) => landColor(f)).polygonSideColor(() => "rgba(0,0,0,0)").polygonStrokeColor(() => null)
+        .polygonsTransitionDuration(0)
         .pathsData(borders).pathPoints("pts").pathPointLat((p) => p[1]).pathPointLng((p) => p[0]).pathPointAlt(0.0045)
         .pathTransitionDuration(0).pathColor((p) => borderColor(p.fid));
       if (S.data) render();
@@ -671,8 +685,7 @@
     if (e._t < Date.now() - S.windowH * HOUR) return false;
     if (!ignoreTheater && !S.theaterOn.has(e.theater)) return false;
     if (!S.statusOn.has(e.status)) return false;
-    if (!S.layers.diplomacy && isDiplomacy(e)) return false;
-    if (e.type === "arms_transfer" && !S.layers.supply) return false;
+    if (S.off.has(legendKey(e))) return false;
     if (q() && !e._search.includes(q())) return false;
     return true;
   }
@@ -910,7 +923,7 @@
     if (key === S.activeKey) return;
     S.activeKey = key;
     S.active = active;
-    world.hexPolygonColor((f) => landColor(f));
+    world.polygonCapColor((f) => landColor(f));
     world.pathColor((p) => borderColor(p.fid));
   }
 
@@ -1107,6 +1120,7 @@
     const e = S.data && S.data.events.find((x) => x.id === id);
     if (!e) return;
     S.selectedId = id; S.selectedHull = null; S.selectedFlow = null;
+    markViewed(id);
     history.replaceState(null, "", "#" + encodeURIComponent(id));
     if (fly) zoomTo(e.lat, e.lon, Math.min(world.pointOfView().altitude, (e.wave || e.alert) && e.targets.length > 3 ? 1.45 : 1.15));
     renderEventDetail(e);
@@ -1274,19 +1288,12 @@
 
   // ------------------------------------------------------------------ controls
   function buildStaticControls() {
-    $("#legend").innerHTML = LEGEND.map(([icon, cat, label]) => `<li>${iconBadge(icon, cat, "solid", "ico-sm")}<span>${esc(label)}</span></li>`).join("")
-      + `<li class="legend-lines"><span class="line-swatch line-strike" aria-hidden="true"></span><span>Launch path</span></li>`
-      + `<li class="legend-lines"><span class="line-swatch line-supply" aria-hidden="true"></span><span>Supply route</span></li>`;
+    const item = (key, swatch, label) => `<li><button class="legend-item" type="button" data-legend="${key}" aria-pressed="true" title="Show or hide ${esc(label.toLowerCase())}">${swatch}<span>${esc(label)}</span></button></li>`;
+    $("#legend").innerHTML = LEGEND.map(([icon, cat, label]) => item(icon, iconBadge(icon, cat, "solid", "ico-sm"), label)).join("")
+      + item("paths", '<span class="line-swatch line-strike" aria-hidden="true"></span>', "Launch path");
     $("#windowSeg").innerHTML = WINDOWS.map(([label, h]) => `<button type="button" data-window="${h}" aria-pressed="${h === S.windowH}">${label}</button>`).join("");
     $("#statusList").innerHTML = Object.entries(STATUS).map(([id, s]) => `
       <li><label class="check"><input type="checkbox" data-status="${id}" checked><span class="conf-swatch conf-${s.conf}" aria-hidden="true"></span><span class="label">${esc(s.label)}</span><span class="count" data-status-count="${id}"></span></label></li>`).join("");
-    const layer = (key, swatch, label) => `<li><label class="check"><input type="checkbox" data-layer="${key}" ${S.layers[key] ? "checked" : ""}>${swatch}<span class="label">${label}</span><span class="count"></span></label></li>`;
-    $("#layerList").innerHTML = [
-      layer("paths", '<span class="line-swatch line-strike" aria-hidden="true"></span>', "Launch paths"),
-      layer("supply", '<span class="line-swatch line-supply" aria-hidden="true"></span>', "Arms transfers"),
-      layer("carriers", iconBadge("carrier", "fleet", "solid", "ico-xs"), "Aircraft carriers"),
-      layer("diplomacy", iconBadge("diplo", "diplo", "solid", "ico-xs"), "Diplomacy and legal steps"),
-    ].join("");
   }
 
   function setWindow(h) {
@@ -1317,7 +1324,23 @@
       const t = ev.target;
       if (t.dataset.theater) t.checked ? S.theaterOn.add(t.dataset.theater) : S.theaterOn.delete(t.dataset.theater);
       if (t.dataset.status) t.checked ? S.statusOn.add(t.dataset.status) : S.statusOn.delete(t.dataset.status);
-      if (t.dataset.layer) S.layers[t.dataset.layer] = t.checked;
+      render();
+    });
+    $("#legend").addEventListener("click", (ev) => {
+      const b = ev.target.closest("[data-legend]");
+      if (!b) return;
+      const key = b.dataset.legend, on = S.off.has(key);
+      on ? S.off.delete(key) : S.off.add(key);
+      b.setAttribute("aria-pressed", String(on));
+      S.layers = { paths: !S.off.has("paths"), supply: !S.off.has("crate"), carriers: !S.off.has("carrier") };
+      $("#legendReset").hidden = !S.off.size;
+      render();
+    });
+    $("#legendReset").addEventListener("click", () => {
+      S.off.clear();
+      S.layers = { paths: true, supply: true, carriers: true };
+      document.querySelectorAll("[data-legend]").forEach((b) => b.setAttribute("aria-pressed", "true"));
+      $("#legendReset").hidden = true;
       render();
     });
     $("#filters").addEventListener("click", (ev) => {
