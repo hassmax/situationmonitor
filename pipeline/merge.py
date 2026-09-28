@@ -46,6 +46,13 @@ LOOSE_FAMILIES = {"deployment", "hybrid", "naval", "incursion"}
 STORY_OVERLAP = 0.25
 STORY_MAX_KM = 2500
 STRIKE_FOLD_OVERLAP = 0.6  # stored strikes/fighting at one place fold only with wording this close
+# Meetings, visits, statements and legal steps. Their theater is a judgement call (a German
+# minister at the ICC was filed under both the NATO flank and Ukraine), and a statement can be
+# pinned to the capital that made it or the city it is about, so these match across theaters,
+# across the two types, and at any distance when the parties are the same and the wording close.
+TALKS = {"diplomacy", "legal"}
+TALKS_FAR_OVERLAP = 0.6
+TALKS_FOLD_OVERLAP = 0.5  # stored talks fold only with wording this close (see consolidate)
 _SEA = re.compile(r"\b(?:sea|ocean|gulf|strait|straits|bay|channel)\b", re.IGNORECASE)
 _REGIONS = {"england", "scotland", "wales", "northern ireland", "uk", "britain", "great britain", "us", "usa",
             "united states", "america", "europe", "middle east", "gaza strip", "west bank", "sahel",
@@ -173,6 +180,13 @@ def _same_talks(e: dict, cand: dict) -> bool:
     return _overlap(e["summary"], cand["summary"]) >= 0.5
 
 
+def _same_statement(e: dict, cand: dict) -> bool:
+    """The same parties and closely matching wording: one meeting or statement pinned to different
+    cities (the capital that spoke, the city it is about, the venue)."""
+    a, b = set(e.get("parties") or []), set(cand.get("parties") or [])
+    return bool(a) and a == b and _overlap(e["summary"], cand["summary"]) >= TALKS_FAR_OVERLAP
+
+
 def _same_buildup(e: dict, cand: dict) -> bool:
     """Reports of one country's forces preparing around another country ("the US military is laying
     groundwork for action around Cuba") are placed wherever each report points: the country's
@@ -188,20 +202,25 @@ def _find_match(events: list[dict], cand: dict) -> dict | None:
     if fam == "transfer":
         return _find_transfer(events, cand) if cand.get("transfer") else None
     ct = parse_time(cand["time"])
+    talks = fam in TALKS
     best, best_d = None, float("inf")
     for e in events:
-        if e.get("wave") or e.get("alert") or e["theater"] != cand["theater"] or FAMILY.get(e["type"], "strike") != fam:
+        if e.get("wave") or e.get("alert"):
+            continue
+        if talks:
+            if FAMILY.get(e["type"]) not in TALKS or not _same_talks(e, cand):
+                continue
+        elif e["theater"] != cand["theater"] or FAMILY.get(e["type"], "strike") != fam:
             continue
         if abs(ct - parse_time(e["time"])) > WINDOW:
-            continue
-        if fam in ("diplomacy", "legal") and not _same_talks(e, cand):
             continue
         d = haversine_km(e["lat"], e["lon"], cand["lat"], cand["lon"])
         radius = RADIUS_KM[fam] * (2 if (e.get("approx") or cand["approx"]) else 1)
         if d <= radius and fam in LOOSE_FAMILIES and _broad(e) and _broad(cand) and not _similar(e, cand):
             continue  # two reports that only share a region or sea pin need similar wording too
         if d > radius:
-            far = (fam == "deployment" and _same_buildup(e, cand)) or (fam in LOOSE_FAMILIES and _same_story(e, cand))
+            far = ((fam == "deployment" and _same_buildup(e, cand)) or (fam in LOOSE_FAMILIES and _same_story(e, cand))
+                   or (talks and _same_statement(e, cand)))
             if not far:
                 continue
             d += 100_000  # a match, but ranked after any event that is actually nearby
@@ -387,8 +406,8 @@ def consolidate(events: list[dict], skip: set[str]) -> tuple[list[dict], list[di
     """Fold stored events into each other when today's matching rules join them: events stored
     before a rule existed, reports pinned to a whole country or sea next to ones naming the spot,
     and attack waves split by the old day boundary. Deployments, hybrid attacks, naval incidents,
-    incursions, strikes and ground fighting are folded, and waves and the unattributed strikes on
-    their targets; diplomacy, legal steps and arms transfers keep their own rules. The earliest event keeps its id.
+    incursions, strikes and ground fighting, diplomacy and legal steps are folded, and waves and
+    the unattributed strikes on their targets; arms transfers keep their own rules. The earliest event keeps its id.
     Events in `skip` (hidden by a correction) are left alone. Returns (events, the events folded away)."""
     kept: list[dict] = []
     folded: list[dict] = []
@@ -409,6 +428,11 @@ def consolidate(events: list[dict], skip: set[str]) -> tuple[list[dict], list[di
             if match is None:
                 m = _find_match(pool, e)
                 match = m if m is not None and _similar(m, e, STRIKE_FOLD_OVERLAP) else None
+        elif FAMILY.get(e["type"]) in TALKS:
+            # the same parties and closely matching wording, whatever theater or type each was
+            # filed under; looser pairs (a meeting and a reaction to it) are left to the dedupe check
+            m = _find_match(pool, e)
+            match = m if m is not None and _overlap(m["summary"], e["summary"]) >= TALKS_FOLD_OVERLAP else None
         else:
             match = None
         if match is None:

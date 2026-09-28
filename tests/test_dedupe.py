@@ -72,10 +72,24 @@ def test_budget_and_hidden_events():
     assert dedupe.run(events, {}, SETTINGS, NOW, ask, remaining=100, skip={"b"})[1] == []         # hidden
 
 
-def test_waves_alerts_and_diplomacy_are_left_to_their_own_rules():
-    events = [dict(e, wave=True) for e in fresh()[:2]] + [ev("p", "Talks in London.", type_="diplomacy"),
-                                                           ev("q", "More talks in London.", type_="diplomacy")]
+def test_waves_and_alerts_are_left_to_their_own_rules():
+    events = [dict(e, wave=True) for e in fresh()[:2]] + [dict(e, alert=True) for e in fresh()[2:4]]
     assert dedupe.groups(events, {}, NOW) == []
+
+
+def test_talks_are_grouped_by_who_takes_part_across_theaters_and_places():
+    talks = [ev("m1", "German and Russian foreign ministers hold a rare meeting at the UN.", type_="diplomacy",
+                place="New York", country="US", parties=["DE", "RU"], hours_ago=30),
+             ev("m2", "German and Russian foreign ministers held rare talks amid tensions.", type_="diplomacy",
+                place="Berlin", country="DE", theater="ukraine", parties=["DE", "RU"], hours_ago=12),
+             ev("m3", "Germany's foreign minister visited the ICC, pledging support.", type_="diplomacy",
+                place="The Hague", country="NL", parties=["DE", "ICC"], hours_ago=4),
+             ev("m4", "Germany's foreign minister visited the ICC in The Hague.", type_="legal",
+                place="The Hague", country="NL", theater="ukraine", parties=["DE", "ICC"], hours_ago=2),
+             ev("m5", "Germany and France held talks on air defence.", type_="diplomacy",
+                place="Paris", country="FR", parties=["DE", "FR"], hours_ago=3)]
+    got = sorted([e["id"] for e in g] for g in dedupe.groups(talks, {}, NOW))
+    assert got == [["m1", "m2"], ["m3", "m4"]]
 
 
 def test_answers_in_other_shapes_are_still_read():

@@ -92,3 +92,40 @@ def test_consolidate_folds_stored_waves_and_hits():
     out, folded = merge.consolidate([b, hit, a], set())
     assert [e["id"] for e in out] == [a["id"]] and sorted(e["id"] for e in folded) == ["b", "h"]
     assert len(out[0]["reports"]) == 3
+
+
+HAGUE, BERLIN, NYC = (52.08, 4.30), (52.52, 13.40), (40.71, -74.0)
+
+
+def test_one_visit_filed_under_two_theaters_is_one_event():
+    a = event("a", "The Hague", HAGUE, "2026-09-28T16:42:00Z", "Germany's foreign minister visited the ICC, "
+              "pledging full support despite US sanctions.", type_="diplomacy", country="NL", theater="ukraine",
+              parties=["DE", "ICC"])
+    b = dict(event("b", "The Hague", HAGUE, "2026-09-28T18:26:00Z", a["summary"], type_="legal", country="NL",
+                   theater="nato_east", parties=["DE", "ICC"]))
+    assert len(merge.merge([], [cand(a), cand(b)])) == 1
+    out, folded = merge.consolidate([b, a], set())
+    assert [e["id"] for e in out] == ["a"] and [e["id"] for e in folded] == ["b"]
+
+
+def test_one_meeting_pinned_to_different_cities_needs_the_same_parties_and_close_wording():
+    a = event("a", "New York", NYC, "2026-09-27T08:00:00Z", "German and Russian foreign ministers held rare talks "
+              "at the UN.", type_="diplomacy", country="US", parties=["DE", "RU"])
+    b = event("b", "Berlin", BERLIN, "2026-09-27T12:00:00Z", "German and Russian foreign ministers held rare talks.",
+              type_="diplomacy", country="DE", parties=["DE", "RU"])
+    c = event("c", "Berlin", BERLIN, "2026-09-27T13:00:00Z", "Germany and Russia discussed Black Sea exports.",
+              type_="diplomacy", country="DE", parties=["DE", "RU"])
+    d = event("d", "Berlin", BERLIN, "2026-09-27T14:00:00Z", "German and Russian foreign ministers held rare talks.",
+              type_="diplomacy", country="DE", parties=["DE", "RU", "EE"])
+    out = merge.merge([], [cand(a), cand(b), cand(c)])
+    assert sorted(len(e["reports"]) for e in out) == [1, 2]  # a+b; c's wording is too different at that distance
+    assert len(merge.merge([], [cand(a), cand(d)])) == 2  # not the same parties
+
+
+def test_stored_talks_fold_only_with_close_wording():
+    a = event("a", "Berlin", BERLIN, "2026-09-27T12:00:00Z", "Germany and Russia held rare talks amid tensions.",
+              type_="diplomacy", country="DE", parties=["DE", "RU"])
+    b = event("b", "Berlin", BERLIN, "2026-09-27T13:00:00Z", "Estonia criticized Germany and Russia's talks.",
+              type_="diplomacy", country="DE", parties=["DE", "EE", "RU"])
+    out, folded = merge.consolidate([a, b], set())
+    assert folded == [] and len(out) == 2
