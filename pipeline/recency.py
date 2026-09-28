@@ -169,6 +169,7 @@ def check(events: list[dict], new_ids: set[str], session, ask, state: dict, sett
         recent, older = found
         if not older:
             e["checked"] = CHECK_VERSION
+            log(f"[recency] kept (no older coverage found): {e.get('summary', '')[:90]!r}")
             continue
         cases.append((e, recent, older))
     if not cases:
@@ -192,9 +193,13 @@ def check(events: list[dict], new_ids: set[str], session, ask, state: dict, sett
     for res in reply["results"]:
         if not isinstance(res, dict) or not isinstance(res.get("i"), int) or not 0 <= res["i"] < len(cases):
             continue
-        e, _, older = cases[res["i"]]
+        e, recent, older = cases[res["i"]]
         e["checked"] = CHECK_VERSION
         m = res.get("match")
+        if res.get("old") is not True:
+            log(f"[recency] kept (the model judged it new): {e.get('summary', '')[:90]!r}; "
+                f"{len(recent)} current and {len(older)} older headlines, oldest shown "
+                f"{older[0]['title'][:80]!r} ({day(older[0])})")
         if res.get("old") is True and isinstance(m, int) and 0 <= m < len(older):
             drop.add(e["id"])
             log(f"[recency] old news, dropped: {e['summary']!r} matches {older[m]['title']!r} ({day(older[m])})")
