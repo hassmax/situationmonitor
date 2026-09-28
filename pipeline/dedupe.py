@@ -14,10 +14,14 @@ the earliest event.
   a failed call), from the shared daily budget, skipped when fewer than dedupe_min_calls calls
   are left (the brief keeps priority).
 - Events from the last LOOKBACK hours, not attack waves or alert groups (they have their own
-  grouping), not arms transfers, and not diplomacy (its own rules keep separate talks apart).
+  grouping) and not arms transfers.
 - Hybrid attacks, deployments, incursions and naval incidents in one country are shown as one
   group; strikes and fighting only when their wording overlaps, since a country at war has
   many separate strikes a day.
+- Diplomacy and legal steps are grouped by who takes part, not by country or theater (a German
+  minister's visit to the ICC was filed once under the NATO flank and once under Ukraine; one
+  meeting was pinned to New York, Berlin and Moscow): events with the same parties, or two
+  parties in common, and some wording in common.
 - A group is shown again only when it contains a pair not judged before; answers are
   remembered for a week, and pairs judged the same are folded again if both come back.
 """
@@ -34,18 +38,20 @@ RETRY = timedelta(minutes=15)
 LOOKBACK = timedelta(hours=72)
 PAIR_WINDOW = timedelta(hours=48)
 VIOLENCE_OVERLAP = 0.2
+TALKS_OVERLAP = 0.2  # with the same (or two shared) parties
+TALKS_BARE_OVERLAP = 0.4  # when either event lists no parties
 MAX_GROUP = 20
 MAX_EVENTS = 60
 KEEP_DAYS = 7
 # Families that can describe the same incident (a drone strike reported as an explosion).
 GROUP = {"strike": "violence", "ground": "violence", "naval": "naval", "deployment": "deployment",
-         "hybrid": "hybrid", "incursion": "incursion"}
+         "hybrid": "hybrid", "incursion": "incursion", "diplomacy": "talks", "legal": "talks"}
 WHOLE = {"naval", "deployment", "hybrid", "incursion"}  # shown as one group per country
 
-PROMPT = """You check a live conflict map for duplicates. Each case is a list of events from the map in the same country, each with an id, its summary, place, and time.
+PROMPT = """You check a live conflict map for duplicates. Each case is a list of events from the map in the same country, or diplomatic and legal events between the same parties, each with an id, its summary, place, and time.
 
-Group the events that describe the same specific incident or statement: the same arrests, the same strike, the same seizure, the same exercise, the same announcement, including follow-up coverage of it over the following days (new details, reactions, questioning of suspects, denials). Places can differ (a city, the base it is about, or the whole country) and wording can differ.
-Keep events apart when they are separate incidents that resemble each other (two strikes on the same city, two drills, arrests in two different cases), when one is only background to the other, or when you are unsure.
+Group the events that describe the same specific incident or statement: the same arrests, the same strike, the same seizure, the same exercise, the same announcement, the same meeting, visit or call, the same vote, filing or ruling, including follow-up coverage of it over the following days (new details, reactions, questioning of suspects, denials). Places can differ (a city, the base it is about, the capital that spoke, or the whole country) and wording can differ.
+Keep events apart when they are separate incidents that resemble each other (two strikes on the same city, two drills, arrests in two different cases, two meetings between the same countries), when one is only background to the other, or when you are unsure. For meetings, statements and legal steps, a response by another government or body is its own event (a third country criticizing a meeting is not the meeting).
 
 Reply with one JSON object and nothing else, with one entry for every case. In "groups" list only groups of two or more ids; events in no group stay separate. Use "groups": [] when a case has no duplicates:
 {"results": [{"i": <case number>, "groups": [["<id>", "<id>", ...], ...]}]}"""
@@ -64,6 +70,11 @@ def _overlap(e: dict, f: dict) -> float:
 def _linked(e: dict, f: dict, group: str) -> bool:
     if abs(parse_time(e["time"]) - parse_time(f["time"])) > PAIR_WINDOW:
         return False
+    if group == "talks":
+        a, b = set(e.get("parties") or []), set(f.get("parties") or [])
+        if a and b:
+            return (a == b or len(a & b) >= 2) and _overlap(e, f) >= TALKS_OVERLAP
+        return _overlap(e, f) >= TALKS_BARE_OVERLAP
     return group in WHOLE or _overlap(e, f) >= VIOLENCE_OVERLAP
 
 
@@ -73,9 +84,10 @@ def groups(events: list[dict], judged: dict, now) -> list[list[dict]]:
     buckets: dict[tuple, list[dict]] = {}
     for e in events:
         g = GROUP.get(FAMILY.get(e["type"]))
-        if (g and not e.get("wave") and not e.get("alert") and e.get("country")
+        if (g and not e.get("wave") and not e.get("alert") and (e.get("country") or g == "talks")
                 and (parse_time(e.get("time")) or since) > since):
-            buckets.setdefault((e["country"], g), []).append(e)
+            # talks are linked by who takes part, wherever they were pinned
+            buckets.setdefault(("" if g == "talks" else e["country"], g), []).append(e)
     out = []
     for (_, g), pool in buckets.items():
         pool.sort(key=lambda e: e["time"])
