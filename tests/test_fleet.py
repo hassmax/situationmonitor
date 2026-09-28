@@ -69,3 +69,48 @@ def test_an_old_tracker_cannot_say_who_is_home():
     state["fleet_meta"] = {"tracker_time": "2026-08-31T12:00:00Z", "tracker_hulls": ["CVN-78"]}
     fleet.apply_home_baseline(state, datetime(2026, 9, 28, tzinfo=timezone.utc))
     assert state["fleet"]["CVN-72"]["place"] == "Philippine Sea"
+
+
+TRACKER = """<p>These are the approximate positions of the U.S. Navy's deployed carrier strike groups as of Sept. 21, 2026.</p>
+<h2>Near Hawaii</h2>
+<p>Carrier USS Abraham Lincoln (CVN-72) is operating near Hawaii, a U.S. official told USNI News.</p>
+<h2>In the Arabian Sea</h2>
+<p>The George H.W. Bush Carrier Strike Group is in the North Arabian Sea. USS George H.W. Bush (CVN-77) arrived last week.</p>
+<h2>In the Mediterranean</h2>
+<p>USS Gerald R. Ford (CVN-78) is en route to the Eastern Mediterranean after a port visit.</p>
+<h2>In the Western Pacific</h2>
+<p>USS George Washington (CVN-73) departed Yokosuka for its patrol. It is underway in the Philippine Sea.</p>
+<h2>In the Pacific</h2>
+<p>USS Nimitz (CVN-68) is in the Pacific.</p>"""
+
+
+def test_tracker_is_read_without_the_model():
+    got = {c["hull"]: c for c in fleet.parse_tracker(TRACKER)}
+    assert got["CVN-72"]["place"] == "near Hawaii"
+    assert got["CVN-77"]["place"] == "North Arabian Sea"                    # "H.W." is not a sentence end
+    assert got["CVN-78"]["heading_to"]["place"] == "Eastern Mediterranean"
+    assert got["CVN-73"]["place"] == "Philippine Sea"                        # where it went, not where it left
+    assert got["CVN-68"]["lat"] is None                                      # "the Pacific" is not a position,
+    reports = [c for c in fleet.parse_tracker(TRACKER) if c["lat"] is not None]  # but Nimitz still counts as listed
+    assert len(reports) == 4
+
+
+def test_tracker_replaces_a_later_news_report_it_could_not_have_sailed_to():
+    state = home_state()
+    fleet.update(state, [news("CVN-72", "Philippine Sea", 20.0, 131.0, "2026-09-27T05:00:00Z", status="underway")])
+    tracker = [{**c, "time": "2026-09-21T12:00:00Z", "source": "USNI News Fleet and Marine Tracker", "url": "t",
+                "trusted": True} for c in fleet.parse_tracker(TRACKER) if c["lat"] is not None]
+    fleet.update(state, tracker)
+    assert state["fleet"]["CVN-72"]["place"] == "near Hawaii"                # 6,500 km in 6 days: the news was wrong
+    assert "prev" not in state["fleet"]["CVN-72"]                            # and no line is drawn from it
+    # a later news report that fits the tracker stands
+    fleet.update(state, [news("CVN-77", "Gulf of Oman", 24.5, 58.5, "2026-09-25T05:00:00Z")])
+    assert state["fleet"]["CVN-77"]["place"] == "Gulf of Oman"
+
+
+def test_vague_report_still_gives_the_destination():
+    state = home_state()
+    h = {"place": "Middle East", "lat": 25.3, "lon": 55.3}
+    fleet.update(state, [news("CVN-71", "Middle East", 25.0, 55.0, "2026-09-28T08:45:00Z", heading=h)])
+    c = state["fleet"]["CVN-71"]
+    assert c["place"].startswith("San Diego") and c["heading_to"] == h
