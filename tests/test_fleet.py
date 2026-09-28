@@ -74,25 +74,31 @@ def test_an_old_tracker_cannot_say_who_is_home():
 TRACKER = """<p>These are the approximate positions of the U.S. Navy's deployed carrier strike groups as of Sept. 21, 2026.</p>
 <h2>Near Hawaii</h2>
 <p>Carrier USS Abraham Lincoln (CVN-72) is operating near Hawaii, a U.S. official told USNI News.</p>
-<h2>In the Arabian Sea</h2>
-<p>The George H.W. Bush Carrier Strike Group is in the North Arabian Sea. USS George H.W. Bush (CVN-77) arrived last week.</p>
-<h2>In the Mediterranean</h2>
+<p class="wp-caption-text">USS Abraham Lincoln (CVN-72) in the Arabian Sea, Jan. 2, 2020. U.S. Navy Photo</p>
+<h2>In the North Arabian Sea</h2>
+<p>The George H.W. Bush Carrier Strike Group is operating in the region. USS George H.W. Bush (CVN-77) departed Naval Station Norfolk, Va., in August.</p>
+<p><strong>In the Mediterranean</strong></p>
 <p>USS Gerald R. Ford (CVN-78) is en route to the Eastern Mediterranean after a port visit.</p>
 <h2>In the Western Pacific</h2>
-<p>USS George Washington (CVN-73) departed Yokosuka for its patrol. It is underway in the Philippine Sea.</p>
+<p>USS George Washington (CVN-73) departed Yokosuka for its patrol.</p>
+<h2>Elsewhere</h2>
+<p>USS Theodore Roosevelt (CVN-71) departs San Diego for a patrol in the Philippine Sea.</p>
 <h2>In the Pacific</h2>
 <p>USS Nimitz (CVN-68) is in the Pacific.</p>"""
 
 
 def test_tracker_is_read_without_the_model():
-    got = {c["hull"]: c for c in fleet.parse_tracker(TRACKER)}
-    assert got["CVN-72"]["place"] == "near Hawaii"
-    assert got["CVN-77"]["place"] == "North Arabian Sea"                    # "H.W." is not a sentence end
+    notes = []
+    got = {c["hull"]: c for c in fleet.parse_tracker(TRACKER, notes)}
+    assert got["CVN-72"]["place"] == "near Hawaii"                  # the section, not the old photo caption
+    assert got["CVN-77"]["place"] == "North Arabian Sea"            # the section, not the port it left
+    assert got["CVN-78"]["place"] == "Mediterranean Sea"            # a bold paragraph works as a section title
     assert got["CVN-78"]["heading_to"]["place"] == "Eastern Mediterranean"
-    assert got["CVN-73"]["place"] == "Philippine Sea"                        # where it went, not where it left
-    assert got["CVN-68"]["lat"] is None                                      # "the Pacific" is not a position,
-    reports = [c for c in fleet.parse_tracker(TRACKER) if c["lat"] is not None]  # but Nimitz still counts as listed
-    assert len(reports) == 4
+    assert got["CVN-73"]["place"] == "Western Pacific"
+    assert got["CVN-71"]["lat"] is None                             # "departs San Diego for a patrol in ...": not there yet
+    assert got["CVN-68"]["lat"] is None                             # "the Pacific" is not a position,
+    assert len([c for c in got.values() if c["lat"] is not None]) == 4  # but both still count as listed
+    assert any(n.startswith("CVN-72: near Hawaii (from section") for n in notes)
 
 
 def test_tracker_replaces_a_later_news_report_it_could_not_have_sailed_to():
