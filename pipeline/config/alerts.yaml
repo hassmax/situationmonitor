@@ -45,7 +45,7 @@ rules:
     window_hours: 72
 
   # An event reported both by the channel below and by at least one other OSINT Telegram
-  # channel (a Telegram source with kind: osint in sources.yaml, for example DeepState),
+  # channel (a Telegram source with kind: osint in sources.yaml, for example War Monitors),
   # of at least this severity.
   telegram_osint_pair:
     enabled: true
