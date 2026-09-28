@@ -146,3 +146,32 @@ def test_listed_without_position_and_nothing_stored_shows_home_port():
     state = {"fleet_meta": {"tracker_time": "2026-09-28T18:01:35Z", "tracker_hulls": ["CVN-77"]}}
     fleet.apply_home_baseline(state, datetime(2026, 9, 28, 19, tzinfo=timezone.utc))
     assert state["fleet"]["CVN-77"]["place"] == "Norfolk, Va."
+
+
+LINCOLN = ("<h2>In the Pacific</h2>"
+           "<p>The Abraham Lincoln Carrier Strike Group departed last Sunday from Apra Harbor, Guam, and is transiting "
+           "the Pacific Ocean en route to California.</p>")
+
+
+def lincoln(extra):
+    c = next(c for c in fleet.parse_tracker(LINCOLN + extra) if c["hull"] == "CVN-72")
+    return c["place"], c["status"], (c["heading_to"] or {}).get("place")
+
+
+def test_near_hawaii_in_the_same_sentence():
+    html = LINCOLN.replace("the Pacific Ocean en route", "the Pacific Ocean near Hawaii en route")
+    c = next(c for c in fleet.parse_tracker(html) if c["hull"] == "CVN-72")
+    assert (c["place"], c["heading_to"]["place"]) == ("near Hawaii", "California")
+
+
+def test_near_hawaii_in_a_follow_on_sentence_about_the_strike_group():
+    assert lincoln("<p>The strike group was operating near Hawaii on Sunday, a Navy official said.</p>") == \
+        ("near Hawaii", "underway", "California")
+
+
+def test_near_hawaii_in_a_later_paragraph_naming_the_carrier():
+    assert lincoln("<h2>Elsewhere</h2><p>USS Abraham Lincoln (CVN-72) was near Hawaii on Monday.</p>")[0] == "near Hawaii"
+
+
+def test_departure_point_only_when_nothing_says_where_it_is():
+    assert lincoln("") == ("Guam", "departed", "California")
