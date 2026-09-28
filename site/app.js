@@ -892,13 +892,15 @@
     const arcs = [];
     for (const c of S.fleet) {
       if (!carrierOnMap(c)) continue;
+      // where it came from: faint and still
       if (c.prev && c._moved && Date.now() - c._moved < 14 * DAY && km(c.prev.lat, c.prev.lon, c._lat, c._lon) > 100) {
         arcs.push(...surfaceArcs({ lat: c.prev.lat, lon: c.prev.lon }, { lat: c._lat, lon: c._lon },
-          { carrier: c, kind: "track", color: rgba(CAT_RGB.fleet, 0.75), stroke: 0.34, ms: 5200, seed: Math.random() }, 0.002));
+          { carrier: c, kind: "track", color: rgba(CAT_RGB.fleet, 0.28), stroke: 0.2, ms: 0, seed: 0 }, 0.002));
       }
+      // where it is headed: dashes flow from the last reported position toward the stated destination
       if (c.heading_to && km(c._lat, c._lon, c.heading_to.lat, c.heading_to.lon) > 100) {
         arcs.push(...surfaceArcs({ lat: c._lat, lon: c._lon }, c.heading_to,
-          { carrier: c, kind: "plan", color: rgba(CAT_RGB.fleet, 0.35), stroke: 0.22, ms: 0, seed: 0 }, 0.002));
+          { carrier: c, kind: "plan", color: rgba(CAT_RGB.fleet, 0.7), stroke: 0.3, ms: 6000, seed: 0 }, 0.002));
       }
     }
     return arcs;
