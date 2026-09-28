@@ -19,6 +19,9 @@ DEFAULT_SETTINGS = {
         "gemini-3.1-flash-lite-preview",
         "gemini-2.5-flash-lite",
     ],
+    # Backups tried only when every model above is overloaded or gone: regular Flash is also free,
+    # with a separate, smaller daily limit. Unknown names are skipped.
+    "llm_fallback_models": ["gemini-3.5-flash", "gemini-flash-latest", "gemini-3.1-flash", "gemini-2.5-flash"],
     # Gemini's free Flash-Lite quota is about 500 requests/day; keep headroom.
     "daily_llm_calls": 400,
     "max_calls_per_run": 6,
