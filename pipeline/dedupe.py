@@ -47,7 +47,7 @@ PROMPT = """You check a live conflict map for duplicates. Each case is a list of
 Group the events that describe the same specific incident or statement: the same arrests, the same strike, the same seizure, the same exercise, the same announcement, including follow-up coverage of it over the following days (new details, reactions, questioning of suspects, denials). Places can differ (a city, the base it is about, or the whole country) and wording can differ.
 Keep events apart when they are separate incidents that resemble each other (two strikes on the same city, two drills, arrests in two different cases), when one is only background to the other, or when you are unsure.
 
-Reply with one JSON object and nothing else. List only groups of two or more ids; events in no group stay separate:
+Reply with one JSON object and nothing else, with one entry for every case. In "groups" list only groups of two or more ids; events in no group stay separate. Use "groups": [] when a case has no duplicates:
 {"results": [{"i": <case number>, "groups": [["<id>", "<id>", ...], ...]}]}"""
 
 
@@ -96,7 +96,8 @@ def groups(events: list[dict], judged: dict, now) -> list[list[dict]]:
             if len(comp) > 1 and any(_key(a["id"], b["id"]) not in judged
                                      for i, a in enumerate(comp) for b in comp[i + 1:]):
                 out.append(comp)
-    out.sort(key=lambda c: c[-1]["time"], reverse=True)
+    # biggest groups first (a story reported many times over is the likeliest duplicate), then newest
+    out.sort(key=lambda c: (len(c), c[-1]["time"]), reverse=True)
     return out
 
 
@@ -165,17 +166,20 @@ def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: in
     st["backlog"] = len(cases) < len(due)
     st.pop("failed", None)
     same = []
+    answered = set()
     for res in reply["results"]:
-        if not isinstance(res, dict) or not isinstance(res.get("i"), int) or not 0 <= res["i"] < len(cases):
+        n_case = _case_number(res)
+        if n_case is None or not 0 <= n_case < len(cases) or n_case in answered:
             continue
-        comp = cases[res["i"]]
+        answered.add(n_case)
+        comp = cases[n_case]
         ids = {e["id"] for e in comp}
         where = {}
-        for n, grp in enumerate(res.get("groups") or []):
-            if isinstance(grp, list):
-                for i in grp:
-                    if isinstance(i, str) and i in ids and i not in where:
-                        where[i] = n
+        for n, grp in enumerate(_groups(res)):
+            for i in grp:
+                i = str(i).strip()
+                if i in ids and i not in where:
+                    where[i] = n
         for x, a in enumerate(comp):
             for b in comp[x + 1:]:
                 hit = a["id"] in where and where.get(a["id"]) == where.get(b["id"])
@@ -188,4 +192,33 @@ def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: in
                 log("[dedupe] same story: " + " + ".join(repr(e["summary"][:60]) for e in members))
     events, more = _fold(events, same, skip)
     log(f"[dedupe] asked about {len(cases)} groups ({size} events), folded {len(more)} events")
+    if len(answered) < len(cases):
+        sample = json.dumps(reply["results"][:1], ensure_ascii=False)[:200]
+        log(f"[dedupe] {len(cases) - len(answered)} of {len(cases)} groups got no usable answer "
+            f"(asked again later); first result looked like: {sample}")
     return events, folded + more
+
+
+def _case_number(res) -> int | None:
+    """The case a result is about: "i" as a number or a numeric string (models differ)."""
+    if not isinstance(res, dict):
+        return None
+    v = next((res[k] for k in ("i", "case", "index", "id") if k in res), None)
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, int):
+        return v
+    if isinstance(v, str) and v.strip().lstrip("#").isdigit():
+        return int(v.strip().lstrip("#"))
+    return None
+
+
+def _groups(res: dict) -> list[list]:
+    """The id groups of a result: lists of ids, or objects holding them ({"ids": [...]})."""
+    out = []
+    for g in res.get("groups") or res.get("same") or []:
+        if isinstance(g, dict):
+            g = g.get("ids") or g.get("events") or []
+        if isinstance(g, list) and len(g) > 1:
+            out.append(g)
+    return out

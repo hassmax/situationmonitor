@@ -76,3 +76,18 @@ def test_waves_alerts_and_diplomacy_are_left_to_their_own_rules():
     events = [dict(e, wave=True) for e in fresh()[:2]] + [ev("p", "Talks in London.", type_="diplomacy"),
                                                            ev("q", "More talks in London.", type_="diplomacy")]
     assert dedupe.groups(events, {}, NOW) == []
+
+
+def test_answers_in_other_shapes_are_still_read():
+    for reply in ({"results": [{"i": "0", "groups": [["a", "b", "c"]]}]},             # case number as text
+                  {"results": [{"case": 0, "groups": [{"ids": ["a", "b", "c"]}]}]}):   # groups as objects
+        state = {}
+        out, folded = dedupe.run(fresh(), state, SETTINGS, NOW, lambda *a, **k: reply, remaining=100, skip=set())
+        assert sorted(e["id"] for e in folded) == ["b", "c"], reply
+
+
+def test_biggest_group_is_asked_first():
+    small = [ev("s1", "Drones hit a depot.", country="UA", type_="hybrid", hours_ago=1),
+             ev("s2", "A depot was hit by drones.", country="UA", type_="hybrid", hours_ago=1)]
+    first = dedupe.groups(fresh() + small, {}, NOW)[0]
+    assert [e["id"] for e in first] == ["a", "b", "c", "d"]      # 4 UK events before 2 newer Ukrainian ones
