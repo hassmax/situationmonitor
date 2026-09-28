@@ -1,0 +1,74 @@
+from datetime import datetime, timedelta, timezone
+
+import recency
+
+NOW = datetime(2026, 9, 28, 12, 0, tzinfo=timezone.utc)
+SETTINGS = {}
+
+
+def ev(i, summary, hours_ago=5):
+    t = (NOW - timedelta(hours=hours_ago)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    return {"id": i, "summary": summary, "place": "Tehran", "time": t,
+            "reports": [{"platform": "rss", "url": f"https://news.google.com/rss/articles/{i}"}]}
+
+
+def rss(items):
+    body = "".join(f"<item><title>{t}</title><link>https://example.com/{n}</link><pubDate>{d}</pubDate></item>"
+                   for n, (t, d) in enumerate(items))
+    return f"<?xml version='1.0'?><rss version='2.0'><channel><title>t</title>{body}</channel></rss>".encode()
+
+
+class Session:
+    def __init__(self, recent, older):
+        self.recent, self.older, self.urls = recent, older, []
+
+    def get(self, url, timeout=0):
+        self.urls.append(url)
+        self.content = rss(self.older if "before%3A" in url else self.recent)
+        return self
+
+    def raise_for_status(self):
+        pass
+
+
+TODAY = "Mon, 28 Sep 2026 06:00:00 GMT"
+MARCH = "Tue, 03 Mar 2026 10:00:00 GMT"
+
+
+def test_recycled_headlines_do_not_count_as_current_and_the_model_decides():
+    e = ev("x", "Israel reported fresh airstrikes on Iranian targets east of Tehran.")
+    s = Session(recent=[("Israel reports fresh airstrikes on Iranian targets east of Tehran - News On AIR", TODAY),
+                        ("Israel strikes Iranian targets east of Tehran - Indian Express", TODAY)],
+                older=[("Israel reports fresh airstrikes on Iranian targets east of Tehran - Reuters", MARCH)])
+    seen = []
+
+    def ask(prompt, text, *a, **k):
+        seen.append(text)
+        return {"results": [{"i": 0, "old": True, "match": 0}]}
+    state = {}
+    out = recency.check([e], {"x"}, s, ask, state, SETTINGS, NOW)
+    assert out == [] and state["dropped_as_old"][0]["match_date"] == "2026-03-03"
+    assert "News On AIR" not in seen[0]            # the recycled copy was set aside, not shown as current
+
+
+def test_no_older_coverage_keeps_the_event_without_a_model_call():
+    e = ev("y", "Drones struck a fuel depot near Tabriz overnight.")
+    s = Session(recent=[("Drones hit fuel depot near Tabriz - AP", TODAY)], older=[])
+    out = recency.check([e], {"y"}, s, lambda *a, **k: 1 / 0, {}, SETTINGS, NOW)
+    assert out == [e] and e["checked"] == recency.CHECK_VERSION
+
+
+def test_model_call_waits_when_only_a_few_events_need_checking():
+    e = ev("z", "Israel reported fresh airstrikes on Iranian targets east of Tehran.")
+    state = {"recency_asked": (NOW - timedelta(minutes=10)).strftime("%Y-%m-%dT%H:%M:%SZ")}
+    s = Session(recent=[], older=[])
+    assert recency.check([e], {"z"}, s, lambda *a, **k: 1 / 0, state, SETTINGS, NOW) == [e]
+    assert s.urls == [] and "checked" not in e
+
+
+def test_drops_under_the_previous_rule_stand():
+    old = {"summary": "s", "listed": "2026-09-26", "match": "m", "match_date": "2026-03-02", "version": 2,
+           "event": ev("d", "Old story")}
+    state = {"dropped_as_old": [old], "recency_asked": NOW.strftime("%Y-%m-%dT%H:%M:%SZ")}
+    assert recency.check([], set(), Session([], []), lambda *a, **k: None, state, SETTINGS, NOW) == []
+    assert state["dropped_as_old"] == [old]

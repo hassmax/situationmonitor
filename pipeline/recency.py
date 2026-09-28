@@ -4,16 +4,21 @@ News feeds, Google News above all, sometimes list an old article with a new date
 republished or updated it), and a bare headline like "US submarine sinks Iranian ship" gives the
 extraction model no way to tell. So every event built only from news feeds is checked:
 
-  1. Current coverage. Search Google News for the event's key words around the event's own date.
-     If two or more different headlines on the same topic appear then, the event is current and
-     stays. A real new event, even one that recurs (another strike on the same city, another
-     coast guard drill), is covered by several outlets at the time; a recycled story has one
-     freshly dated copy.
-  2. Older coverage. Otherwise, search for the key words in articles at least AGE_DAYS older.
-     None: the event stays.
-  3. Only then does the model compare the event with the dated recent and older headlines and
-     say whether it is the same specific incident as an older one. The event is dropped only
-     when the model names the matching older headline. Every drop is logged with it.
+  1. Search Google News for the event's key words around the event's own date ("recent") and in
+     articles at least AGE_DAYS older ("older").
+  2. No older coverage on the topic: the event is new and stays.
+  3. Recent headlines that repeat an older headline are republished copies, not current
+     coverage, and are set aside. (Current coverage alone used to settle it, but an old story
+     that is being talked about again, such as a new claim about a strike months ago, has
+     plenty of it.)
+  4. The model compares the event with the recent and older headlines and says whether it is
+     the same specific incident as an older one. New claims or details about an older incident
+     count as old: the map shows incidents when they happened. Another incident of the same
+     kind (another strike on the same city) does not. The event is dropped only when the model
+     names the matching older headline. Every drop is logged with it.
+
+Model calls: one per run at most, and at most every MODEL_GAP unless MODEL_BATCH events are
+waiting, from the shared daily budget.
 
 Searches or model calls that fail leave the event on the map and are retried on later runs.
 Dropped events are kept in state. When the rule changes (CHECK_VERSION), they are put back and
@@ -31,10 +36,12 @@ import feedparser
 from common import clean_text, iso, log, parse_time
 from sources.rss import _entry_time
 
-CHECK_VERSION = 2
+CHECK_VERSION = 3
+KEEP_DROPS_FROM = 2  # drops made under this version or later stand (version 3 only drops more)
 AGE_DAYS = 14        # older coverage must be at least this much older than the event
 RECENT_DAYS = 2      # "current" coverage: within this many days of the event
-CURRENT_MIN = 2      # this many different current headlines on the topic = the event is current
+MODEL_GAP = timedelta(minutes=30)
+MODEL_BATCH = 8
 CHECKS_PER_RUN = 15
 MAX_TRIES = 3
 _STOP = set("""a an the of in on at to for and or by with as is are was were be been its it this that
@@ -45,8 +52,8 @@ PROMPT = """You check whether news reports on a live conflict map are old storie
 
 For each case you get a report (its summary, place, and the date it was listed), headlines from around that date ("recent"), and older headlines from weeks or months before ("older"), all found by a search for the same key words.
 
-Answer "old": true only if one of the older headlines reports the same specific incident or statement as the report (the same sinking, the same strike, the same warning, the same vote), and nothing in the recent headlines shows it happening again now. The report is then old news, unless it adds significant new facts about that incident.
-Answer "old": false when the report describes a new incident that resembles older ones (another strike after another drone attack, another coast guard drill, another vote), when the story is still developing, when the older headlines are about something else, or when you are unsure. Similar wording is not enough: many events recur with near-identical headlines.
+Answer "old": true when one of the older headlines reports the same specific incident or statement as the report (the same sinking, the same strike, the same warning, the same vote) and nothing in the recent headlines shows it happening again now. This includes reports that only add new claims, details, or accounts about that earlier incident (who was hurt in it, a new casualty count, someone's account of it): the incident itself is old.
+Answer "old": false when the report describes a new incident that resembles older ones (another strike on the same city, another coast guard drill, another vote), when the recent headlines show it happening now, when the older headlines are about something else, or when you are unsure. Similar wording is not enough: many events recur with near-identical headlines.
 
 Reply with one JSON object and nothing else:
 {"results": [{"i": <case number>, "old": true or false, "match": <number of the matching older headline, or null>}]}"""
@@ -110,12 +117,16 @@ def _evidence(session, e: dict):
         return None
     recent = _distinct([r for r in recent if abs(r["when"] - t) <= timedelta(days=RECENT_DAYS)
                         and r["link"] not in own and _on_topic(rw, r["title"])])
-    if len(recent) >= CURRENT_MIN:
-        return recent, []
     older = _search(session, f"{q} before:{(t - timedelta(days=AGE_DAYS)).strftime('%Y-%m-%d')}")
     if older is None:
         return None
-    return recent, [r for r in older if r["when"] < t - timedelta(days=AGE_DAYS)][:8]
+    older = [r for r in older if r["when"] < t - timedelta(days=AGE_DAYS) and _on_topic(rw, r["title"])][:8]
+    return [r for r in recent if not any(_same_headline(r, o) for o in older)], older
+
+
+def _same_headline(a: dict, b: dict) -> bool:
+    wa, wb = _words(_headline(a["title"])), _words(_headline(b["title"]))
+    return bool(wa and wb) and len(wa & wb) / len(wa | wb) >= 0.8
 
 
 def _needs_check(e: dict) -> bool:
@@ -128,7 +139,7 @@ def _restore(events: list[dict], state: dict) -> list[dict]:
     kept, back = [], []
     have = {e["id"] for e in events}
     for d in state.get("dropped_as_old", []):
-        if d.get("event") and d.get("version") != CHECK_VERSION:
+        if d.get("event") and (d.get("version") or 0) < KEEP_DROPS_FROM:
             if d["event"]["id"] not in have:
                 back.append({**d["event"], "checked": None, "checks": 0})
                 log(f"[recency] put back for a new check: {d['summary']!r}")
@@ -142,6 +153,9 @@ def check(events: list[dict], new_ids: set[str], session, ask, state: dict, sett
     """Return events without the ones shown to be old news. `ask` is extract.ask_json."""
     events = _restore(events, state)
     todo = [e for e in events if _needs_check(e)]
+    asked = parse_time(state.get("recency_asked"))
+    if asked and now - asked < MODEL_GAP and len(todo) < MODEL_BATCH:
+        return events  # a few waiting: check them together in a while
     todo.sort(key=lambda e: e.get("time") or "", reverse=True)
     todo = sorted(todo, key=lambda e: e["id"] not in new_ids)[:CHECKS_PER_RUN]  # this run's events, then newest
     cases = []
@@ -153,7 +167,7 @@ def check(events: list[dict], new_ids: set[str], session, ask, state: dict, sett
                 e["checked"] = CHECK_VERSION
             continue
         recent, older = found
-        if len(recent) >= CURRENT_MIN or not older:
+        if not older:
             e["checked"] = CHECK_VERSION
             continue
         cases.append((e, recent, older))
@@ -165,6 +179,7 @@ def check(events: list[dict], new_ids: set[str], session, ask, state: dict, sett
                 "recent": [{"title": r["title"], "date": day(r)} for r in recent[:5]],
                 "older": [{"n": k, "title": r["title"], "date": day(r)} for k, r in enumerate(older)]}
                for n, (e, recent, older) in enumerate(cases)]
+    state["recency_asked"] = iso(now)
     reply = ask(PROMPT, json.dumps({"cases": payload}, ensure_ascii=False), state, settings, now, max_tokens=1500)
     if not isinstance(reply, dict) or not isinstance(reply.get("results"), list):
         log("[recency] no model answer; will retry next run")
