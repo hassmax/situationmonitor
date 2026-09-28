@@ -166,8 +166,9 @@ def main() -> int:
         weekly = fleet.read_weekly_tracker(state, items, session, settings, t0, extract.ask_json)
         fleet.update(state, weekly)
         fleet.mark_deployment(state, weekly)
+    fleet.repair(state)
     moved = fleet.update(state, carrier_reports)
-    fleet.apply_home_baseline(state)
+    fleet.apply_home_baseline(state, t0)
     log(f"[fleet] {len(carrier_reports)} carrier reports, {moved} applied; {len(fleet.public(state, t0))} carriers shown")
 
     # 5. GDELT: used to corroborate reports (3+ outlets reporting violence nearby)
