@@ -94,4 +94,8 @@ def test_hidden_event_is_not_recreated(tmp_path):
 
 def test_example_file_parses():
     from pathlib import Path
-    assert corrections.load(Path(__file__).resolve().parents[1] / "pipeline/config/corrections.yaml") == []
+    path = Path(__file__).resolve().parents[1] / "pipeline/config/corrections.yaml"
+    entries = corrections.load(path)
+    raw = (__import__("yaml").safe_load(path.read_text(encoding="utf-8")) or {}).get("corrections") or []
+    assert len(entries) == len(raw)                     # every entry in the real file is valid (id and note)
+    assert all(e["id"] and e["note"] for e in entries)

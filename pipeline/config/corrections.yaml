@@ -29,4 +29,10 @@
 #    drop_report: https://news.google.com/rss/articles/CBMi...
 #    note: This article is about a different meeting.
 
-corrections: []
+corrections:
+  - id: 58e6202fce6b
+    hide: true
+    note: Old news. These Israeli strikes on targets east of Tehran date from March 2026; the reports resurfaced with fresh dates.
+  - id: 3b7a5d0f7b8b
+    hide: true
+    note: Old news. The hospital strike in which Mojtaba Khamenei was reportedly hurt dates from March 2026; new claims about it resurfaced with fresh dates.
