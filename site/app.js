@@ -259,6 +259,7 @@
   }
   const countryCenter = (iso2) => REP_POINT[iso2] || centers.get(ISO_NUM.get(iso2)) || null;
   const landColor = (f) => (S.active.has(f.id) ? "#3a6a98" : S.hot.has(f.id) ? "#2a4f75" : "#1e3a59");
+  const OCEAN = "#0b1f36";
   const borderColor = (id) => (S.active.has(id) ? "rgba(255,166,122,0.8)" : S.hot.has(id) ? "rgba(150,195,235,0.3)" : "rgba(150,190,230,0.12)");
 
   fetch("assets/countries-110m.json")
@@ -269,15 +270,59 @@
       land.forEach((f) => { if (f.id) centers.set(f.id, centerOf(f)); });
       const borders = [];
       for (const f of land) for (const poly of f.geometry.coordinates) for (const ring of poly) borders.push({ fid: f.id, pts: ring });
+      landShapes = land;
+      paintLand();
       world
-        .polygonsData(land).polygonAltitude(0.002).polygonCapCurvatureResolution(5)
-        .polygonCapColor((f) => landColor(f)).polygonSideColor(() => "rgba(0,0,0,0)").polygonStrokeColor(() => null)
-        .polygonsTransitionDuration(0)
         .pathsData(borders).pathPoints("pts").pathPointLat((p) => p[1]).pathPointLng((p) => p[0]).pathPointAlt(0.0045)
         .pathTransitionDuration(0).pathColor((p) => borderColor(p.fid));
       if (S.data) render();
     })
     .catch(() => {});
+
+  // Land is painted onto the globe's own surface (an ocean-and-countries picture), not drawn as a
+  // separate layer floating just above it: phone graphics chips can't tell two surfaces that close
+  // apart, and the ocean showed through the land in dark streaks while moving.
+  let landShapes = [], landKey = "", landUrl = null;
+  const landCanvas = document.createElement("canvas");
+  landCanvas.width = PHONE ? 2048 : 4096;
+  landCanvas.height = landCanvas.width / 2;
+  function paintLand() {
+    const key = [...S.active].sort().join(",") + "|" + [...S.hot].sort().join(",");
+    if (!landShapes.length || key === landKey) return;
+    landKey = key;
+    const W = landCanvas.width, H = landCanvas.height, g = landCanvas.getContext("2d");
+    const X = (lon) => ((lon + 180) / 360) * W, Y = (lat) => ((90 - lat) / 180) * H;
+    g.fillStyle = OCEAN;
+    g.fillRect(0, 0, W, H);
+    for (const f of landShapes) {
+      g.fillStyle = landColor(f);
+      g.beginPath();
+      for (const poly of f.geometry.coordinates) {
+        for (const ring of poly) {
+          // keep each outline continuous across the 180° line, then draw it again one turn left and right
+          let prev = ring[0][0];
+          const pts = ring.map(([lon, lat]) => {
+            while (lon - prev > 180) lon -= 360;
+            while (lon - prev < -180) lon += 360;
+            prev = lon;
+            return [lon, lat];
+          });
+          for (const shift of [-360, 0, 360]) {
+            pts.forEach(([lon, lat], i) => (i ? g.lineTo(X(lon + shift), Y(lat)) : g.moveTo(X(lon + shift), Y(lat))));
+            g.closePath();
+          }
+        }
+      }
+      g.fill("evenodd");
+    }
+    if (mat.map) { mat.map.image = landCanvas; mat.map.needsUpdate = true; return; }  // later repaints: no reload
+    landCanvas.toBlob((blob) => {
+      if (!blob) return;
+      if (landUrl) URL.revokeObjectURL(landUrl);
+      landUrl = URL.createObjectURL(blob);
+      world.globeImageUrl(landUrl);  // the library drops the globe's own tint once the picture loads
+    });
+  }
 
   // ------------------------------------------------------------------ 3D layers: wave target dots, impact rings, lines
   let zoomK = 1.6;
@@ -920,11 +965,12 @@
       [e.country, e.attacker].forEach((c) => { const n = ISO_NUM.get(c); if (n) active.add(n); });
     }
     const key = [...active].sort().join(",");
-    if (key === S.activeKey) return;
-    S.activeKey = key;
-    S.active = active;
-    world.polygonCapColor((f) => landColor(f));
-    world.pathColor((p) => borderColor(p.fid));
+    if (key !== S.activeKey) {
+      S.activeKey = key;
+      S.active = active;
+      world.pathColor((p) => borderColor(p.fid));
+    }
+    paintLand();  // repaints only when active or highlighted countries changed
   }
 
   function renderTally(events) {
