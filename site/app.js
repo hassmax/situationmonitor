@@ -938,9 +938,9 @@
   }
 
   // Situation brief: machine-written from the pipeline's own events, independent of the filters.
-  function briefHtml(names) {
+  function briefHtml() {
     const b = S.data && S.data.brief;
-    if (!b || !((b.bullets || []).length || (b.theaters || []).length)) return "";
+    if (!b || !(b.bullets || []).length) return "";
     const byId = new Map(S.data.events.map((e) => [e.id, e]));
     const cites = (ids) => {
       const found = (ids || []).filter((i) => byId.has(i));
@@ -950,12 +950,10 @@
         return `<button class="cite" type="button" data-id="${esc(i)}" title="Open: ${esc(e.summary)}">${esc(label)}</button>`;
       }).join("")}</span>` : "";
     };
-    const theaters = (b.theaters || []).map((t) => `<li><b>${esc(names[t.id] || t.id)}</b> ${esc(t.text)}${cites(t.ids)}</li>`).join("");
     return `<li class="brief"><section aria-labelledby="briefTitle">
       <div class="brief-head"><h3 id="briefTitle">What changed in the last ${esc(b.window_hours || 6)} hours</h3>
         <time datetime="${esc(b.generated_at)}">Written ${esc(ago(Date.parse(b.generated_at)))}</time></div>
       <ul class="brief-list">${(b.bullets || []).map((x) => `<li>${esc(x.text)}${cites(x.ids)}</li>`).join("")}</ul>
-      ${theaters ? `<details class="brief-theaters"><summary>By theater</summary><ul class="brief-list">${theaters}</ul></details>` : ""}
       <p class="brief-note">Machine-written from the events below. Open the cited events before relying on it.</p>
     </section></li>`;
   }
@@ -963,7 +961,7 @@
   function renderFeed(events) {
     const list = $("#feedList");
     const names = Object.fromEntries(S.theaters.map((t) => [t.id, t.name]));
-    const top = briefHtml(names);
+    const top = briefHtml();
     $("#feedCount").textContent = `${events.length}`;
     if (!events.length) {
       list.innerHTML = top + (S.data.events.length

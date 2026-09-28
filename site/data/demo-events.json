@@ -4672,33 +4672,6 @@
 ]
 }
 ],
-"theaters": [
-{
-"id": "ukraine",
-"text": "Sample: the wave, plus corroborated ground fighting near Kupiansk and a territorial change near Pokrovsk. Not real.",
-"ids": [
-"713163914c2c",
-"3fb55a726b74",
-"2b370ab73e04"
-]
-},
-{
-"id": "mideast",
-"text": "Sample: the Riyadh interception and Hormuz incident; a single-source report of an explosion near Isfahan. Not real.",
-"ids": [
-"34c69d36e34b",
-"0fb181ef6dd2",
-"d08f57fcc00a"
-]
-},
-{
-"id": "horn",
-"text": "Sample: shelling near El Fasher; Adigrat fighting is claimed by one side only. Not real.",
-"ids": [
-"e77bd0a462ed",
-"9bacb002a26f"
-]
-}
-]
+"theaters": []
 }
 }
