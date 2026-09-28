@@ -1,17 +1,25 @@
 """Same-story check: fold events that are one incident reported in different words or places.
 
-The merge rules join reports by place, time, and wording. Some duplicates still slip through:
-one outlet pins a story to London and another to RAF Fairford, or one files an Iran-linked plot
-under the Middle East and another under the NATO flank. So at most once an hour, recent events
-in the same country that look alike are put to the model in pairs ("the same specific incident
-or statement?"), and pairs it calls the same are folded into the earliest event.
+The merge rules join reports by place, time, and wording. Some stories still end up as several
+events: one outlet pins the arrests near RAF Fairford to London, another to the base, a third
+to "the UK"; one files the Iran-linked plot under the Middle East, another under the NATO flank;
+and follow-up coverage keeps arriving for days, after the merge window has closed. Wording alone
+can't sort these out (reports of the same arrests shared anywhere from 9% to 89% of their words).
 
-- One model call at most, from the shared daily budget, skipped when fewer than
-  dedupe_min_calls calls are left (the brief keeps priority).
-- Each pair is asked about once; answers are remembered for a week.
-- Only events from the last 48 hours, not attack waves or alert groups (they have their own
-  grouping), and only pairs with some wording in common are asked about.
-- Similar but separate incidents (two strikes on the same city, two drills) stay separate.
+So recent events of the same kind in the same country are shown to the model together, a group
+at a time, and it says which of them describe the same specific incident. Those are folded into
+the earliest event.
+
+- One model call at most per MIN_INTERVAL (every RETRY while groups are still waiting, or after
+  a failed call), from the shared daily budget, skipped when fewer than dedupe_min_calls calls
+  are left (the brief keeps priority).
+- Events from the last LOOKBACK hours, not attack waves or alert groups (they have their own
+  grouping), not arms transfers, and not diplomacy (its own rules keep separate talks apart).
+- Hybrid attacks, deployments, incursions and naval incidents in one country are shown as one
+  group; strikes and fighting only when their wording overlaps, since a country at war has
+  many separate strikes a day.
+- A group is shown again only when it contains a pair not judged before; answers are
+  remembered for a week, and pairs judged the same are folded again if both come back.
 """
 from __future__ import annotations
 
@@ -22,22 +30,25 @@ from common import iso, log, parse_time
 from merge import FAMILY, _absorb, _words
 
 MIN_INTERVAL = timedelta(hours=1)
-LOOKBACK = timedelta(hours=48)
-PAIR_WINDOW = timedelta(hours=36)
-MIN_OVERLAP = 0.2
-MAX_PAIRS = 30
+RETRY = timedelta(minutes=15)
+LOOKBACK = timedelta(hours=72)
+PAIR_WINDOW = timedelta(hours=48)
+VIOLENCE_OVERLAP = 0.2
+MAX_GROUP = 20
+MAX_EVENTS = 60
 KEEP_DAYS = 7
 # Families that can describe the same incident (a drone strike reported as an explosion).
 GROUP = {"strike": "violence", "ground": "violence", "naval": "naval", "deployment": "deployment",
-         "hybrid": "hybrid", "incursion": "incursion", "diplomacy": "diplomacy", "legal": "diplomacy"}
+         "hybrid": "hybrid", "incursion": "incursion"}
+WHOLE = {"naval", "deployment", "hybrid", "incursion"}  # shown as one group per country
 
-PROMPT = """You check a live conflict map for duplicates. Each case is a pair of events from the map, each with its summary, place, country, and time.
+PROMPT = """You check a live conflict map for duplicates. Each case is a list of events from the map in the same country, each with an id, its summary, place, and time.
 
-Answer "same": true only when both describe the same specific incident or statement: the same arrests, the same strike, the same seizure, the same exercise, the same announcement, including follow-up coverage of it (new details, reactions, denials of that same incident). Places can differ (a city versus the base or region it is about) and wording can differ.
-Answer "same": false when they are separate incidents that resemble each other (two strikes on the same city, two drills, two arrests in different cases), when one is only background to the other, or when you are unsure.
+Group the events that describe the same specific incident or statement: the same arrests, the same strike, the same seizure, the same exercise, the same announcement, including follow-up coverage of it over the following days (new details, reactions, questioning of suspects, denials). Places can differ (a city, the base it is about, or the whole country) and wording can differ.
+Keep events apart when they are separate incidents that resemble each other (two strikes on the same city, two drills, arrests in two different cases), when one is only background to the other, or when you are unsure.
 
-Reply with one JSON object and nothing else:
-{"results": [{"i": <case number>, "same": true or false}]}"""
+Reply with one JSON object and nothing else. List only groups of two or more ids; events in no group stay separate:
+{"results": [{"i": <case number>, "groups": [["<id>", "<id>", ...], ...]}]}"""
 
 
 def _key(a: str, b: str) -> str:
@@ -50,23 +61,43 @@ def _overlap(e: dict, f: dict) -> float:
     return len(a & b) / min(len(a), len(b)) if a and b else 0.0
 
 
-def pairs(events: list[dict], judged: dict, now) -> list[tuple[dict, dict]]:
-    """Pairs worth asking about, most alike first."""
+def _linked(e: dict, f: dict, group: str) -> bool:
+    if abs(parse_time(e["time"]) - parse_time(f["time"])) > PAIR_WINDOW:
+        return False
+    return group in WHOLE or _overlap(e, f) >= VIOLENCE_OVERLAP
+
+
+def groups(events: list[dict], judged: dict, now) -> list[list[dict]]:
+    """Groups worth asking about (some pair in them not judged yet), newest first."""
     since = now - LOOKBACK
-    pool = [e for e in events if not e.get("wave") and not e.get("alert") and e.get("country")
-            and (parse_time(e.get("time")) or since) > since and e["type"] != "arms_transfer"]
+    buckets: dict[tuple, list[dict]] = {}
+    for e in events:
+        g = GROUP.get(FAMILY.get(e["type"]))
+        if (g and not e.get("wave") and not e.get("alert") and e.get("country")
+                and (parse_time(e.get("time")) or since) > since):
+            buckets.setdefault((e["country"], g), []).append(e)
     out = []
-    for i, e in enumerate(pool):
-        for f in pool[i + 1:]:
-            if (e["country"] != f["country"] or _key(e["id"], f["id"]) in judged
-                    or GROUP.get(FAMILY.get(e["type"])) != GROUP.get(FAMILY.get(f["type"]))
-                    or abs(parse_time(e["time"]) - parse_time(f["time"])) > PAIR_WINDOW):
+    for (_, g), pool in buckets.items():
+        pool.sort(key=lambda e: e["time"])
+        seen: set[str] = set()
+        for start in pool:  # connected groups of linked events
+            if start["id"] in seen:
                 continue
-            score = _overlap(e, f)
-            if score >= MIN_OVERLAP:
-                out.append((score, e, f))
-    out.sort(key=lambda x: -x[0])
-    return [(e, f) for _, e, f in out[:MAX_PAIRS]]
+            comp, todo = [], [start]
+            seen.add(start["id"])
+            while todo:
+                e = todo.pop()
+                comp.append(e)
+                for f in pool:
+                    if f["id"] not in seen and _linked(e, f, g):
+                        seen.add(f["id"])
+                        todo.append(f)
+            comp = sorted(comp, key=lambda e: e["time"])[-MAX_GROUP:]
+            if len(comp) > 1 and any(_key(a["id"], b["id"]) not in judged
+                                     for i, a in enumerate(comp) for b in comp[i + 1:]):
+                out.append(comp)
+    out.sort(key=lambda c: c[-1]["time"], reverse=True)
+    return out
 
 
 def _fold(events: list[dict], same: list[tuple[str, str]], skip: set[str]) -> tuple[list[dict], list[dict]]:
@@ -104,37 +135,57 @@ def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: in
         skip: set[str]) -> tuple[list[dict], list[dict]]:
     """Returns (events, the events folded away). `ask` is extract.ask_json."""
     st = state.setdefault("dedupe", {})
-    judged: dict = st.setdefault("judged", {})
     cutoff = iso(now - timedelta(days=KEEP_DAYS))
-    st["judged"] = judged = {k: v for k, v in judged.items() if v.get("at", "") >= cutoff}
+    st["judged"] = judged = {k: v for k, v in (st.get("judged") or {}).items() if v.get("at", "") >= cutoff}
     # pairs already judged the same are folded again if both came back (e.g. restored by a check)
     events, folded = _fold(events, [tuple(k.split("|")) for k, v in judged.items() if v.get("same")], skip)
-    tried = parse_time(st.get("attempt"))
-    if tried and now - tried < MIN_INTERVAL:
+    done, failed = parse_time(st.get("attempt")), parse_time(st.get("failed"))
+    wait = RETRY if st.get("backlog") else MIN_INTERVAL
+    if (done and now - done < wait) or (failed and now - failed < RETRY):
         return events, folded
-    todo = [(e, f) for e, f in pairs(events, judged, now) if e["id"] not in skip and f["id"] not in skip]
-    if not todo:
+    cases, size, due = [], 0, groups([e for e in events if e["id"] not in skip], judged, now)
+    for comp in due:
+        if size + len(comp) > MAX_EVENTS:
+            continue
+        cases.append(comp)
+        size += len(comp)
+    if not cases:
         return events, folded
     if remaining < int(settings.get("dedupe_min_calls", 10)):
         log(f"[dedupe] skipped: only {remaining} model calls left today")
         return events, folded
-    st["attempt"] = iso(now)
-    side = lambda e: {"summary": e.get("summary"), "place": e.get("place"), "country": e.get("country"),  # noqa: E731
-                      "time": e.get("time")}
-    payload = [{"i": n, "a": side(e), "b": side(f)} for n, (e, f) in enumerate(todo)]
-    reply = ask(PROMPT, json.dumps({"cases": payload}, ensure_ascii=False), state, settings, now, max_tokens=1500)
+    payload = [{"i": n, "events": [{"id": e["id"], "summary": e.get("summary"), "place": e.get("place"),
+                                    "time": e.get("time")} for e in comp]} for n, comp in enumerate(cases)]
+    reply = ask(PROMPT, json.dumps({"cases": payload}, ensure_ascii=False), state, settings, now, max_tokens=2000)
     if not isinstance(reply, dict) or not isinstance(reply.get("results"), list):
-        log("[dedupe] no model answer; will try again later")
+        st["failed"] = iso(now)
+        log(f"[dedupe] no model answer; will try again in {int(RETRY.total_seconds() // 60)} minutes")
         return events, folded
+    st["attempt"] = iso(now)
+    st["backlog"] = len(cases) < len(due)
+    st.pop("failed", None)
     same = []
     for res in reply["results"]:
-        if not isinstance(res, dict) or not isinstance(res.get("i"), int) or not 0 <= res["i"] < len(todo):
+        if not isinstance(res, dict) or not isinstance(res.get("i"), int) or not 0 <= res["i"] < len(cases):
             continue
-        e, f = todo[res["i"]]
-        judged[_key(e["id"], f["id"])] = {"same": res.get("same") is True, "at": iso(now)}
-        if res.get("same") is True:
-            same.append((e["id"], f["id"]))
-            log(f"[dedupe] same story: {e['summary']!r} + {f['summary']!r}")
+        comp = cases[res["i"]]
+        ids = {e["id"] for e in comp}
+        where = {}
+        for n, grp in enumerate(res.get("groups") or []):
+            if isinstance(grp, list):
+                for i in grp:
+                    if isinstance(i, str) and i in ids and i not in where:
+                        where[i] = n
+        for x, a in enumerate(comp):
+            for b in comp[x + 1:]:
+                hit = a["id"] in where and where.get(a["id"]) == where.get(b["id"])
+                judged[_key(a["id"], b["id"])] = {"same": hit, "at": iso(now)}
+                if hit:
+                    same.append((a["id"], b["id"]))
+        for n in sorted(set(where.values())):
+            members = [e for e in comp if where.get(e["id"]) == n]
+            if len(members) > 1:
+                log("[dedupe] same story: " + " + ".join(repr(e["summary"][:60]) for e in members))
     events, more = _fold(events, same, skip)
-    log(f"[dedupe] asked about {len(todo)} pairs, folded {len(more)} events")
+    log(f"[dedupe] asked about {len(cases)} groups ({size} events), folded {len(more)} events")
     return events, folded + more
