@@ -26,6 +26,8 @@ DEFAULT_SETTINGS = {
     # situation brief (which is skipped when fewer than brief_min_calls are left).
     "extraction_reserve": 30,
     "brief_min_calls": 5,
+    # The same-story check (at most one call an hour) is skipped below this.
+    "dedupe_min_calls": 10,
     "seconds_between_calls": 7,
     "batch_max_items": 25,
     "batch_token_budget": 10000,
