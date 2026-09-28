@@ -1,7 +1,7 @@
 """Track US Navy aircraft carriers.
 
 Two inputs:
-  1. USNI News' weekly Fleet and Marine Tracker. When a new edition appears in the USNI
+  1. USNI News' Fleet and Marine Tracker (published daily). When a new edition appears in the USNI
      feed, the article is read once and the model lists every carrier's location.
   2. Carrier mentions in ordinary posts and news (departures, arrivals, transits), picked
      up during normal extraction.
@@ -10,7 +10,7 @@ Each carrier keeps its latest reported position, where it was before (so the map
 animate the move), a stated destination if any, and a short track of past positions.
 Positions are never extrapolated: the map shows the last report and its date.
 
-News reports are checked before they move a carrier (the weekly tracker is trusted):
+News reports are checked before they move a carrier (the tracker is trusted):
   - a vague place ("Middle East", "the Pacific") is not a position; it is ignored
   - a carrier reported at another carrier's home port (Ford "departing San Diego") is almost
     always a report about the other carrier; it is ignored
@@ -64,7 +64,7 @@ SLACK_KM = 400         # rough coordinates for sea areas and ports
 HOME_KM = 60           # "at" a home port
 CONFIRM_KM = 500       # a second report this close confirms a held move
 HOLD = timedelta(hours=72)
-TRACKER_MAX_AGE = timedelta(days=14)  # older editions can't say who is home
+TRACKER_MAX_AGE = timedelta(days=3)  # the tracker is daily; an older edition can't say who is home now
 VAGUE = {"middle east", "the middle east", "indo-pacific", "the indo-pacific", "pacific", "the pacific",
          "pacific ocean", "atlantic", "the atlantic", "atlantic ocean", "europe", "asia", "africa", "at sea",
          "overseas", "the region", "region", "gulf region", "central command", "centcom", "5th fleet",
@@ -145,7 +145,7 @@ def update(state: dict, reports: list[dict]) -> int:
         c = fleet.setdefault(hull, {"hull": hull, "name": name, "short": short, "track": []})
         replacing = False
         if c.get("as_of") and r["time"] < c["as_of"]:
-            # older than what we already know. The weekly tracker still wins over a later news
+            # older than what we already know. The tracker still wins over a later news
             # report the carrier couldn't have sailed to from the tracker's position in time
             # (that report was misread or about an older voyage).
             if not (r.get("trusted") and r.get("status") != "home" and not c.get("trusted")
@@ -400,7 +400,7 @@ def _latest_edition(items: list[dict], session) -> dict | None:
     return {"url": it["url"], "time": it["time"], "title": it["text"][:120]}
 
 
-def read_weekly_tracker(state: dict, items: list[dict], session, settings: dict, now: datetime, ask_json) -> list[dict]:
+def read_tracker(state: dict, items: list[dict], session, settings: dict, now: datetime, ask_json) -> list[dict]:
     """If USNI published a new Fleet and Marine Tracker, turn it into position reports (one model call)."""
     meta = state.setdefault("fleet_meta", {})
     latest = _latest_edition(items, session)
@@ -465,12 +465,12 @@ def read_weekly_tracker(state: dict, items: list[dict], session, settings: dict,
             "time": latest["time"], "source": "USNI News Fleet and Marine Tracker", "url": latest["url"],
             "trusted": True,
         })
-    log(f"[fleet] weekly tracker: {len(reports)} carriers")
+    log(f"[fleet] tracker: {len(reports)} carriers")
     return reports
 
 
 def apply_home_baseline(state: dict, now: datetime | None = None) -> None:
-    """Carriers the latest weekly tracker does not list as deployed are shown at home port.
+    """Carriers the latest tracker does not list as deployed are shown at home port.
 
     USNI's tracker lists every deployed carrier strike group, so absence means the carrier is
     in home waters (in port, in maintenance, or training locally). A carrier reported somewhere
@@ -553,7 +553,7 @@ def repair(state: dict) -> None:
 
 
 def mark_deployment(state: dict, reports: list[dict]) -> None:
-    """Remember whether the weekly tracker last listed each carrier as deployed or in maintenance."""
+    """Remember whether the tracker last listed each carrier as deployed or in maintenance."""
     fleet = state.setdefault("fleet", {})
     for r in reports:
         hull = _hull(r.get("hull"))

@@ -161,11 +161,11 @@ def main() -> int:
     state["pending"] = leftover
     log(f"[extract] {len(records)} events from {calls} model calls; {len(leftover)} waiting")
 
-    # 4. Carrier strike groups: weekly USNI tracker plus movements seen in today's posts
-    if not args.no_llm:
-        weekly = fleet.read_weekly_tracker(state, items, session, settings, t0, extract.ask_json)
-        fleet.update(state, weekly)
-        fleet.mark_deployment(state, weekly)
+    # 4. Carrier strike groups: USNI's daily tracker (read directly, no model needed) plus movements
+    #    seen in today's posts
+    tracker = fleet.read_tracker(state, items, session, settings, t0, extract.ask_json)
+    fleet.update(state, tracker)
+    fleet.mark_deployment(state, tracker)
     fleet.repair(state)
     moved = fleet.update(state, carrier_reports)
     fleet.apply_home_baseline(state, t0)

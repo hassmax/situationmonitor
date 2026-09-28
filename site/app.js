@@ -1057,7 +1057,7 @@
         <span class="side-name">${esc(c.short || c.name)}</span>
         <span class="side-meta">${esc(c.heading_to ? `→ ${c.heading_to.place || "en route"}` : c.at_home ? (c.place || "").split(/[,(]/)[0].trim() : c.place || "")}</span>
       </button></li>`).join("")
-      : '<li class="muted small">No positions yet. They come from USNI News\u2019 weekly Fleet and Marine Tracker.</li>';
+      : '<li class="muted small">No positions yet. They come from USNI News\u2019 daily Fleet and Marine Tracker.</li>';
     // supply routes
     const rows = [];
     S.supply.flows.forEach((f) => rows.push(`
