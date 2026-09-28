@@ -50,15 +50,16 @@ class Session:
                "<pubDate>Wed, 23 Sep 2026 11:00:00 GMT</pubDate></item></channel></rss>").encode()
 
 
-def test_results_join_the_queue_as_one_google_news_source():
+def test_results_join_the_queue_credited_to_their_outlet():
     items = hunter.run([ev("a")], {}, Session(), NOW)
     assert [i["text"] for i in items] == ["Tanker hit near Hormuz - Reuters"]    # older than a day dropped
     it = items[0]
-    assert (it["source"], it["group"], it["platform"]) == ("Google News (corroboration search)", "google-news", "rss")
+    # an outlet not listed in sources.yaml stays in the shared google-news group
+    assert (it["source"], it["group"], it["platform"]) == ("Reuters (via Google News)", "google-news", "rss")
     # highest priority in the normal extraction queue
     queue = extract.build_queue([], [{**it, "weight": 1, "id": "other", "time": it["time"]}, it], NOW,
                                 {"max_item_age_hours": 36, "pending_max": 400})
-    assert queue[0]["source"] == "Google News (corroboration search)"
+    assert queue[0]["id"] == it["id"]
 
 
 def test_each_event_searched_at_most_twice_three_hours_apart():

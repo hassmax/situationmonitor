@@ -19,7 +19,7 @@ def test_window_keeps_only_last_six_hours():
     assert [e["id"] for e in brief.window_events(EVENTS, NOW)] == ["a1", "b2"]
 
 
-def test_validate_drops_bullets_citing_unknown_ids():
+def test_validate_drops_bullets_citing_unknown_ids_and_all_theater_lines():
     reply = {"bullets": [{"text": "good", "ids": ["a1"]}, {"text": "made up", "ids": ["zzz"]},
                          {"text": "half made up", "ids": ["a1", "zzz"]}, {"text": "out of window", "ids": ["old"]}],
              "theaters": [{"id": "ukraine", "text": "ok", "ids": ["a1"]},
@@ -27,7 +27,7 @@ def test_validate_drops_bullets_citing_unknown_ids():
                           {"id": "mideast", "text": "wrong theater for a1", "ids": ["a1"]}]}
     out = brief.validate(reply, brief.window_events(EVENTS, NOW))
     assert out["bullets"] == [{"text": "good", "ids": ["a1"]}]
-    assert out["theaters"] == [{"id": "ukraine", "text": "ok", "ids": ["a1"]}]
+    assert out["theaters"] == []                             # the brief has no per-theater lines
 
 
 def test_validate_caps_bullets_and_rejects_garbage():
@@ -104,3 +104,11 @@ def test_uncorroborated_lines_must_be_attributed():
     assert [b["text"] for b in out["bullets"]] == ["Drones hit Kyiv.", "A single-source report says Taiwan announced new missiles.",
                                                    "Russia's MoD claims it took a village."]
     assert out["theaters"] == []
+
+
+def test_older_theater_lines_are_cleared():
+    state = {"brief": {"generated_at": "2026-09-27T20:30:00Z", "window_hours": 6, "bullets": [{"text": "x", "ids": ["a1"]}],
+                       "theaters": [{"id": "ukraine", "text": "Stated as fact.", "ids": ["a1"]}]},
+             "brief_attempt": "2026-09-27T20:30:00Z"}
+    brief.update(state, EVENTS, {}, SETTINGS, NOW, lambda *a, **k: 1 / 0, remaining=100)   # within the hour: no call
+    assert state["brief"]["theaters"] == [] and state["brief"]["bullets"] == [{"text": "x", "ids": ["a1"]}]

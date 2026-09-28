@@ -423,9 +423,6 @@ h2 {
 .cites { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; vertical-align: 1px; }
 .cite { border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); color: var(--ink-2); border-radius: 999px; padding: 0 7px; font-size: 11.5px; line-height: 18px; cursor: pointer; }
 .cite:hover { color: var(--ink); border-color: var(--line-strong); }
-.brief-theaters { margin-top: 8px; }
-.brief-theaters summary { cursor: pointer; font-size: 12.5px; color: var(--ink-2); font-weight: 600; }
-.brief-theaters b { font-weight: 650; }
 .brief-note { margin: 8px 0 0; font-size: 11.5px; color: var(--ink-3); }
 
 .spotbar {

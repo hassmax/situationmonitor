@@ -3,8 +3,10 @@
 Written from the dashboard's own events only, at most once an hour and only when those events
 changed. One model call, from the shared daily budget; skipped when fewer than brief_min_calls
 calls are left. Every bullet must cite the events it is based on, and bullets citing events that
-don't exist, or that state an uncorroborated event without attributing it, are dropped. If the call fails or nothing valid is left, the previous brief stays,
-with its original timestamp.
+don't exist, or that state an uncorroborated event without attributing it, are dropped. If the
+call fails or nothing valid is left, the previous brief stays, with its original timestamp.
+There are no per-theater lines: they tended to fold several single-source events into one
+sentence stated as fact, so the brief is bullets only ("theaters" stays empty for older pages).
 """
 from __future__ import annotations
 
@@ -35,16 +37,16 @@ PROMPT = """You write a short situation brief for a live armed-conflict map. You
 
 Rules:
 - Use only the supplied events. No outside knowledge, no background, no predictions, no speculation about intent or what may happen next.
-- Keep confidence explicit, in every bullet and every theater line. Each event has a "confidence" field. Never state a single-source report or a one-sided claim as fact: every clause drawn from such an event needs its own attribution ("a single-source report says...", "Russia's MoD claims...", "Ukrainian officials report...", "X reportedly..."). Only events marked corroborated may be stated plainly, and even then keep the wording close to the summary.
+- Keep confidence explicit, in every bullet. Each event has a "confidence" field. Never state a single-source report or a one-sided claim as fact: every clause drawn from such an event needs its own attribution ("a single-source report says...", "Russia's MoD claims...", "Ukrainian officials report...", "X reportedly..."). Only events marked corroborated may be stated plainly, and even then keep the wording close to the summary.
 - Every statement must be supported by the summary of an event it cites. Don't combine events into a claim that no single event makes.
 - Don't characterize the overall situation or trends ("tensions persist", "escalating", "a volatile day"). Say what the events report, and nothing more.
 - Neutral, plain language. No adjectives that add drama. Keep numbers exactly as given.
-- Every bullet and every theater line must cite the ids of the events it is based on, and only ids from the input.
-- At most 6 overall bullets, most significant first (severity, corroboration, scale). At most one line per theater that had activity.
+- Every bullet must cite the ids of the events it is based on, and only ids from the input.
+- At most 6 bullets, most significant first (severity, corroboration, scale).
 - If nothing significant happened, return a single bullet saying so, with the ids of the events it covers (or [] if there are none).
 
 Reply with one JSON object and nothing else:
-{"bullets": [{"text": "<one sentence>", "ids": ["<event id>", ...]}], "theaters": [{"id": "<theater id>", "text": "<one sentence>", "ids": ["<event id>", ...]}]}"""
+{"bullets": [{"text": "<one sentence>", "ids": ["<event id>", ...]}]}"""
 
 
 def _facts(e: dict, theater_names: dict) -> dict:
@@ -100,7 +102,7 @@ def _ids(v) -> list[str] | None:
 
 
 def validate(reply, events: list[dict]) -> dict | None:
-    """Keep only bullets and theater lines whose cited ids all exist among the input events."""
+    """Keep only bullets whose cited ids all exist among the input events."""
     if not isinstance(reply, dict):
         return None
     by_id = {e["id"]: e for e in events}
@@ -114,27 +116,18 @@ def validate(reply, events: list[dict]) -> dict | None:
             uncited.append({"text": text[:300], "ids": []})
         elif all(i in by_id for i in ids) and _attributed(text, ids, by_id):
             bullets.append({"text": text[:300], "ids": ids[:10]})
-    theaters, done = [], set()
-    for t in reply.get("theaters") or []:
-        if not isinstance(t, dict):
-            continue
-        tid, text, ids = t.get("id"), str(t.get("text") or "").strip(), _ids(t.get("ids"))
-        if not text or not ids or tid in done or not all(i in by_id and by_id[i].get("theater") == tid for i in ids):
-            continue
-        if not _attributed(text, ids, by_id):
-            continue
-        done.add(tid)
-        theaters.append({"id": tid, "text": text[:300], "ids": ids[:10]})
     bullets = bullets[:MAX_BULLETS]
-    if not bullets and not theaters:
+    if not bullets:
         # A single "nothing significant" line may stand without citations.
         return {"bullets": uncited[:1], "theaters": []} if len(uncited) == 1 else None
-    return {"bullets": bullets, "theaters": theaters}
+    return {"bullets": bullets, "theaters": []}
 
 
 def update(state: dict, events: list[dict], theater_names: dict, settings: dict, now, ask, remaining: int) -> None:
     """Write a new brief into state["brief"] when it is due; otherwise leave the previous one."""
     prev = state.get("brief")
+    if prev and prev.get("theaters"):
+        prev["theaters"] = []  # written before the brief dropped per-theater lines
     tried = parse_time(state.get("brief_attempt"))
     if tried and now - tried < MIN_INTERVAL:
         return  # at most one attempt an hour, successful or not
@@ -150,7 +143,6 @@ def update(state: dict, events: list[dict], theater_names: dict, settings: dict,
             return
         state["brief_attempt"] = iso(now)
         payload = {"now": iso(now), "window_hours": WINDOW_HOURS,
-                   "theaters": sorted({e["theater"] for e in recent}),
                    "events": [_facts(e, theater_names) for e in recent]}
         reply = ask(PROMPT, json.dumps(payload, ensure_ascii=False), state, settings, now, max_tokens=1500)
         new = validate(reply, recent)
@@ -160,4 +152,4 @@ def update(state: dict, events: list[dict], theater_names: dict, settings: dict,
     state["brief_attempt"] = iso(now)
     state["brief"] = {"generated_at": iso(now), "window_hours": WINDOW_HOURS, **new}
     state["brief_fp"] = fp
-    log(f"[brief] written: {len(new['bullets'])} bullets, {len(new['theaters'])} theater lines")
+    log(f"[brief] written: {len(new['bullets'])} bullets")
