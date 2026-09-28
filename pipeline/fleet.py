@@ -59,7 +59,7 @@ USNI_FEED = "https://news.usni.org/feed"
 MOVE_KM = 150          # smaller changes are treated as the same position
 TRACK_LEN = 12
 FLEET_VERSION = 2      # bump to re-check stored positions against the rules below
-MAX_KM_PER_DAY = 1300  # about 30 knots, flat out
+MAX_KM_PER_DAY = 900   # about 20 knots, a fast sustained transit
 SLACK_KM = 400         # rough coordinates for sea areas and ports
 HOME_KM = 60           # "at" a home port
 CONFIRM_KM = 500       # a second report this close confirms a held move
@@ -143,8 +143,17 @@ def update(state: dict, reports: list[dict]) -> int:
             continue
         name, short = CARRIERS[hull]
         c = fleet.setdefault(hull, {"hull": hull, "name": name, "short": short, "track": []})
+        replacing = False
         if c.get("as_of") and r["time"] < c["as_of"]:
-            continue  # older than what we already know
+            # older than what we already know. The weekly tracker still wins over a later news
+            # report the carrier couldn't have sailed to from the tracker's position in time
+            # (that report was misread or about an older voyage).
+            if not (r.get("trusted") and r.get("status") != "home" and not c.get("trusted")
+                    and _too_fast({**r, "as_of": r["time"]}, c)):
+                continue
+            log(f"[fleet] {name}: the tracker ({r.get('place')}, {r['time'][:10]}) replaces a later news report "
+                f"({c.get('place')}, {c['as_of'][:10]}) it couldn't have sailed to")
+            replacing = True
         if not r.get("trusted"):
             why = _check(c, r, hull)
             if why == "hold":
@@ -153,10 +162,18 @@ def update(state: dict, reports: list[dict]) -> int:
                 continue
             if why:
                 log(f"[fleet] {name}: report ignored ({why})")
+                h = r.get("heading_to")
+                if why.endswith("is not a position") and h and c.get("lat") is not None \
+                        and haversine_km(h["lat"], h["lon"], c["lat"], c["lon"]) >= MOVE_KM:
+                    c["heading_to"] = h  # "set for a Middle East deployment": where it is going, not where it is
                 continue
         if r["status"] != "home":
             c["at_home"] = False
-        moved = c.get("lat") is not None and haversine_km(c["lat"], c["lon"], r["lat"], r["lon"]) > MOVE_KM
+        # a corrected position is not a move: no line from the report it replaces
+        moved = not replacing and c.get("lat") is not None and haversine_km(c["lat"], c["lon"], r["lat"], r["lon"]) > MOVE_KM
+        if replacing:
+            for k in ("prev", "moved_at", "held"):
+                c.pop(k, None)
         if moved:
             c["prev"] = {"lat": c["lat"], "lon": c["lon"], "place": c.get("place"), "as_of": c.get("as_of")}
             c["moved_at"] = r["time"]
@@ -166,7 +183,7 @@ def update(state: dict, reports: list[dict]) -> int:
         if heading and haversine_km(heading["lat"], heading["lon"], r["lat"], r["lon"]) < MOVE_KM:
             heading = None  # arrived
         c.update(lat=r["lat"], lon=r["lon"], place=r.get("place"), status=r["status"], as_of=r["time"],
-                 source=r.get("source"), url=r.get("url"), heading_to=heading)
+                 source=r.get("source"), url=r.get("url"), heading_to=heading, trusted=bool(r.get("trusted")))
         if r["status"] == "departed":
             c["departed_at"] = r["time"]
         track = c["track"]
@@ -175,6 +192,101 @@ def update(state: dict, reports: list[dict]) -> int:
         c["track"] = track[-TRACK_LEN:]
         changed += 1
     return changed
+
+
+# Sea areas and ports named in USNI's tracker, most specific first. Only named places: "the
+# Pacific" or "the Atlantic" alone are not positions.
+TRACKER_PLACES = [
+    (r"pearl harbor", "Pearl Harbor, Hawaii", 21.35, -157.95), (r"hawaii", "near Hawaii", 21.0, -158.5),
+    (r"san diego|north island", "San Diego", 32.70, -117.19), (r"southern california|socal|off california", "off Southern California", 32.5, -118.5),
+    (r"newport news", "Newport News, Va.", 36.98, -76.43), (r"norfolk", "Norfolk, Va.", 36.95, -76.33),
+    (r"mayport", "Mayport, Fla.", 30.39, -81.40), (r"yokosuka", "Yokosuka, Japan", 35.29, 139.67),
+    (r"bremerton|puget sound", "Bremerton, Wash.", 47.56, -122.63), (r"everett", "Everett, Wash.", 47.98, -122.22),
+    (r"\bguam\b", "Guam", 13.44, 144.66), (r"okinawa", "off Okinawa", 26.3, 127.8), (r"busan", "Busan, South Korea", 35.10, 129.04),
+    (r"manila", "Manila", 14.58, 120.97), (r"singapore", "Singapore", 1.26, 103.82), (r"da nang", "Da Nang, Vietnam", 16.05, 108.20),
+    (r"bahrain|manama", "Bahrain", 26.20, 50.60), (r"souda bay|crete", "Souda Bay, Crete", 35.49, 24.08),
+    (r"naples", "Naples, Italy", 40.84, 14.25), (r"\bsplit\b", "Split, Croatia", 43.50, 16.44),
+    (r"philippine sea", "Philippine Sea", 20.0, 131.0), (r"south china sea", "South China Sea", 12.0, 114.0),
+    (r"east china sea", "East China Sea", 29.0, 125.0), (r"sea of japan|east sea", "Sea of Japan", 40.0, 135.0),
+    (r"yellow sea", "Yellow Sea", 35.0, 123.0), (r"celebes sea", "Celebes Sea", 3.0, 122.0), (r"sulu sea", "Sulu Sea", 8.0, 120.0),
+    (r"coral sea", "Coral Sea", -18.0, 155.0), (r"tasman sea", "Tasman Sea", -40.0, 160.0), (r"timor sea", "Timor Sea", -10.0, 127.0),
+    (r"western pacific", "Western Pacific", 15.0, 140.0), (r"eastern pacific", "Eastern Pacific", 25.0, -125.0),
+    (r"gulf of alaska", "Gulf of Alaska", 57.0, -145.0), (r"bay of bengal", "Bay of Bengal", 15.0, 88.0),
+    (r"north arabian sea", "North Arabian Sea", 20.0, 63.0), (r"arabian sea", "Arabian Sea", 16.0, 63.0),
+    (r"gulf of oman", "Gulf of Oman", 24.5, 58.5), (r"strait of hormuz", "Strait of Hormuz", 26.57, 56.25),
+    (r"persian gulf|arabian gulf", "Persian Gulf", 27.0, 51.5), (r"gulf of aden", "Gulf of Aden", 12.5, 47.5),
+    (r"red sea", "Red Sea", 20.0, 38.5), (r"indian ocean", "Indian Ocean", -5.0, 75.0),
+    (r"eastern mediterranean|eastern med\b", "Eastern Mediterranean", 33.5, 33.5), (r"adriatic", "Adriatic Sea", 42.5, 16.0),
+    (r"aegean", "Aegean Sea", 38.5, 25.0), (r"ionian sea", "Ionian Sea", 38.0, 19.0), (r"mediterranean", "Mediterranean Sea", 35.0, 18.0),
+    (r"norwegian sea", "Norwegian Sea", 68.0, 5.0), (r"north sea", "North Sea", 56.0, 3.0), (r"baltic", "Baltic Sea", 57.0, 19.0),
+    (r"north atlantic", "North Atlantic", 45.0, -35.0), (r"western atlantic", "Western Atlantic", 35.0, -70.0),
+    (r"caribbean", "Caribbean Sea", 15.0, -75.0), (r"gulf of mexico|gulf of america", "Gulf of Mexico", 25.0, -90.0),
+]
+_HULL_NAMES = {h: re.escape(n.replace("U.S.S. ", "")) for h, (n, _) in CARRIERS.items()}
+_DEST = re.compile(r"(?:en route to|heading (?:to|toward|for)|bound for|transiting to|on (?:its|their) way to|"
+                   r"returning to|headed (?:to|for|toward))\s+(?:the\s+)?([^.;,]{3,60})", re.IGNORECASE)
+
+
+def _tracker_place(text: str):
+    low = (text or "").lower()
+    for pat, place, lat, lon in TRACKER_PLACES:
+        if re.search(pat, low):
+            return {"place": place, "lat": lat, "lon": lon}
+    return None
+
+
+def parse_tracker(html: str) -> list[dict]:
+    """Read the carriers from a Fleet and Marine Tracker without the model: each carrier is named
+    with its hull number, in a section headed by where it is, in a sentence that usually says so
+    too. The sentence wins, then the section heading. Carriers whose place can't be matched to a
+    named sea area or port are left out (their stored position stays)."""
+    blocks = re.findall(r"(?is)<(h[1-6]|p|li)\b[^>]*>(.*?)</\1>", html or "")
+    if not blocks:  # plain text: one block per line
+        blocks = [("p", line) for line in (html or "").splitlines()]
+    heading, out, seen, named = None, [], set(), set()
+    for tag, inner in blocks:
+        text = clean_text(inner)
+        if tag.lower().startswith("h"):
+            heading = text
+            continue
+        # sentence ends: not after initials or abbreviations ("H.W. Bush", "U.S. official", "Sept. 21")
+        sentences = re.split(r"(?<=[a-z0-9)][.!?])\s+(?=[A-Z])", text)
+        mentions = lambda sent: [h for h, n in _HULL_NAMES.items()  # noqa: E731
+                                 if re.search(rf"\(CVN[- ]?{h[-2:]}\)|\b{n}\b", sent)]
+        for i, sentence in enumerate(sentences):
+            for hull in mentions(sentence):
+                if hull in seen:
+                    continue
+                # this sentence, then the next ones about the same carrier ("It is underway in ...")
+                span = [sentence] + [x for x in sentences[i + 1:i + 3] if not mentions(x)]
+                here, dest, used = None, None, sentence
+                for sent in span:
+                    d = _DEST.search(sent)
+                    where = sent[:d.start()] if d else sent
+                    where = re.sub(r"(?i)\b(?:departed|left|sailed from|pulled out of|from)\s+[^.,;]+", " ", where)
+                    dest = dest or d
+                    here = _tracker_place(where)
+                    if here:
+                        used = sent
+                        break
+                here = here or _tracker_place(heading or "")
+                if not here:
+                    named.add(hull)  # listed as deployed, but its place isn't a named sea area or port
+                    continue
+                seen.add(hull)
+                low = " ".join(span).lower() if used is not sentence else sentence.lower()
+                status = ("in port" if re.search(r"in port|pierside|moored|at (?:its|her) homeport", low)
+                          else "underway" if re.search(r"underway|transit|sailing|en route|heading|bound for", low)
+                          else "operating")
+                home = HOME.get(hull)
+                at_home = bool(home and haversine_km(home[1], home[2], here["lat"], here["lon"]) < HOME_KM)
+                heading_to = _tracker_place(dest.group(1)) if dest else None
+                out.append({"hull": hull, "status": status, "deployed": not at_home, "maintenance": "maintenance" in low,
+                            **here, "heading_to": heading_to})
+    # named without a usable place: still listed (so not sent home), position left as it was
+    out += [{"hull": h, "status": "operating", "deployed": True, "place": None, "lat": None, "lon": None}
+            for h in sorted(named - seen)]
+    return out
 
 
 def _article_text(html: str) -> str:
@@ -239,7 +351,13 @@ def read_weekly_tracker(state: dict, items: list[dict], session, settings: dict,
             log(f"[fleet] could not open the tracker article ({latest['time'][:10]}) and the feed has no text: {exc}")
             return []
     log(f"[fleet] reading the Fleet and Marine Tracker of {latest['time'][:10]}")
-    out = ask_json(TRACKER_PROMPT, _article_text(html), state, settings, now)
+    parsed = parse_tracker(html)
+    if sum(c["lat"] is not None for c in parsed) >= 2:
+        out = {"carriers": parsed}  # read directly: no model call, works while the model is down
+        log(f"[fleet] read {len(parsed)} carriers from the tracker directly: "
+            + ", ".join(f"{c['hull']} {c['place'] or '(no named place)'}" for c in parsed))
+    else:
+        out = ask_json(TRACKER_PROMPT, _article_text(html), state, settings, now)
     if not isinstance(out, dict) or not isinstance(out.get("carriers"), list):
         log("[fleet] tracker article could not be read this run; will retry")
         return []
