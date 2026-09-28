@@ -129,6 +129,17 @@ telegram:
     group: shin
     weight: 2
     prefilter: false
+  - username: warmonitors
+    # War Monitors: English-language aggregator of breaking conflict news, heavy on the Middle
+    # East. It reposts others quickly and sometimes runs unverified claims, so it counts as one
+    # unaligned OSINT source like any other: it can't make an event corroborated on its own, and
+    # it pairs with Shin for the "two OSINT Telegram channels" alert. English posts, so the
+    # keyword filter can screen out the non-conflict ones before they reach the model.
+    name: War Monitors (OSINT aggregator)
+    kind: osint
+    group: warmonitors
+    weight: 2
+    prefilter: true
 
 outlets:
   # Google News results come from many outlets. The outlet that published each result is
