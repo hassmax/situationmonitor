@@ -221,8 +221,15 @@ TRACKER_PLACES = [
     (r"norwegian sea", "Norwegian Sea", 68.0, 5.0), (r"north sea", "North Sea", 56.0, 3.0), (r"baltic", "Baltic Sea", 57.0, 19.0),
     (r"north atlantic", "North Atlantic", 45.0, -35.0), (r"western atlantic", "Western Atlantic", 35.0, -70.0),
     (r"caribbean", "Caribbean Sea", 15.0, -75.0), (r"gulf of mexico|gulf of america", "Gulf of Mexico", 25.0, -90.0),
+    (r"california", "California", 33.5, -118.5), (r"virginia", "Virginia", 36.9, -76.0),
 ]
-_HULL_NAMES = {h: re.escape(n.replace("U.S.S. ", "")) for h, (n, _) in CARRIERS.items()}
+# carrier names as USNI writes them: "George H. W. Bush" and "George H.W. Bush", with ordinary or no-break spaces
+_HULL_NAMES = {h: re.escape(n.replace("U.S.S. ", "")).replace(r"\ ", r"\s+").replace(r"\.", r"\.\s?")
+               for h, (n, _) in CARRIERS.items()}
+# a clause about where a carrier came from or is based, not where it is
+_ORIGIN = re.compile(r"(?i)\b(?:depart\w*|left|leaves?|leaving|sailed from|pulled out of|homeported|home-?ported|"
+                     r"based (?:at|in|out of)|from)\b")
+_CLAUSES = re.compile(r"(?i)(?:,?\s+and\s+(?=(?:is|are|was|were|has|have|will|remains?|then|continued|continues)\b)|;\s*|,\s+(?=(?:is|are|was|were|has|remains?)\b))")
 _DEST = re.compile(r"(?:en route to|heading (?:to|toward|for)|bound for|transiting to|on (?:its|their) way to|"
                    r"returning to|headed (?:to|for|toward))\s+(?:the\s+)?([^.;,]{3,60})", re.IGNORECASE)
 
@@ -235,7 +242,7 @@ def _tracker_place(text: str):
     return None
 
 
-TRACKER_PARSER = 2  # bump to re-read the current edition after changing parse_tracker
+TRACKER_PARSER = 3  # bump to re-read the current edition after changing parse_tracker
 _CAPTION = re.compile(r"(?i)navy photo|photo(?:graph)? (?:by|courtesy)|\bphoto\b\s*$|file photo|\bimage\b")
 
 
@@ -280,17 +287,26 @@ def parse_tracker(html: str, evidence: list | None = None) -> list[dict]:
                     continue
                 span = [sentence] + [x for x in sentences[i + 1:i + 3] if not mentions(x)]
                 dest = next((d for d in (_DEST.search(x) for x in span) if d), None)
-                here, source = _tracker_place(heading or ""), f"section '{heading}'"
+                here, source, departed = _tracker_place(heading or ""), f"section '{heading}'", None
                 if not here:
+                    # split into clauses: "departed last Sunday from Apra Harbor, Guam" | "is transiting ... en route to California"
                     for sent in span:
-                        d = _DEST.search(sent)
-                        where = sent[:d.start()] if d else sent
-                        where = re.sub(r"(?i)\b(?:depart(?:s|ed|ing)?|left|leaves?|leaving|sailed from|pulled out of|from)"
-                                       r"\s+[^.,;]+", " ", where)
-                        here = _tracker_place(where)
-                        if here:
-                            source = "sentence"
+                        for clause in _CLAUSES.split(sent):
+                            d = _DEST.search(clause)
+                            where = clause[:d.start()] if d else clause
+                            place = _tracker_place(where)
+                            if not place:
+                                continue
+                            if _ORIGIN.search(where):
+                                if re.search(r"(?i)\bdepart|\bleft\b|\bleav|sailed from|pulled out", where):
+                                    departed = departed or place  # last known point, if nothing says where it is now
+                                continue
+                            here, source = place, "sentence"
                             break
+                        if here:
+                            break
+                    if not here and departed:
+                        here, source = departed, "departure point (no current position given)"
                 if evidence is not None:
                     evidence.append(f"{hull}: {here['place'] if here else 'no named place'} "
                                     f"(from {source if here else 'nothing'}; {sentence[:140]!r})")
@@ -299,7 +315,8 @@ def parse_tracker(html: str, evidence: list | None = None) -> list[dict]:
                     continue
                 seen.add(hull)
                 low = " ".join(span).lower()
-                status = ("in port" if re.search(r"in port|pierside|moored|at (?:its|her) homeport", low)
+                status = ("departed" if source.startswith("departure point")
+                          else "in port" if re.search(r"in port|pierside|moored|at (?:its|her) homeport", low)
                           else "underway" if re.search(r"underway|transit|sailing|en route|heading|bound for", low)
                           else "operating")
                 home = HOME.get(hull)
@@ -441,6 +458,12 @@ def apply_home_baseline(state: dict, now: datetime | None = None) -> None:
     for hull, (place, lat, lon) in HOME.items():
         c = fleet.get(hull)
         if hull in listed:
+            if c and c.get("lat") is not None:
+                continue
+            # listed by the tracker without a position, and nothing stored: show its home port, not nothing
+            reports.append({"hull": hull, "status": "home", "place": place, "lat": lat, "lon": lon, "heading_to": None,
+                            "trusted": True, "time": "1970-01-01T00:00:00Z",
+                            "source": "Home port (USNI's tracker lists it without a position)", "url": meta.get("tracker_url")})
             continue
         if c and c.get("lat") is not None:
             newer_news = tracker_time and (c.get("as_of") or "") > tracker_time and not c.get("at_home")
