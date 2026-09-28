@@ -277,10 +277,21 @@ def _describe(r: requests.Response) -> str:
     return f"HTTP {r.status_code} {r.headers.get('content-type', '?')}: {(r.text or '')[:200]!r}"
 
 
-def _find_model(token: str, settings: dict, state: dict) -> dict | None:
-    """Send a tiny request with each candidate model and keep the first that really answers."""
+FALLBACK_RECHECK = timedelta(hours=1)  # a backup model in use: try the preferred ones again after this
+
+
+def _candidates(settings: dict) -> list[str]:
+    """Preferred models, then the backups tried when all of those are busy or gone."""
+    main = list(settings["llm_models"])
+    return main + [m for m in settings.get("llm_fallback_models") or [] if m not in main]
+
+
+def _find_model(token: str, settings: dict, state: dict, skip=()) -> dict | None:
+    """Send a tiny request with each candidate model and keep the first that really answers.
+    The preferred (Flash-Lite) models come first; the backups (regular Flash, also free, with a
+    separate and smaller daily limit) are tried only when those are busy or unavailable."""
     url = settings["llm_url"]
-    for model in settings["llm_models"]:
+    for model in [m for m in _candidates(settings) if m not in skip]:
         for json_mode in (True, False):
             body = {
                 "model": model,
@@ -309,15 +320,18 @@ def _find_model(token: str, settings: dict, state: dict) -> dict | None:
                 works = False
             log(f"[extract] probe {model} json_mode={json_mode}: {_describe(r)}")
             if works:
-                found = {"url": url, "model": model, "json_mode": json_mode,
+                backup = model not in settings["llm_models"]
+                found = {"url": url, "model": model, "json_mode": json_mode, "fallback": backup,
                          "checked": iso(datetime.now().astimezone())}
                 state["llm_model"] = found
-                log(f"[extract] using {model} (json_mode={json_mode})")
+                log(f"[extract] using {model} (json_mode={json_mode})"
+                    + (" as a backup while the preferred models are busy" if backup else ""))
                 return found
             if r.status_code in (401, 403):
                 log("[extract] the API key was rejected; check the GEMINI_API_KEY secret")
                 return None
             if r.status_code == 404 or "not found" in (r.text or "").lower():
+                state["llm_calls"]["count"] -= 1  # no such model: nothing was done
                 break  # unknown model name: try the next one
     return None
 
@@ -498,7 +512,8 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
     chosen = state.get("llm_model")
     checked = parse_time(chosen.get("checked")) if chosen else None
     stale = (not chosen or not checked or now - checked > timedelta(hours=24)
-             or chosen.get("url") != settings["llm_url"] or chosen.get("model") not in settings["llm_models"])
+             or chosen.get("url") != settings["llm_url"] or chosen.get("model") not in _candidates(settings)
+             or (chosen.get("fallback") and now - checked > FALLBACK_RECHECK))
     if stale:
         before = state["llm_calls"]["count"]
         try:
@@ -516,7 +531,11 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
     done: set[str] = set()
     used = 0
     failures = 0
-    for n, batch in enumerate(batches[:allowed]):
+    switched = False
+    todo = list(batches[:allowed])
+    n = 0
+    while n < len(todo):
+        batch = todo[n]
         if n:
             time.sleep(float(settings.get("seconds_between_calls", 0)))  # stay under the per-minute limit
         used += 1
@@ -529,6 +548,16 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
         except Busy as exc:
             used -= 1
             state["llm_calls"]["count"] -= 1  # not counted: the model never did the work
+            if not switched:
+                switched = True
+                log(f"[extract] {chosen['model']} is busy (not counted); looking for another model")
+                try:
+                    other = _find_model(token, settings, state, skip={chosen["model"]})
+                except RateLimited:
+                    other = None
+                if other:
+                    chosen = other
+                    continue  # the same batch again, with the other model
             log(f"[extract] the model is busy, stopping for this run (not counted): {exc}")
             break
         except Exception as exc:  # noqa: BLE001
@@ -540,7 +569,9 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
                 state.pop("llm_model", None)  # re-check models next run
                 log("[extract] two failures in a row; stopping for this run to save the daily budget")
                 break
+            n += 1
             continue
+        n += 1
         failures = 0
         for it in batch:
             done.add(it["id"])
@@ -567,8 +598,9 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
 
 
 def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, now: datetime,
-             max_tokens: int = 4000) -> dict | None:
-    """One budgeted model call outside the batch loop. Returns parsed JSON or None."""
+             max_tokens: int = 4000, _retry: bool = True) -> dict | None:
+    """One budgeted model call outside the batch loop. Returns parsed JSON or None. If the model
+    is busy, another model (a backup if need be) is tried once."""
     token = os.environ.get("LLM_API_KEY", "").strip()
     chosen = state.get("llm_model")
     if not token or not chosen or calls_allowed(state, settings, now) <= 0:
@@ -585,6 +617,13 @@ def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, no
         if r.status_code >= 500:
             state["llm_calls"]["count"] -= 1  # overloaded or down: not counted
             log(f"[extract] one-off call: the model is busy (not counted): {_describe(r)[:120]}")
+            if _retry:
+                try:
+                    other = _find_model(token, settings, state, skip={chosen["model"]})
+                except RateLimited:
+                    other = None
+                if other:
+                    return ask_json(system_prompt, user_text, state, settings, now, max_tokens, _retry=False)
             return None
         if r.status_code >= 400:
             log(f"[extract] one-off call failed: {_describe(r)}")
