@@ -124,6 +124,11 @@ class RateLimited(Exception):
     pass
 
 
+class Busy(RuntimeError):
+    """The provider is overloaded or down (HTTP 5xx). Such calls do nothing and are not counted
+    against the daily budget; an outage used to drain it with failed attempts."""
+
+
 # Words added to the filter on 2026-09-27. Posts that matched only these were rejected before
 # then; run.py uses this once to give them another look.
 _ADDED_WORDS = re.compile(r"\b(?:wars?|wartime|visit(?:s|ed|ing)?|trip|met|meets?|meeting|hosts?|hosted)\b", re.IGNORECASE)
@@ -289,10 +294,15 @@ def _find_model(token: str, settings: dict, state: dict) -> dict | None:
             try:
                 r = _post(url, body, token)
             except Exception as exc:  # noqa: BLE001
+                state["llm_calls"]["count"] -= 1  # never reached the model
                 log(f"[extract] probe {model}: {exc}")
                 break
             if r.status_code == 429:
                 raise RateLimited(r.text[:200])
+            if r.status_code >= 500:
+                state["llm_calls"]["count"] -= 1  # overloaded or down: not counted
+                log(f"[extract] probe {model}: busy ({_describe(r)[:60]}), trying the next model")
+                break
             try:
                 works = bool(r.json().get("choices"))
             except (ValueError, AttributeError):
@@ -332,6 +342,8 @@ def _call_model(batch: list[dict], token: str, chosen: dict, settings: dict) -> 
     r = _post(chosen["url"], body, token)
     if r.status_code == 429:
         raise RateLimited(r.text[:200])
+    if r.status_code >= 500:
+        raise Busy(_describe(r))
     if r.status_code >= 400:
         raise RuntimeError(_describe(r))
     content = _content_from_response(r)
@@ -514,6 +526,11 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
         except RateLimited as exc:
             log(f"[extract] rate limited, stopping for this run: {exc}")
             break
+        except Busy as exc:
+            used -= 1
+            state["llm_calls"]["count"] -= 1  # not counted: the model never did the work
+            log(f"[extract] the model is busy, stopping for this run (not counted): {exc}")
+            break
         except Exception as exc:  # noqa: BLE001
             log(f"[extract] batch failed: {exc}")
             for it in batch:
@@ -565,10 +582,18 @@ def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, no
     state["llm_calls"]["count"] += 1
     try:
         r = _post(chosen["url"], body, token)
+        if r.status_code >= 500:
+            state["llm_calls"]["count"] -= 1  # overloaded or down: not counted
+            log(f"[extract] one-off call: the model is busy (not counted): {_describe(r)[:120]}")
+            return None
         if r.status_code >= 400:
             log(f"[extract] one-off call failed: {_describe(r)}")
             return None
         return _parse_json_object(_content_from_response(r))
+    except requests.RequestException as exc:
+        state["llm_calls"]["count"] -= 1  # never reached the model
+        log(f"[extract] one-off call failed (not counted): {exc}")
+        return None
     except Exception as exc:  # noqa: BLE001
         log(f"[extract] one-off call failed: {exc}")
         return None
