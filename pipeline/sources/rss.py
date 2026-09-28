@@ -32,9 +32,59 @@ def _outlet_src(src: dict, entry, outlets: dict) -> dict:
     if known:
         out = {**src, "name": f"{known['name']} (via Google News)", "group": known.get("group") or f"outlet:{known['domain']}",
                "kind": known.get("kind", "news"), "side": known.get("side"),
-               "weight": 3 if known.get("tier") == 1 else int(src.get("weight", 1))}
+               "weight": max(3, int(src.get("weight", 1))) if known.get("tier") == 1 else int(src.get("weight", 1))}
         return out
     return {**src, "name": f"{name} (via Google News)" if name else src.get("name")}
+
+
+LABEL_KEYS = ("source", "kind", "side", "group", "weight")
+
+
+def outlet_labels(items: list[dict]) -> dict[str, dict]:
+    """Google News article link -> who published it, from items read this run."""
+    return {it["url"]: {k: it.get(k) for k in LABEL_KEYS} for it in items
+            if "news.google.com/" in it.get("url", "") and str(it.get("source", "")).endswith("(via Google News)")}
+
+
+def fetch_outlet_labels(sources: list[dict], session, outlets: dict, days: int) -> dict[str, dict]:
+    """Re-read the Google News searches over the last `days` days only to learn who published
+    each article (no model calls, nothing new is extracted). Used once, for reports stored
+    before outlets were told apart."""
+    items = []
+    for src in sources:
+        if "news.google.com/" not in src["url"]:
+            continue
+        url = re.sub(r"when%3A\d+[hd]", f"when%3A{days}d", src["url"])
+        try:
+            r = session.get(url, timeout=25)
+            r.raise_for_status()
+            feed = feedparser.parse(r.content)
+        except Exception as exc:  # noqa: BLE001
+            log(f"[rss] outlet lookup for {src.get('name') or url}: {exc}")
+            continue
+        for entry in feed.entries:
+            link = entry.get("link") or ""
+            if link:
+                items.append({"url": link, **_label(_outlet_src(src, entry, outlets))})
+        time.sleep(0.2)
+    return outlet_labels(items)
+
+
+def _label(src: dict) -> dict:
+    return {"source": src.get("name"), "kind": src.get("kind", "osint"), "side": src.get("side"),
+            "group": src.get("group") or f"rss:{src.get('id') or src['url']}", "weight": int(src.get("weight", 1))}
+
+
+def relabel(reports: list[dict], labels: dict[str, dict]) -> int:
+    """Credit stored Google News reports (and queued items) to the outlet that published them.
+    Reports stored before outlets were told apart carry only the search's name."""
+    n = 0
+    for r in reports:
+        lab = labels.get(r.get("url", ""))
+        if lab and not str(r.get("source", "")).endswith("(via Google News)") and any(r.get(k) != lab[k] for k in LABEL_KEYS):
+            r.update(lab)
+            n += 1
+    return n
 
 
 def fetch(sources: list[dict], session, health: dict, lookback_days: int = 0, outlets: dict | None = None) -> list[dict]:

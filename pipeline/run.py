@@ -108,6 +108,16 @@ def main() -> int:
     items += rss.fetch(cfg.sources["rss"], session, health, lookback_h // 24, cfg.outlets)
     items += telegram.fetch(cfg.sources["telegram"], state, health)
     log(f"[fetch] {len(items)} items")
+    # Google News reports stored before outlets were told apart carry only the search's name;
+    # credit them to the outlet that published them (once over the past week, then as seen).
+    labels = rss.outlet_labels(items)
+    if state.get("outlet_labels_version", 0) < 1:
+        labels = {**rss.fetch_outlet_labels(cfg.sources["rss"], session, cfg.outlets, 7), **labels}
+        if labels:
+            state["outlet_labels_version"] = 1
+    relabeled = rss.relabel([r for e in events for r in e.get("reports", [])] + state["pending"], labels)
+    if relabeled:
+        log(f"[fetch] credited {relabeled} Google News reports to the outlet that published them")
 
     # 2. Keep only new, recent, conflict-related items
     seen = state["seen"]
@@ -138,7 +148,7 @@ def main() -> int:
             fresh.append(it)
     # Corroboration hunter: targeted searches for important single-source events. No model calls;
     # the results join the normal queue ahead of everything else (weight 4).
-    for it in hunter.run([e for e in events if e["id"] not in hidden], state, session, t0):
+    for it in hunter.run([e for e in events if e["id"] not in hidden], state, session, t0, cfg.outlets):
         if it["id"] not in seen and extract.is_candidate(it):
             seen[it["id"]] = int(t0.timestamp())
             fresh.append(it)
@@ -185,6 +195,7 @@ def main() -> int:
         events = merge.split_mixed_talks(events, state, extract.ask_json, settings, t0)
     known = {e["id"] for e in events}
     events = merge.merge(events, candidates)
+    events, folded = merge.consolidate(events, hidden)
     events = merge.prune(events, t0, settings["event_retention_days"], settings["max_events"])
     events = corrections.drop_reports(events, fixes)  # before scoring, so confidence is recomputed
     merge.apply_status(events, cells)
@@ -220,6 +231,7 @@ def main() -> int:
     # 10. Archive on the data branch: one file per day, rewritten only when that day changed
     taken_down = {str(i): None for i in cfg.removed}
     taken_down.update({e["id"]: archive._day(e) for e in events if e["id"] in hidden})
+    taken_down.update({e["id"]: archive._day(e) for e in folded})  # now part of another event
     for d in state.get("dropped_as_old", []):
         if d.get("event"):
             taken_down[d["event"]["id"]] = archive._day(d["event"])

@@ -4,10 +4,11 @@ source or one side's claim.
 Each run, up to MAX_EVENTS events of severity 2 or 3 that happened within the last 12 hours and
 are still "Single source" or "One side's claim" get a Google News search built from the place
 name and event-type keywords, limited to the last day. Each event is searched at most twice,
-at least MIN_GAP apart. Results go into the normal extraction queue ahead of everything else,
-as "Google News (corroboration search)" in the shared google-news group, so all Google News
-results together still count as one independent source. The existing merge and confidence
-rules decide whether a result matches the incident. The hunter makes no model calls.
+at least MIN_GAP apart. Results go into the normal extraction queue ahead of everything else
+(weight 4), credited like any Google News result: outlets listed in sources.yaml count as
+their own source, and all other outlets share the google-news group, which counts only when no
+listed outlet reported the event. The existing merge and confidence rules decide whether a
+result matches the incident. The hunter makes no model calls.
 """
 from __future__ import annotations
 
@@ -18,7 +19,7 @@ from urllib.parse import quote_plus
 import feedparser
 
 from common import clean_text, iso, log, make_item, parse_time
-from sources.rss import _entry_time
+from sources.rss import _entry_time, _outlet_src
 
 MAX_EVENTS = 8
 MAX_SEARCHES = 2
@@ -67,7 +68,7 @@ def pick(events: list[dict], state: dict, now) -> list[dict]:
     return due[:MAX_EVENTS]
 
 
-def run(events: list[dict], state: dict, session, now) -> list[dict]:
+def run(events: list[dict], state: dict, session, now, outlets: dict | None = None) -> list[dict]:
     """Search for the picked events and return the results as extraction items."""
     out: list[dict] = []
     searched = 0
@@ -89,7 +90,8 @@ def run(events: list[dict], state: dict, session, now) -> list[dict]:
                 continue
             title, summary = clean_text(entry.get("title", "")), clean_text(entry.get("summary", ""))[:600]
             text = title + (f"\n{summary}" if summary and summary != title else "")
-            out.append(make_item(SOURCE, "rss", SOURCE_ID, link, text, published, uid=entry.get("id") or link))
+            origin = _outlet_src(SOURCE, entry, outlets or {})
+            out.append(make_item(origin, "rss", SOURCE_ID, link, text, published, uid=entry.get("id") or link))
     # forget events that can no longer be picked
     cutoff = iso(now - timedelta(days=2))
     state["hunter"] = {k: v for k, v in (state.get("hunter") or {}).items() if v and max(v) >= cutoff}

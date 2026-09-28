@@ -37,6 +37,7 @@ RADIUS_KM = {"strike": 30, "ground": 30, "naval": 150, "deployment": 120, "diplo
              "hybrid": 50, "incursion": 150, "transfer": 0, "legal": 400}
 TRANSFER_WINDOW = timedelta(hours=72)  # repeated flights or sailings on one route become one "bridge"
 WINDOW = timedelta(hours=18)  # measured from when the event first happened, never from later reports
+BUILDUP_OVERLAP = 0.25  # share of words two deployment summaries need in common (see _same_buildup)
 
 WAVE_TYPES = {"missile_drone", "air_defense", "explosion"}
 TARGET_MERGE_KM = 15
@@ -116,6 +117,16 @@ def _same_talks(e: dict, cand: dict) -> bool:
     return _overlap(e["summary"], cand["summary"]) >= 0.5
 
 
+def _same_buildup(e: dict, cand: dict) -> bool:
+    """Reports of one country's forces preparing around another country ("the US military is laying
+    groundwork for action around Cuba") are placed wherever each report points: the country's
+    centre, its capital, or the capital of the country acting. The same acting country, the same
+    country concerned, and similar wording make them one story, however far apart the pins are."""
+    return (bool(e.get("attacker")) and e.get("attacker") == cand.get("attacker")
+            and bool(e.get("country")) and e.get("country") == cand.get("country")
+            and _overlap(e["summary"], cand["summary"]) >= BUILDUP_OVERLAP)
+
+
 def _find_match(events: list[dict], cand: dict) -> dict | None:
     fam = FAMILY.get(cand["type"], "strike")
     if fam == "transfer":
@@ -131,7 +142,11 @@ def _find_match(events: list[dict], cand: dict) -> dict | None:
             continue
         d = haversine_km(e["lat"], e["lon"], cand["lat"], cand["lon"])
         radius = RADIUS_KM[fam] * (2 if (e.get("approx") or cand["approx"]) else 1)
-        if d <= radius and d < best_d:
+        if d > radius:
+            if fam != "deployment" or not _same_buildup(e, cand):
+                continue
+            d += 100_000  # a match, but ranked after any event that is actually nearby
+        if d < best_d:
             best, best_d = e, d
     return best
 
@@ -264,29 +279,58 @@ def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
         if any(r["url"] == rep["url"] for r in match["reports"]):
             continue
         match["reports"].append(rep)
-        match["time"] = min(match["time"], cand["time"])
-        match["updated"] = max(match["updated"], cand["time"])
-        match["severity"] = max(match["severity"], cand["severity"])
-        match["attacker"] = match.get("attacker") or cand.get("attacker")
-        match["parties"] = match.get("parties") or list(cand.get("parties") or [])
-        match["legal_basis"] = match.get("legal_basis") or cand.get("legal_basis")
-        if match.get("transfer") and cand.get("transfer"):
-            mt, ct_ = match["transfer"], cand["transfer"]
-            mt["flights"] = _max_or_none(mt.get("flights"), ct_.get("flights"))
-            mt["what"] = mt.get("what") or ct_.get("what")
-            mt["value_usd"] = _max_or_none(mt.get("value_usd"), ct_.get("value_usd"))
-            mt["from"] = mt.get("from") or ct_.get("from")
-            mt["to"] = mt.get("to") or ct_.get("to")
-            if ct_.get("via") and not mt.get("via"):
-                mt["via"] = ct_["via"]
-            if mt.get("mode") == "unspecified":
-                mt["mode"] = ct_.get("mode")
-        for k in ("killed", "injured"):
-            match[k] = _max_or_none(match.get(k), cand[k])
-        if match.get("approx") and not cand["approx"]:
-            match.update(lat=cand["lat"], lon=cand["lon"], place=cand["place"], approx=False)
-        _add_origins(match, cand.get("origins"))
+        _absorb(match, cand)
     return events
+
+
+def consolidate(events: list[dict], skip: set[str]) -> tuple[list[dict], list[dict]]:
+    """Fold stored deployment events into each other when the matching rules join them (events
+    stored before a rule existed, or pinned apart). The earliest event keeps its id. Events in
+    `skip` (hidden by a correction) are left alone. Returns (events, the events folded away)."""
+    kept: list[dict] = []
+    folded: list[dict] = []
+    for e in sorted(events, key=lambda e: e["time"]):
+        match = None
+        if FAMILY.get(e["type"]) == "deployment" and not e.get("wave") and not e.get("alert") and e["id"] not in skip:
+            match = _find_match([k for k in kept if k["id"] not in skip], e)
+        if match is None:
+            kept.append(e)
+            continue
+        urls = {r["url"] for r in match["reports"]}
+        match["reports"] += [r for r in e["reports"] if r["url"] not in urls]
+        _absorb(match, e)
+        match["updated"] = max(match["updated"], e["updated"])
+        folded.append(e)
+    if folded:
+        log(f"[merge] folded {len(folded)} deployment events into the stories they belong to")
+    gone = {id(e) for e in folded}
+    return [e for e in events if id(e) not in gone], folded
+
+
+def _absorb(match: dict, cand: dict) -> None:
+    """Take what a matching report (or event) adds to an event."""
+    match["time"] = min(match["time"], cand["time"])
+    match["updated"] = max(match["updated"], cand["time"])
+    match["severity"] = max(match["severity"], cand["severity"])
+    match["attacker"] = match.get("attacker") or cand.get("attacker")
+    match["parties"] = match.get("parties") or list(cand.get("parties") or [])
+    match["legal_basis"] = match.get("legal_basis") or cand.get("legal_basis")
+    if match.get("transfer") and cand.get("transfer"):
+        mt, ct_ = match["transfer"], cand["transfer"]
+        mt["flights"] = _max_or_none(mt.get("flights"), ct_.get("flights"))
+        mt["what"] = mt.get("what") or ct_.get("what")
+        mt["value_usd"] = _max_or_none(mt.get("value_usd"), ct_.get("value_usd"))
+        mt["from"] = mt.get("from") or ct_.get("from")
+        mt["to"] = mt.get("to") or ct_.get("to")
+        if ct_.get("via") and not mt.get("via"):
+            mt["via"] = ct_["via"]
+        if mt.get("mode") == "unspecified":
+            mt["mode"] = ct_.get("mode")
+    for k in ("killed", "injured"):
+        match[k] = _max_or_none(match.get(k), cand.get(k))
+    if match.get("approx") and not cand.get("approx"):
+        match.update(lat=cand["lat"], lon=cand["lon"], place=cand["place"], approx=False)
+    _add_origins(match, cand.get("origins"))
 
 
 def _headline(event: dict) -> dict:
