@@ -18,6 +18,7 @@ from datetime import timedelta
 from common import iso, log, parse_time
 
 WINDOW_HOURS = 6
+BRIEF_VERSION = 2  # 2: corroborated events only, no ids in the text
 MIN_INTERVAL = timedelta(hours=1)
 MAX_EVENTS = 80
 MAX_BULLETS = 6
@@ -31,18 +32,19 @@ TYPES = {
 }
 CONFIDENCE = {"corroborated": "corroborated by independent sources", "unconfirmed": "single-source report",
               "claimed": "claimed only by sources aligned with one side"}
-NOTHING = "No new events on the map in the last 6 hours."
+NOTHING = "No new corroborated events on the map in the last 6 hours."
 
-PROMPT = """You write a short situation brief for a live armed-conflict map. You get the map's own events from the last 6 hours. Use only these events.
+PROMPT = """You write a short situation brief for a live armed-conflict map. You get the map's own events from the last 6 hours that independent sources have corroborated. Use only these events.
 
 Rules:
 - Use only the supplied events. No outside knowledge, no background, no predictions, no speculation about intent or what may happen next.
-- Keep confidence explicit, in every bullet. Each event has a "confidence" field. Never state a single-source report or a one-sided claim as fact: every clause drawn from such an event needs its own attribution ("a single-source report says...", "Russia's MoD claims...", "Ukrainian officials report...", "X reportedly..."). Only events marked corroborated may be stated plainly, and even then keep the wording close to the summary.
+- Keep the wording close to each event's summary, including any attribution it makes ("Russia's MoD claims...", "Ukrainian officials report..."). Don't mention corroboration or sources; every event here is corroborated.
+- Never write event ids in the text. They go only in "ids".
 - Every statement must be supported by the summary of an event it cites. Don't combine events into a claim that no single event makes.
 - Don't characterize the overall situation or trends ("tensions persist", "escalating", "a volatile day"). Say what the events report, and nothing more.
 - Neutral, plain language. No adjectives that add drama. Keep numbers exactly as given.
 - Every bullet must cite the ids of the events it is based on, and only ids from the input.
-- At most 6 bullets, most significant first (severity, corroboration, scale).
+- At most 6 bullets, most significant first (severity, scale).
 - If nothing significant happened, return a single bullet saying so, with the ids of the events it covers (or [] if there are none).
 
 Reply with one JSON object and nothing else:
@@ -95,6 +97,16 @@ def _attributed(text: str, ids: list[str], by_id: dict) -> bool:
     return bool(_ATTRIBUTION.search(text))
 
 
+_ID_IN_TEXT = re.compile(r"\s*[(\[]\s*(?:ids?:?\s*)?[0-9a-f]{12}(?:\s*[,;/]\s*[0-9a-f]{12})*\s*[)\]]|\b[0-9a-f]{12}\b")
+
+
+def _clean(text: str) -> str:
+    """The bullet text without event ids the model sometimes writes into it ("... (3d4de44f80ca).")."""
+    text = _ID_IN_TEXT.sub("", text)
+    text = re.sub(r"\s+([.,;:])", r"\1", re.sub(r"\s{2,}", " ", text))
+    return text.strip()
+
+
 def _ids(v) -> list[str] | None:
     if not isinstance(v, list) or not all(isinstance(i, str) for i in v):
         return None
@@ -108,7 +120,7 @@ def validate(reply, events: list[dict]) -> dict | None:
     by_id = {e["id"]: e for e in events}
     bullets, uncited = [], []
     for b in reply.get("bullets") or []:
-        text = str(b.get("text") or "").strip() if isinstance(b, dict) else ""
+        text = _clean(str(b.get("text") or "")) if isinstance(b, dict) else ""
         ids = _ids(b.get("ids")) if isinstance(b, dict) else None
         if not text or ids is None:
             continue
@@ -128,10 +140,19 @@ def update(state: dict, events: list[dict], theater_names: dict, settings: dict,
     prev = state.get("brief")
     if prev and prev.get("theaters"):
         prev["theaters"] = []  # written before the brief dropped per-theater lines
+    if prev and prev.get("version", 1) < BRIEF_VERSION:
+        # written before the brief was corroborated-only: clean it now, and write a new one when due
+        status = {e["id"]: e.get("status") for e in events}
+        kept = [{**b, "text": _clean(b.get("text", ""))} for b in prev.get("bullets", [])
+                if b.get("ids") and all(status.get(i) == "corroborated" for i in b["ids"])]
+        prev["bullets"] = kept or [{"text": NOTHING, "ids": []}]
+        prev["version"] = BRIEF_VERSION
+        state["brief_fp"] = None
     tried = parse_time(state.get("brief_attempt"))
     if tried and now - tried < MIN_INTERVAL:
         return  # at most one attempt an hour, successful or not
-    recent = window_events(events, now)
+    # corroborated events only: the brief states things plainly, so it rests on nothing weaker
+    recent = [e for e in window_events(events, now) if e.get("status") == "corroborated"]
     fp = fingerprint(recent)
     if prev and state.get("brief_fp") == fp:
         return
@@ -150,6 +171,6 @@ def update(state: dict, events: list[dict], theater_names: dict, settings: dict,
             log("[brief] no usable brief from the model; keeping the previous one")
             return
     state["brief_attempt"] = iso(now)
-    state["brief"] = {"generated_at": iso(now), "window_hours": WINDOW_HOURS, **new}
+    state["brief"] = {"generated_at": iso(now), "window_hours": WINDOW_HOURS, "version": BRIEF_VERSION, **new}
     state["brief_fp"] = fp
     log(f"[brief] written: {len(new['bullets'])} bullets")

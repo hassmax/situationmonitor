@@ -45,6 +45,7 @@ BUILDUP_OVERLAP = 0.25  # share of words two deployment summaries need in common
 LOOSE_FAMILIES = {"deployment", "hybrid", "naval", "incursion"}
 STORY_OVERLAP = 0.25
 STORY_MAX_KM = 2500
+STRIKE_FOLD_OVERLAP = 0.6  # stored strikes/fighting at one place fold only with wording this close
 _SEA = re.compile(r"\b(?:sea|ocean|gulf|strait|straits|bay|channel)\b", re.IGNORECASE)
 _REGIONS = {"england", "scotland", "wales", "northern ireland", "uk", "britain", "great britain", "us", "usa",
             "united states", "america", "europe", "middle east", "gaza strip", "west bank", "sahel",
@@ -147,12 +148,12 @@ def _same_story(e: dict, cand: dict) -> bool:
     return _similar(e, cand)
 
 
-def _similar(e: dict, cand: dict) -> bool:
+def _similar(e: dict, cand: dict, threshold: float = 0.0) -> bool:
     """Similar wording, not counting the place names themselves ("Strait of Hormuz" is in every
     report from there)."""
     places = _words(" ".join(str(x.get("place") or "") for x in (e, cand)))
     a, b = _words(e["summary"]) - places, _words(cand["summary"]) - places
-    return bool(a and b) and len(a & b) / min(len(a), len(b)) >= STORY_OVERLAP
+    return bool(a and b) and len(a & b) / min(len(a), len(b)) >= (threshold or STORY_OVERLAP)
 
 
 def _overlap(a: str, b: str) -> float:
@@ -385,9 +386,9 @@ def _fold_into_wave(wave: dict, e: dict) -> None:
 def consolidate(events: list[dict], skip: set[str]) -> tuple[list[dict], list[dict]]:
     """Fold stored events into each other when today's matching rules join them: events stored
     before a rule existed, reports pinned to a whole country or sea next to ones naming the spot,
-    and attack waves split by the old day boundary. Deployments, hybrid attacks, naval incidents
-    and incursions are folded, and waves and the unattributed strikes on their targets; other
-    kinds already follow their rules when reports arrive. The earliest event keeps its id.
+    and attack waves split by the old day boundary. Deployments, hybrid attacks, naval incidents,
+    incursions, strikes and ground fighting are folded, and waves and the unattributed strikes on
+    their targets; diplomacy, legal steps and arms transfers keep their own rules. The earliest event keeps its id.
     Events in `skip` (hidden by a correction) are left alone. Returns (events, the events folded away)."""
     kept: list[dict] = []
     folded: list[dict] = []
@@ -400,8 +401,16 @@ def consolidate(events: list[dict], skip: set[str]) -> tuple[list[dict], list[di
             match = _wave_for(pool, e, e.get("attacker"))
         elif FAMILY.get(e["type"]) in LOOSE_FAMILIES:
             match = _find_match(pool, e)
-        else:
+        elif FAMILY.get(e["type"]) in ("strike", "ground"):
+            # same place, same kind, within the window AND closely matching wording: one incident
+            # split when its reports arrived out of order. Place alone isn't enough: broad pins like
+            # "Gaza" or "Sudan" hold many separate strikes.
             match = _hit_in_wave(pool, e)
+            if match is None:
+                m = _find_match(pool, e)
+                match = m if m is not None and _similar(m, e, STRIKE_FOLD_OVERLAP) else None
+        else:
+            match = None
         if match is None:
             kept.append(e)
             continue

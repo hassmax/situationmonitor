@@ -1015,7 +1015,7 @@
       <div class="brief-head"><h3 id="briefTitle">What changed in the last ${esc(b.window_hours || 6)} hours</h3>
         <time datetime="${esc(b.generated_at)}">Written ${esc(ago(Date.parse(b.generated_at)))}</time></div>
       <ul class="brief-list">${(b.bullets || []).map((x) => `<li>${esc(x.text)}${cites(x.ids)}</li>`).join("")}</ul>
-      <p class="brief-note">Machine-written from the events below. Open the cited events before relying on it.</p>
+      <p class="brief-note">Machine-written from corroborated events only. Open the cited events before relying on it.</p>
     </section></li>`;
   }
 

@@ -53,7 +53,8 @@ def test_update_writes_brief_and_publishes_timestamp():
 
 
 def test_failed_or_invalid_call_keeps_previous_brief_and_timestamp():
-    prev = {"generated_at": "2026-09-27T18:00:00Z", "window_hours": 6, "bullets": [{"text": "old", "ids": ["x"]}], "theaters": []}
+    prev = {"generated_at": "2026-09-27T18:00:00Z", "window_hours": 6, "bullets": [{"text": "old", "ids": ["x"]}], "theaters": [],
+            "version": brief.BRIEF_VERSION}
     for ask in (lambda *a, **k: None, lambda *a, **k: {"bullets": [{"text": "bad", "ids": ["nope"]}]}):
         state = {"brief": dict(prev)}
         brief.update(state, EVENTS, {}, SETTINGS, NOW, ask, remaining=100)
@@ -112,3 +113,30 @@ def test_older_theater_lines_are_cleared():
              "brief_attempt": "2026-09-27T20:30:00Z"}
     brief.update(state, EVENTS, {}, SETTINGS, NOW, lambda *a, **k: 1 / 0, remaining=100)   # within the hour: no call
     assert state["brief"]["theaters"] == [] and state["brief"]["bullets"] == [{"text": "x", "ids": ["a1"]}]
+
+
+def test_only_corroborated_events_reach_the_brief():
+    seen = []
+    ask = lambda prompt, text, *a, **k: seen.append(text) or {"bullets": [{"text": "x", "ids": ["a1"]}]}
+    events = [ev("a1"), ev("u1", status="unconfirmed"), ev("k1", status="claimed")]
+    brief.update({}, events, {}, SETTINGS, NOW, ask, remaining=100)
+    assert '"a1"' in seen[0] and '"u1"' not in seen[0] and '"k1"' not in seen[0]
+    state = {}
+    brief.update(state, [ev("u1", status="unconfirmed")], {}, SETTINGS, NOW, lambda *a, **k: 1 / 0, remaining=100)
+    assert state["brief"]["bullets"][0]["text"] == brief.NOTHING        # nothing corroborated: no model call
+
+
+def test_event_ids_are_taken_out_of_the_text():
+    out = brief.validate({"bullets": [{"text": "Ukrainian forces captured 250 soldiers (3d4de44f80ca).", "ids": ["a1"]},
+                                      {"text": "Strikes hit Kharkiv (35233b32e147, 7ab4a80b9c6c) overnight.", "ids": ["a1"]}]},
+                         brief.window_events(EVENTS, NOW))
+    assert [b["text"] for b in out["bullets"]] == ["Ukrainian forces captured 250 soldiers.", "Strikes hit Kharkiv overnight."]
+
+
+def test_an_older_brief_is_cleaned_at_once():
+    state = {"brief": {"generated_at": "2026-09-27T20:30:00Z", "window_hours": 6, "bullets": [
+        {"text": "Ukrainian forces captured 250 soldiers (a1).", "ids": ["a1"]},
+        {"text": "A single-source report says 50 were killed (u1).", "ids": ["u1"]}]},
+        "brief_attempt": "2026-09-27T20:30:00Z"}
+    brief.update(state, [ev("a1"), ev("u1", status="unconfirmed")], {}, SETTINGS, NOW, lambda *a, **k: None, remaining=100)
+    assert [b["ids"] for b in state["brief"]["bullets"]] == [["a1"]] and state["brief"]["version"] == brief.BRIEF_VERSION
