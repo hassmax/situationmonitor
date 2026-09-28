@@ -235,46 +235,70 @@ def _tracker_place(text: str):
     return None
 
 
-def parse_tracker(html: str) -> list[dict]:
-    """Read the carriers from a Fleet and Marine Tracker without the model: each carrier is named
-    with its hull number, in a section headed by where it is, in a sentence that usually says so
-    too. The sentence wins, then the section heading. Carriers whose place can't be matched to a
-    named sea area or port are left out (their stored position stays)."""
-    blocks = re.findall(r"(?is)<(h[1-6]|p|li)\b[^>]*>(.*?)</\1>", html or "")
+TRACKER_PARSER = 2  # bump to re-read the current edition after changing parse_tracker
+_CAPTION = re.compile(r"(?i)navy photo|photo(?:graph)? (?:by|courtesy)|\bphoto\b\s*$|file photo|\bimage\b")
+
+
+def _is_heading(tag: str, attrs: str, text: str) -> bool:
+    if tag.lower().startswith("h"):
+        return True
+    # some pages set section titles as a short bold paragraph: "<p><strong>In the Philippine Sea</strong></p>"
+    return (len(text) <= 60 and not text.rstrip().endswith(".") and bool(re.search(r"(?i)<(strong|b)\b", attrs))
+            and bool(re.match(r"(?i)(?:in|near|off|at|around)\b", text)))
+
+
+def parse_tracker(html: str, evidence: list | None = None) -> list[dict]:
+    """Read the carriers from a Fleet and Marine Tracker without the model.
+
+    USNI groups the tracker by place: a section title ("In the Philippine Sea", "Near Hawaii")
+    followed by the ships there, each carrier named with its hull number. The section title is
+    the tracker's own statement of where the carrier is, so it wins; the carrier's sentence is
+    used only when the section title names no sea area or port. Photo captions are skipped (they
+    often describe older photos from elsewhere), and a place the carrier departs from is not
+    where it is. Carriers named without a usable place are returned without coordinates, so they
+    still count as listed. `evidence`, if given, collects a short note per carrier for the log."""
+    blocks = re.findall(r"(?is)<(h[1-6]|p|li)\b([^>]*)>(.*?)</\1>", html or "")
     if not blocks:  # plain text: one block per line
-        blocks = [("p", line) for line in (html or "").splitlines()]
+        blocks = [("p", "", line) for line in (html or "").splitlines()]
     heading, out, seen, named = None, [], set(), set()
-    for tag, inner in blocks:
+    mentions = lambda sent: [h for h, n in _HULL_NAMES.items()  # noqa: E731
+                             if re.search(rf"\(CVN[- ]?{h[-2:]}\)|\b{n}\b", sent)]
+    for tag, attrs, inner in blocks:
         text = clean_text(inner)
-        if tag.lower().startswith("h"):
+        if not text:
+            continue
+        if _is_heading(tag, attrs + inner[:40], text):
             heading = text
+            continue
+        if "caption" in attrs.lower() or _CAPTION.search(text):
             continue
         # sentence ends: not after initials or abbreviations ("H.W. Bush", "U.S. official", "Sept. 21")
         sentences = re.split(r"(?<=[a-z0-9)][.!?])\s+(?=[A-Z])", text)
-        mentions = lambda sent: [h for h, n in _HULL_NAMES.items()  # noqa: E731
-                                 if re.search(rf"\(CVN[- ]?{h[-2:]}\)|\b{n}\b", sent)]
         for i, sentence in enumerate(sentences):
             for hull in mentions(sentence):
                 if hull in seen:
                     continue
-                # this sentence, then the next ones about the same carrier ("It is underway in ...")
                 span = [sentence] + [x for x in sentences[i + 1:i + 3] if not mentions(x)]
-                here, dest, used = None, None, sentence
-                for sent in span:
-                    d = _DEST.search(sent)
-                    where = sent[:d.start()] if d else sent
-                    where = re.sub(r"(?i)\b(?:departed|left|sailed from|pulled out of|from)\s+[^.,;]+", " ", where)
-                    dest = dest or d
-                    here = _tracker_place(where)
-                    if here:
-                        used = sent
-                        break
-                here = here or _tracker_place(heading or "")
+                dest = next((d for d in (_DEST.search(x) for x in span) if d), None)
+                here, source = _tracker_place(heading or ""), f"section '{heading}'"
                 if not here:
-                    named.add(hull)  # listed as deployed, but its place isn't a named sea area or port
+                    for sent in span:
+                        d = _DEST.search(sent)
+                        where = sent[:d.start()] if d else sent
+                        where = re.sub(r"(?i)\b(?:depart(?:s|ed|ing)?|left|leaves?|leaving|sailed from|pulled out of|from)"
+                                       r"\s+[^.,;]+", " ", where)
+                        here = _tracker_place(where)
+                        if here:
+                            source = "sentence"
+                            break
+                if evidence is not None:
+                    evidence.append(f"{hull}: {here['place'] if here else 'no named place'} "
+                                    f"(from {source if here else 'nothing'}; {sentence[:140]!r})")
+                if not here:
+                    named.add(hull)
                     continue
                 seen.add(hull)
-                low = " ".join(span).lower() if used is not sentence else sentence.lower()
+                low = " ".join(span).lower()
                 status = ("in port" if re.search(r"in port|pierside|moored|at (?:its|her) homeport", low)
                           else "underway" if re.search(r"underway|transit|sailing|en route|heading|bound for", low)
                           else "operating")
@@ -337,8 +361,14 @@ def read_weekly_tracker(state: dict, items: list[dict], session, settings: dict,
     latest = _latest_edition(items, session)
     if not latest:
         return []
-    if latest["url"] == meta.get("tracker_url"):
+    if latest["url"] == meta.get("tracker_url") and meta.get("tracker_parser") == TRACKER_PARSER:
         return []
+    if latest["url"] == meta.get("tracker_url"):
+        # re-reading with a changed parser: drop what the old reading placed, so nothing it got wrong stays
+        fleet = state.setdefault("fleet", {})
+        for hull in [h for h, c in fleet.items() if str(c.get("source", "")).startswith("USNI News Fleet")]:
+            fleet.pop(hull)
+        log("[fleet] re-reading the tracker with the updated reader")
     # USNI refuses GitHub's servers (HTTP 403) for article pages, so the text the feed carries is
     # used first; the page is opened only when the feed has none.
     html = latest.get("html") or ""
@@ -351,17 +381,20 @@ def read_weekly_tracker(state: dict, items: list[dict], session, settings: dict,
             log(f"[fleet] could not open the tracker article ({latest['time'][:10]}) and the feed has no text: {exc}")
             return []
     log(f"[fleet] reading the Fleet and Marine Tracker of {latest['time'][:10]}")
-    parsed = parse_tracker(html)
+    evidence: list[str] = []
+    parsed = parse_tracker(html, evidence)
     if sum(c["lat"] is not None for c in parsed) >= 2:
         out = {"carriers": parsed}  # read directly: no model call, works while the model is down
-        log(f"[fleet] read {len(parsed)} carriers from the tracker directly: "
-            + ", ".join(f"{c['hull']} {c['place'] or '(no named place)'}" for c in parsed))
+        log(f"[fleet] read {len(parsed)} carriers from the tracker directly:")
+        for line in evidence:
+            log(f"[fleet]   {line}")
     else:
         out = ask_json(TRACKER_PROMPT, _article_text(html), state, settings, now)
     if not isinstance(out, dict) or not isinstance(out.get("carriers"), list):
         log("[fleet] tracker article could not be read this run; will retry")
         return []
     meta["tracker_url"] = latest["url"]
+    meta["tracker_parser"] = TRACKER_PARSER
     meta["tracker_time"] = latest["time"]
     meta["tracker_hulls"] = sorted({h for h in (_hull(c.get("hull")) for c in out["carriers"] if isinstance(c, dict)) if h})
     status_map = {"deployed": "operating", "in maintenance": "in port"}  # older model replies may still say "deployed"
