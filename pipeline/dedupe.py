@@ -10,8 +10,8 @@ So recent events of the same kind in the same country are shown to the model tog
 at a time, and it says which of them describe the same specific incident. Those are folded into
 the earliest event.
 
-- One model call at most per MIN_INTERVAL (every RETRY while groups are still waiting, or after
-  a failed call), from the shared daily budget, skipped when fewer than dedupe_min_calls calls
+- Every run while groups are still waiting; otherwise at most every MIN_INTERVAL, and RETRY after
+  a failed call. From the shared daily budget, skipped when fewer than dedupe_min_calls calls
   are left (the brief keeps priority).
 - Events from the last LOOKBACK hours, not attack waves or alert groups (they have their own
   grouping) and not arms transfers.
@@ -53,7 +53,7 @@ from datetime import timedelta
 from common import iso, log, parse_time
 from merge import FAMILY, MIN_SHARED, _absorb, _names, _words
 
-MIN_INTERVAL = timedelta(hours=1)
+MIN_INTERVAL = timedelta(minutes=30)
 RETRY = timedelta(minutes=15)
 LOOKBACK = timedelta(hours=72)
 PAIR_WINDOW = timedelta(hours=48)
@@ -283,7 +283,10 @@ def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: in
     # pairs already judged the same are folded again if both came back (e.g. restored by a check)
     events, folded = _fold(events, [tuple(k.split("|")) for k, v in judged.items() if v.get("same")], skip)
     done, failed = parse_time(st.get("attempt")), parse_time(st.get("failed"))
-    wait = RETRY if st.get("backlog") else MIN_INTERVAL
+    # While groups are waiting, every run asks (a 15-minute wait against runs 13 minutes apart
+    # skipped every other run); the budget floors below still apply. After a failed call (the
+    # model down), wait RETRY; when nothing was left waiting, check again after MIN_INTERVAL.
+    wait = timedelta(0) if st.get("backlog") else MIN_INTERVAL
     if (done and now - done < wait) or (failed and now - failed < RETRY):
         return events, folded
     have = {e["id"] for e in events}
