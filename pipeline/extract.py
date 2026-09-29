@@ -63,7 +63,7 @@ Optional key for any item (relevant or not): if the item says where a US Navy ai
 "carrier": {{"hull": "CVN-78", "status": "departed" | "underway" | "operating" | "arrived" | "in port", "place": "<where it is now>", "lat": <number>, "lon": <number>, "heading_to": {{"place": "<stated destination>", "lat": <number>, "lon": <number>}} or null}}
 Include it even when the item is otherwise not relevant (then keep "relevant": false). Only US aircraft carriers; ignore other ships.
 
-Transfer object: {{"kind": "delivery" | "pledge" | "interdiction", "supplier": "<ISO alpha-2>", "recipient": "<ISO alpha-2>", "mode": "air" | "sea" | "land" | "unspecified", "from": {{"place": "...", "lat": <number>, "lon": <number>}} or null, "to": {{"place": "...", "lat": <number>, "lon": <number>}} or null, "via": [{{"place": "<named transit hub>", "lat": <number>, "lon": <number>}}], "what": "<max 8 words>", "flights": <int> or null, "value_usd": <number> or null}}
+Transfer object: {{"kind": "delivery" | "pledge" | "interdiction", "supplier": "<ISO alpha-2>", "recipient": "<ISO alpha-2>", "mode": "air" | "sea" | "land" | "unspecified", "from": {{"place": "...", "lat": <number>, "lon": <number>}} or null, "to": {{"place": "...", "lat": <number>, "lon": <number>}} or null, "via": [{{"place": "<named transit hub>", "lat": <number>, "lon": <number>}}], "what": "<max 8 words>", "flights": <int> or null, "value_usd": <number> or null, "money": true or false}}
 
 Rules:
 - Freshness: an item is relevant only if the event it reports happened within about 24 hours before the item was posted ("posted"). Articles that recap, react to, or analyze something older are not relevant, unless they reveal significant new facts about it (new casualty figures, a new attribution, a new official response); in that case the new facts are the event. Always fill "happened" when the item states or clearly implies when it happened ("on Tuesday", "overnight", "yesterday"), working from the posted date. News headlines are often undated and written in the present tense even when a story is republished months later: if you know from your own knowledge that the event happened earlier, put that date in "happened" (the item will then be treated as old).
@@ -84,6 +84,7 @@ Rules:
 - For preparations or buildups aimed at a country, place the event in that country (its capital if nothing more specific), and say in the summary that it is planning or preparation, not action.
 - For diplomacy, place the event where the meeting or signing happened; if no place is given, use the capital of the main party. Use the theater of the conflict it concerns, even if the meeting is elsewhere.
 - transfer kind: "delivery" = weapons observed or reported moving or arriving (tracked flights, imaged ships, confirmed arrivals); "pledge" = a package announced, approved, or sold but not yet reported delivered; "interdiction" = a shipment seized, intercepted, or destroyed in transit.
+- transfer money: true when what is given is money (grants, loans, fund allocations, budget support, compensation payments), false for weapons, equipment, or services (a military aid package of weapons is false; €6.6 billion released from the European Peace Facility is true).
 - transfer from / to: only departure and arrival points the item names (airfield, port, city). Use null when none is named; never substitute a capital. When a country moves its own forces or aircraft to a military command's area ("F-16s moved from Aviano to CENTCOM"), put the command's name (CENTCOM, EUCOM, AFRICOM, INDOPACOM, SOUTHCOM) in to.place; it is a region, not the command's headquarters. via: transit hubs the item names (for example Ramstein, Rzeszow), else [].
 - For an arms_transfer, put the event's own place and lat/lon at the named arrival point, or for an interdiction where it was seized; if none is named, use the recipient country's capital. Use the theater of the conflict the weapons are for.
 - legal_basis: only when the item states the justification the acting state gives for using force (for example "self-defense under UN Charter Article 51", "host-state consent", "2001 AUMF"). Never infer one. For legal-type events, place them where the step happened (UN headquarters, The Hague, Washington) but use the theater of the conflict concerned.
@@ -414,6 +415,7 @@ def _clean_transfer(t) -> dict | None:
         "to": _place(t.get("to")),
         "what": (str(t["what"]).strip()[:80] if t.get("what") else None),
         "flights": _int_or_none(t.get("flights")),
+        "money": t.get("money") if isinstance(t.get("money"), bool) else None,
     }
     return out if out["supplier"] and out["recipient"] else None
 

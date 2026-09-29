@@ -39,7 +39,7 @@
     ceasefire: ["diplo", "diplo", ""], legal: ["diplo", "legal", ""], arms_transfer: ["supply", "crate", ""],
   };
   const CAT_RGB = { strike: [255, 91, 58], ground: [245, 165, 36], naval: [76, 195, 255], deploy: [159, 184, 212],
-    hybrid: [177, 140, 255], diplo: [233, 238, 245], supply: [63, 193, 201], fleet: [205, 228, 255] };
+    hybrid: [177, 140, 255], diplo: [233, 238, 245], supply: [63, 193, 201], aid: [96, 214, 122], fleet: [205, 228, 255] };
   const ICONS = {
     missile: '<path d="M13.6 2.4 7 5.4 4.6 7.9l3.5 3.5 2.5-2.4z" fill="currentColor"/><path d="M4.6 7.9l-2.1.8M8.1 11.4l-.8 2.1M5.4 10.6l-2.6 2.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>',
     air: '<path d="M8 1.3 9 5.9l5.5 2.5v1.5L9 8.8l-.4 3.1 1.6 1.3v1.2L8 13.7l-2.2.7v-1.2l1.6-1.3L7 8.8 1.5 9.9V8.4L7 5.9z" fill="currentColor"/>',
@@ -54,6 +54,7 @@
     incursion: '<path d="M1.8 8h8.8M7.6 4.6 11 8l-3.4 3.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M13.6 2.2v11.6" stroke="currentColor" stroke-width="1.5" stroke-dasharray="1.6 1.6"/>',
     diplo: '<circle cx="6" cy="8" r="3.4" stroke="currentColor" stroke-width="1.6" fill="none"/><circle cx="10" cy="8" r="3.4" stroke="currentColor" stroke-width="1.6" fill="none"/>',
     legal: '<path d="M8 2v11.6M4 14.4h8M2.8 4.6h10.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M2.8 4.6 1 9h3.6zM13.2 4.6 11.4 9H15z" fill="currentColor"/>',
+    coin: '<circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M10.1 5.9c-.4-.7-1.2-1.1-2.1-1.1-1.2 0-2.1.6-2.1 1.5 0 2.1 4.3 1.1 4.3 3.3 0 .9-1 1.6-2.2 1.6-1 0-1.9-.4-2.3-1.2M8 3.6v1.2M8 11.3v1.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" fill="none"/>',
     crate: '<path d="M2 5.2 8 2.3l6 2.9v5.6L8 13.7l-6-2.9z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none"/><path d="M2 5.2 8 8.1l6-2.9M8 8.1v5.6" stroke="currentColor" stroke-width="1.4" fill="none"/>',
     carrier: '<path d="M.8 9.6 2.9 6h10.3l2.2 1.6v1.8l-1.6 1.6H2.6z" fill="currentColor"/><rect x="10.4" y="3.8" width="2.2" height="2.4" rx=".3" fill="currentColor"/>',
     alert: '<path d="M4.4 12.2V9a3.6 3.6 0 0 1 7.2 0v3.2z" fill="currentColor"/><rect x="2.6" y="12.7" width="10.8" height="1.9" rx=".6" fill="currentColor"/><path d="M8 1.4v2.1M2.8 3.6l1.5 1.5M13.2 3.6l-1.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
@@ -65,7 +66,8 @@
     ["blast", "strike", "Explosion"], ["artillery", "ground", "Shelling"],
     ["ground", "ground", "Ground fighting"], ["territory", "ground", "Territory change"], ["naval", "naval", "Naval"],
     ["hybrid", "hybrid", "Hybrid attack"], ["incursion", "hybrid", "Incursion"], ["deploy", "deploy", "Deployment"],
-    ["diplo", "diplo", "Diplomacy, legal"], ["crate", "supply", "Arms transfer"], ["carrier", "fleet", "US carrier at sea"],
+    ["diplo", "diplo", "Diplomacy, legal"], ["crate", "supply", "Arms transfer"], ["coin", "aid", "Financial aid"],
+    ["carrier", "fleet", "US carrier at sea"],
   ];
   const MODE = { air: "by air", sea: "by sea", land: "overland", unspecified: "" };
   const PLATFORM = { bluesky: "Bluesky", telegram: "Telegram", rss: "News feed", gdelt: "GDELT" };
@@ -142,7 +144,11 @@
   const fmtDay = (ms) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   const fmtMoney = (v) => (v >= 1e9 ? `$${(v / 1e9).toFixed(1)} billion` : v >= 1e6 ? `$${Math.round(v / 1e6)} million` : `$${Math.round(v).toLocaleString()}`);
   // Alerts (drones or missiles reported in flight, grouped per country per day) get a siren and never animate.
-  const catOf = (e) => (e.alert ? ["strike", "alert", ""] : CAT[e.type] || ["strike", "blast", ""]);
+  // Money (grants, loans, funds, compensation) is financial aid, shown in green apart from weapons.
+  // The model marks it (transfer.money); events stored before that are recognized by their wording.
+  const MONEY_RE = /\b(loans?|grants?|fund(s|ing)?|financ\w*|compensat\w*|reimburs\w*|budget|allocat\w*|credit)\b/i;
+  const isMoney = (e) => { const t = e.transfer || {}; return typeof t.money === "boolean" ? t.money : MONEY_RE.test(`${t.what || ""} ${e.summary || ""}`); };
+  const catOf = (e) => (e.alert ? ["strike", "alert", ""] : e.type === "arms_transfer" && isMoney(e) ? ["aid", "coin", ""] : CAT[e.type] || ["strike", "blast", ""]);
   // Which "On the map" entry an event belongs to (legal steps share the diplomacy entry).
   // Drone and missile attacks, interceptions, and warnings of drones in flight are one filter.
   const legendKey = (e) => { const icon = catOf(e)[1]; return icon === "legal" ? "diplo" : icon === "alert" ? "missile" : icon; };
@@ -161,6 +167,7 @@
   const metaLine = (e) => (e.wave ? `${countryName(e.attacker)} → ${countryName(e.country)}`
     : e.alert ? countryName(e.country) || e.place || ""
     : e.type === "arms_transfer" && e.transfer ? `${countryName(e.transfer.supplier)} → ${transferTo(e.transfer)}` : e.place || "");
+  const flowBadge = (f) => (f.money ? iconBadge("coin", "aid", STATUS[f.status].conf) : iconBadge("crate", "supply", STATUS[f.status].conf));
   const transferTo = (t) => (t.to && t.to.region ? t.to.place : countryName(t.recipient));
   const flowTo = (f) => f.toLabel || countryName(f.recipient);
   // A marker-style icon for lists and the legend, matching the globe.
@@ -568,7 +575,7 @@
       <div class="tip-foot"><span>${c._asOf ? `As of ${esc(fmtDay(c._asOf))}` : "No position reports yet"}</span>${c.heading_to ? `<span>heading to ${esc(c.heading_to.place || "a stated destination")}</span>` : ""}</div></div>`;
   }
   function tipFlow(f) {
-    return `<div class="tip"><div class="tip-meta">${iconBadge("crate", "supply", STATUS[f.status].conf)}<b>${esc(countryName(f.supplier))} → ${esc(flowTo(f))}</b></div>
+    return `<div class="tip"><div class="tip-meta">${flowBadge(f)}<b>${esc(countryName(f.supplier))} → ${esc(flowTo(f))}</b></div>
       <div class="tip-sum">${f.deliveries} ${f.deliveries === 1 ? "delivery" : "deliveries"} reported in 30 days${f.cargo.length ? `: ${esc(f.cargo.slice(0, 2).join(", "))}` : ""}</div>
       <div class="tip-foot"><span>${f.active ? "Active" : "Quiet"}</span><span>last ${esc(ago(f.last))}</span></div></div>`;
   }
@@ -595,18 +602,51 @@
   });
 
   // ------------------------------------------------------------------ data
+  // Live updates: every minute (and whenever the page comes back into view) a light request asks
+  // whether events.json has changed, by its ETag or Last-Modified header; the file itself is
+  // downloaded only when it has. Without those headers, the full file is fetched every REFRESH_MS.
+  let dataStamp = null, lastFull = 0;
+  const stampOf = (res) => res.headers.get("etag") || res.headers.get("last-modified");
+  async function checkForUpdate() {
+    if (DEMO || document.hidden) return;
+    try {
+      const res = await fetch(`data/events.json?t=${Date.now()}`, { method: "HEAD", cache: "no-store" });
+      const stamp = res.ok ? stampOf(res) : null;
+      if (stamp ? stamp !== dataStamp : Date.now() - lastFull >= REFRESH_MS) load();
+    } catch (_) { /* offline for a moment: try again next time */ }
+  }
+
   async function load() {
     const url = DEMO ? "data/demo-events.json" : `data/events.json?t=${Date.now()}`;
     let data;
     try {
       const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) throw new Error(res.status === 404 ? "missing" : `HTTP ${res.status}`);
+      dataStamp = stampOf(res);
+      lastFull = Date.now();
       data = await res.json();
     } catch (err) {
       showLoadError(err);
       return;
     }
     try { ingest(data); } catch (err) { fatal(err); }
+  }
+
+  // A short note when a live update brings new events (read out by screen readers, too).
+  let announceTimer = 0;
+  function announce(text) {
+    let el = document.getElementById("liveNote");
+    if (!el) {
+      el = document.createElement("div");
+      el.id = "liveNote";
+      el.className = "live-note";
+      el.setAttribute("role", "status");
+      document.body.appendChild(el);
+    }
+    el.textContent = text;
+    el.classList.add("is-on");
+    clearTimeout(announceTimer);
+    announceTimer = setTimeout(() => el.classList.remove("is-on"), 6000);
   }
 
   // If anything breaks while starting or drawing, say so on the page instead of hanging on "Loading".
@@ -672,7 +712,12 @@
     else theaters.forEach((t) => { if (!S.theaters.some((x) => x.id === t.id)) S.theaterOn.add(t.id); });
     S.theaters = theaters;
     S.hot = new Set(theaters.flatMap((t) => t.highlight || []));
+    const before = S.data ? new Set(S.data.events.map((e) => e.id)) : null;
     S.data = data;
+    if (before) {
+      const fresh = data.events.filter((e) => !before.has(e.id) && onMap(e) && passes(e));
+      if (fresh.length) announce(`${fresh.length} new ${fresh.length === 1 ? "event" : "events"} added`);
+    }
 
     renderTheaters();
     renderSources();
@@ -766,7 +811,7 @@
   // ------------------------------------------------------------------ supply routes (30 days)
   function buildSupply() {
     const out = { flows: [], pledges: [] };
-    if (!S.data || !S.layers.supply) return out;
+    if (!S.data || (S.off.has("crate") && S.off.has("coin"))) return out;
     const since = Date.now() - SUPPLY_DAYS * DAY;
     const flows = new Map(), pledges = new Map();
     for (const e of S.data.events) {
@@ -775,11 +820,13 @@
       if (q() && !e._search.includes(q())) continue;
       const kind = tkind(e);
       if (kind === "interdiction") continue;
+      const money = isMoney(e);
+      if (S.off.has(money ? "coin" : "crate")) continue;
       // forces sent to a region (a US command's area) form their own route, labeled with the region
       const region = t.to && t.to.region ? t.to.place : null;
-      const key = `${t.supplier}>${region || t.recipient}`;
+      const key = `${t.supplier}>${region || t.recipient}${money ? "|aid" : ""}`;
       const bucket = kind === "pledge" ? pledges : flows;
-      if (!bucket.has(key)) bucket.set(key, { key, supplier: t.supplier, recipient: t.recipient, toLabel: region, events: [] });
+      if (!bucket.has(key)) bucket.set(key, { key, supplier: t.supplier, recipient: t.recipient, toLabel: region, money, events: [] });
       bucket.get(key).events.push(e);
     }
     const summarize = (f) => {
@@ -903,7 +950,7 @@
         const a = pts[i], b = pts[i + 1];
         if (km(a.lat, a.lon, b.lat, b.lon) < 25) continue;
         const lift = sea ? 0.002 : 0.012;
-        arcs.push(...surfaceArcs(a, b, { flow: f, kind: f.status === "corroborated" ? "flow" : "flowDashed", color: rgba(CAT_RGB.supply, Math.min(1, alpha)), stroke, ms: 0, seed: 0 }, lift));
+        arcs.push(...surfaceArcs(a, b, { flow: f, kind: f.status === "corroborated" ? "flow" : "flowDashed", color: rgba(f.money ? CAT_RGB.aid : CAT_RGB.supply, Math.min(1, alpha)), stroke, ms: 0, seed: 0 }, lift));
         if (f.active) arcs.push(...surfaceArcs(a, b, { flow: f, kind: "particles", color: [rgba([220, 250, 252], 0.25), rgba([220, 250, 252], 0.95)], stroke: Math.max(0.3, stroke * 0.8), ms: 1800, seed: Math.random() }, lift + 0.001));
       }
     }
@@ -1085,13 +1132,13 @@
     const rows = [];
     S.supply.flows.forEach((f) => rows.push(`
       <li><button class="side-row${S.selectedFlow === f.key ? " is-selected" : ""}" type="button" data-flow="${esc(f.key)}">
-        <span class="flow-dot${f.active ? " is-active" : ""}${f.status === "corroborated" ? "" : " is-dashed"}" aria-hidden="true"></span>
+        <span class="flow-dot${f.money ? " is-money" : ""}${f.active ? " is-active" : ""}${f.status === "corroborated" ? "" : " is-dashed"}" aria-hidden="true"></span>
         <span class="side-name">${esc(countryName(f.supplier))} → ${esc(flowTo(f))}</span>
         <span class="side-meta">${f.deliveries}${f.active ? ' <b class="live">active</b>' : ""}</span>
       </button></li>`));
     S.supply.pledges.forEach((f) => rows.push(`
       <li><button class="side-row" type="button" data-flow="${esc(f.key)}" data-pledge="1">
-        <span class="flow-dot flow-dot--pledge" aria-hidden="true"></span>
+        <span class="flow-dot flow-dot--pledge${f.money ? " is-money" : ""}" aria-hidden="true"></span>
         <span class="side-name">${esc(countryName(f.supplier))} → ${esc(flowTo(f))}</span>
         <span class="side-meta">pledged</span>
       </button></li>`));
@@ -1272,7 +1319,7 @@
     const route = f.from && f.to ? `${esc(f.from.place || "origin")}${f.via.length ? ` → ${f.via.map((v) => esc(v.place || "hub")).join(" → ")}` : ""} → ${esc(f.to.place || "destination")}`
       : "Not named in reports. The line runs between the two countries and is drawn faint.";
     showDetail(`
-      <div class="detail-type">${iconBadge("crate", "supply", STATUS[f.status].conf)}${isPledge ? "Pledged aid" : "Supply route, last 30 days"}</div>
+      <div class="detail-type">${flowBadge(f)}${f.money ? (isPledge ? "Financial aid pledged" : "Financial aid, last 30 days") : isPledge ? "Pledged aid" : "Supply route, last 30 days"}</div>
       <h3>${esc(countryName(f.supplier))} → ${esc(flowTo(f))}</h3>
       <p class="detail-where">${isPledge ? `${f.events.length} ${f.events.length === 1 ? "announcement" : "announcements"}` : `${f.deliveries} ${f.deliveries === 1 ? "delivery" : "deliveries"} reported`}, last ${esc(ago(f.last))}${!isPledge && f.active ? ". Active in the last 72 hours." : ""}</p>
       <div class="verdict"><span class="conf-swatch conf-${STATUS[f.status].conf}" aria-hidden="true"></span><div><strong>${esc(STATUS[f.status].label)}</strong><p>Best confidence among the reports below. On the map, solid lines are corroborated and dashed lines rest on single sources.</p></div></div>
@@ -1483,7 +1530,10 @@
   } catch (err) {
     fatal(err);
   }
-  if (!DEMO) setInterval(load, REFRESH_MS);
+  if (!DEMO) {
+    setInterval(checkForUpdate, 60e3);
+    document.addEventListener("visibilitychange", () => { if (!document.hidden) checkForUpdate(); });
+  }
   setInterval(() => {
     updateFreshness();
     document.querySelectorAll("#feedList time").forEach((t) => { t.textContent = agoShort(Date.parse(t.dateTime)); });

@@ -207,8 +207,10 @@ def main() -> int:
     if not args.no_llm:
         events = recency.check(events, {e["id"] for e in events} - known, session, extract.ask_json, state, settings, t0)
         # Same story reported in different words or places: at most one model call an hour.
+        # New events are also compared with older ones, archived ones included (late follow-ups).
         events, same = dedupe.run(events, state, settings, t0, extract.ask_json,
-                                  extract.calls_remaining(state, settings, t0), hidden)
+                                  extract.calls_remaining(state, settings, t0), hidden,
+                                  archive.recent(state_dir, t0, dedupe.LATE_DAYS))
         folded += same
         if same:
             merge.apply_status(events, cells)

@@ -11,6 +11,7 @@ Archive files are kept forever.
 from __future__ import annotations
 
 import json
+from datetime import timedelta
 from pathlib import Path
 
 from common import parse_time
@@ -31,6 +32,19 @@ def _write_if_changed(path: Path, text: str) -> bool:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text, encoding="utf-8")
     return True
+
+
+def recent(root: Path, now, days: int) -> list[dict]:
+    """Archived events from the last `days` days (by when they happened), for comparing new events
+    with stories already reported (dedupe.late_cases). Unreadable files are skipped."""
+    folder, out = Path(root) / "archive", []
+    for k in range(days + 1):
+        path = folder / f"{(now - timedelta(days=k)).strftime('%Y-%m-%d')}.json"
+        try:
+            out += json.loads(path.read_text(encoding="utf-8")).get("events", [])
+        except (OSError, ValueError):
+            continue
+    return out
 
 
 def update(root: Path, published: list[dict], removed: dict[str, str | None], fleet: list[dict], now) -> int:
