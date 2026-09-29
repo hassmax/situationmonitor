@@ -130,7 +130,11 @@ def _same_headline(a: dict, b: dict) -> bool:
 
 
 def _needs_check(e: dict) -> bool:
-    return (e.get("checked") != CHECK_VERSION and not e.get("wave") and not e.get("alert")
+    """Events built only from news feeds, attack waves included: a July report of Iranian strikes
+    on Bahrain, relisted with a fresh date, became a wave of its own. Waves with any report from
+    another source (an air force channel, an OSINT account) are live and not checked. Alert groups
+    come from air force channels and are never news-only."""
+    return (e.get("checked") != CHECK_VERSION and not e.get("alert")
             and bool(e.get("reports")) and all(r.get("platform") == "rss" for r in e["reports"]))
 
 

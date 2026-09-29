@@ -66,3 +66,21 @@ def test_repair_waits_when_the_lookup_is_unreachable():
                "summary": "Fighting in Baidoa."}]
     assert geo.repair(events, geo.Geocoder({}, Down(), budget=10), state) == 0
     assert state["geo_repair"]["done"] == []  # not marked as checked
+
+
+def test_forces_sent_to_a_command_go_to_its_region_not_its_headquarters():
+    jets = {"id": "j", "type": "arms_transfer", "place": "CENTCOM", "country": "US", "lat": 27.86, "lon": -82.49,
+            "summary": "US transfers six F-16C fighter jets from Aviano Airbase to CENTCOM operations.",
+            "transfer": {"supplier": "US", "recipient": "US", "from": {"place": "Aviano Airbase", "lat": 46.03,
+                                                                       "lon": 12.6}, "to": None}}
+    statement = {"id": "s", "type": "naval", "place": "US Central Command", "country": "US", "lat": 27.86,
+                 "lon": -82.49, "summary": "CENTCOM says it intercepted a drone boat."}
+    other = {"id": "o", "type": "arms_transfer", "place": "Rzeszow", "country": "PL", "lat": 50.1, "lon": 22.0,
+             "summary": "Weapons delivered to Ukraine via Rzeszow.",
+             "transfer": {"supplier": "US", "recipient": "UA", "from": None, "to": {"place": "Rzeszow", "lat": 50.1, "lon": 22.0}}}
+    assert geo.pin_commands([jets, statement, other]) == 3
+    assert (jets["place"], jets["approx"]) == ("Middle East (CENTCOM area)", True)
+    assert jets["transfer"]["to"]["place"] == "Middle East (CENTCOM area)" and jets["transfer"]["to"]["region"]
+    assert statement["place"] == "Middle East (CENTCOM area)"
+    assert other["place"] == "Rzeszow" and other["transfer"]["to"]["place"] == "Rzeszow"
+    assert geo.pin_commands([jets, statement, other]) == 0  # done once

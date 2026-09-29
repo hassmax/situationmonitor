@@ -160,7 +160,9 @@
   const bestStatus = (list) => list.reduce((b, e) => (STATUS[e.status].rank > STATUS[b].rank ? e.status : b), "claimed");
   const metaLine = (e) => (e.wave ? `${countryName(e.attacker)} → ${countryName(e.country)}`
     : e.alert ? countryName(e.country) || e.place || ""
-    : e.type === "arms_transfer" && e.transfer ? `${countryName(e.transfer.supplier)} → ${countryName(e.transfer.recipient)}` : e.place || "");
+    : e.type === "arms_transfer" && e.transfer ? `${countryName(e.transfer.supplier)} → ${transferTo(e.transfer)}` : e.place || "");
+  const transferTo = (t) => (t.to && t.to.region ? t.to.place : countryName(t.recipient));
+  const flowTo = (f) => f.toLabel || countryName(f.recipient);
   // A marker-style icon for lists and the legend, matching the globe.
   const iconBadge = (icon, cat, conf = "solid", extra = "") => `<span class="ico cat-${cat} conf-${conf} ${extra}" aria-hidden="true">${svgIcon(icon)}</span>`;
   const eventIcon = (e) => { const [cat, icon] = catOf(e); return iconBadge(icon, cat, STATUS[e.status].conf); };
@@ -349,8 +351,12 @@
   const ARC = {
     strike: { dash: 0.4, gap: 0.22 }, strikeApprox: { dash: 0.3, gap: 0.3 },
     flow: { dash: 1, gap: 0 }, flowDashed: { dash: 0.12, gap: 0.07 }, particles: { dash: 0.012, gap: 0.11 },
-    track: { dash: 0.06, gap: 0.04 }, plan: { dash: 0.2, gap: 0.14 },
+    track: { dash: 0.06, gap: 0.04 }, plan: { dash: 0.2, gap: 0.14 }, hit: { dash: 1, gap: 0 },
   };
+  // Routes and carrier lines are thin, so hovering meant being exactly on them: each gets an
+  // invisible, wider twin that answers hover and taps for it.
+  const hitArcs = (arcs) => arcs.filter((a) => (a.flow || a.carrier) && a.kind !== "particles")
+    .map((a) => ({ ...a, kind: "hit", color: "rgba(0,0,0,0)", stroke: Math.max(2.8, a.stroke * 6), ms: 0, seed: 0 }));
   world
     .arcStartLat("sLat").arcStartLng("sLng").arcEndLat("eLat").arcEndLng("eLng")
     .arcColor((a) => a.color).arcStroke(arcStroke)
@@ -562,7 +568,7 @@
       <div class="tip-foot"><span>${c._asOf ? `As of ${esc(fmtDay(c._asOf))}` : "No position reports yet"}</span>${c.heading_to ? `<span>heading to ${esc(c.heading_to.place || "a stated destination")}</span>` : ""}</div></div>`;
   }
   function tipFlow(f) {
-    return `<div class="tip"><div class="tip-meta">${iconBadge("crate", "supply", STATUS[f.status].conf)}<b>${esc(countryName(f.supplier))} → ${esc(countryName(f.recipient))}</b></div>
+    return `<div class="tip"><div class="tip-meta">${iconBadge("crate", "supply", STATUS[f.status].conf)}<b>${esc(countryName(f.supplier))} → ${esc(flowTo(f))}</b></div>
       <div class="tip-sum">${f.deliveries} ${f.deliveries === 1 ? "delivery" : "deliveries"} reported in 30 days${f.cargo.length ? `: ${esc(f.cargo.slice(0, 2).join(", "))}` : ""}</div>
       <div class="tip-foot"><span>${f.active ? "Active" : "Quiet"}</span><span>last ${esc(ago(f.last))}</span></div></div>`;
   }
@@ -769,9 +775,11 @@
       if (q() && !e._search.includes(q())) continue;
       const kind = tkind(e);
       if (kind === "interdiction") continue;
-      const key = `${t.supplier}>${t.recipient}`;
+      // forces sent to a region (a US command's area) form their own route, labeled with the region
+      const region = t.to && t.to.region ? t.to.place : null;
+      const key = `${t.supplier}>${region || t.recipient}`;
       const bucket = kind === "pledge" ? pledges : flows;
-      if (!bucket.has(key)) bucket.set(key, { key, supplier: t.supplier, recipient: t.recipient, events: [] });
+      if (!bucket.has(key)) bucket.set(key, { key, supplier: t.supplier, recipient: t.recipient, toLabel: region, events: [] });
       bucket.get(key).events.push(e);
     }
     const summarize = (f) => {
@@ -884,7 +892,7 @@
   function supplyArcs(flows) {
     const arcs = [];
     for (const f of flows) {
-      const named = f.from && f.to;
+      const named = f.from && f.to && !f.to.region; // a route to a whole region is drawn faint
       const start = f.from || countryCenter(f.supplier), end = f.to || countryCenter(f.recipient);
       if (!start || !end) continue;
       const pts = [start, ...(named ? f.via : []), end];
@@ -965,7 +973,8 @@
     if (selC) rings.push({ lat: selC._lat, lon: selC._lon, rgb: [234, 240, 246], alpha: 0.85, max: 4, speed: reduceMotion ? 0 : 2.2, period: 1200 });
     world.ringsData(rings);
 
-    world.arcsData([...attackPaths(mapEvents), ...supplyArcs(S.supply.flows), ...(S.layers.carriers ? fleetArcs() : [])]);
+    const routeArcs = [...supplyArcs(S.supply.flows), ...(S.layers.carriers ? fleetArcs() : [])];
+    world.arcsData([...attackPaths(mapEvents), ...routeArcs, ...hitArcs(routeArcs)]);
     updateActive(mapEvents);
     renderCounts();
     renderTally(events);
@@ -1077,13 +1086,13 @@
     S.supply.flows.forEach((f) => rows.push(`
       <li><button class="side-row${S.selectedFlow === f.key ? " is-selected" : ""}" type="button" data-flow="${esc(f.key)}">
         <span class="flow-dot${f.active ? " is-active" : ""}${f.status === "corroborated" ? "" : " is-dashed"}" aria-hidden="true"></span>
-        <span class="side-name">${esc(countryName(f.supplier))} → ${esc(countryName(f.recipient))}</span>
+        <span class="side-name">${esc(countryName(f.supplier))} → ${esc(flowTo(f))}</span>
         <span class="side-meta">${f.deliveries}${f.active ? ' <b class="live">active</b>' : ""}</span>
       </button></li>`));
     S.supply.pledges.forEach((f) => rows.push(`
       <li><button class="side-row" type="button" data-flow="${esc(f.key)}" data-pledge="1">
         <span class="flow-dot flow-dot--pledge" aria-hidden="true"></span>
-        <span class="side-name">${esc(countryName(f.supplier))} → ${esc(countryName(f.recipient))}</span>
+        <span class="side-name">${esc(countryName(f.supplier))} → ${esc(flowTo(f))}</span>
         <span class="side-meta">pledged</span>
       </button></li>`));
     $("#supplyList").innerHTML = rows.join("") || '<li class="muted small">No arms transfers reported in the last 30 days.</li>';
@@ -1161,7 +1170,23 @@
     }));
     $("#detail").querySelectorAll("[data-event]").forEach((b) => b.addEventListener("click", () => select(b.dataset.event, true)));
     if (!isMobile() && !refresh) $("#backBtn").focus({ preventScroll: true });
-    if (isMobile() && S.sheet < 2) setSheet(2);
+    if (isMobile() && !refresh) peekDetail();
+  }
+  // On a phone, opening an event raises the list only as far as its headline and place; drag it
+  // up for the rest. A sheet the reader already raised further stays where it is.
+  function peekDetail() {
+    const feed = $("#feed"), last = $("#detail .detail-where") || $("#detail h3");
+    if (!last) { if (S.sheet < 1) setSheet(1); return; }
+    const was = feed.getBoundingClientRect().height;
+    feed.classList.remove("sheet-collapsed"); // collapsed hides the detail, which then can't be measured
+    const need = Math.round(last.getBoundingClientRect().bottom - feed.getBoundingClientRect().top + 14);
+    const h = clamp(need, 150, Math.round(window.innerHeight * 0.6));
+    if (S.sheet > 0 && was >= h - 4) return;
+    S.sheet = 1;
+    feed.style.height = h + "px";
+    $("#sheetHandle").setAttribute("aria-expanded", "true");
+    $("#sheetLabel").textContent = "Collapse the list";
+    setTimeout(layout, 320);
   }
   function hideDetail() { $("#detail").hidden = true; $("#feedList").hidden = false; $("#feedHead").hidden = false; }
   function closeDetail() {
@@ -1198,7 +1223,7 @@
     if (e.injured != null) facts.push(`<span>Injured <b>${e.injured}</b> (reported)</span>`);
     const t = e.transfer;
     if (t) {
-      facts.push(`<span>From <b>${esc(countryName(t.supplier))}</b> to <b>${esc(countryName(t.recipient))}</b>${MODE[t.mode] ? " " + esc(MODE[t.mode]) : ""}</span>`);
+      facts.push(`<span>From <b>${esc(countryName(t.supplier))}</b> to <b>${esc(transferTo(t))}</b>${MODE[t.mode] ? " " + esc(MODE[t.mode]) : ""}</span>`);
       if (t.from || t.to) facts.push(`<span>Route <b>${esc((t.from && t.from.place) || "not named")}</b> → <b>${esc((t.to && t.to.place) || "not named")}</b></span>`);
       if (t.what) facts.push(`<span>Cargo <b>${esc(t.what)}</b></span>`);
       if (t.value_usd) facts.push(`<span>Value <b>${esc(fmtMoney(t.value_usd))}</b> (reported)</span>`);
@@ -1248,7 +1273,7 @@
       : "Not named in reports. The line runs between the two countries and is drawn faint.";
     showDetail(`
       <div class="detail-type">${iconBadge("crate", "supply", STATUS[f.status].conf)}${isPledge ? "Pledged aid" : "Supply route, last 30 days"}</div>
-      <h3>${esc(countryName(f.supplier))} → ${esc(countryName(f.recipient))}</h3>
+      <h3>${esc(countryName(f.supplier))} → ${esc(flowTo(f))}</h3>
       <p class="detail-where">${isPledge ? `${f.events.length} ${f.events.length === 1 ? "announcement" : "announcements"}` : `${f.deliveries} ${f.deliveries === 1 ? "delivery" : "deliveries"} reported`}, last ${esc(ago(f.last))}${!isPledge && f.active ? ". Active in the last 72 hours." : ""}</p>
       <div class="verdict"><span class="conf-swatch conf-${STATUS[f.status].conf}" aria-hidden="true"></span><div><strong>${esc(STATUS[f.status].label)}</strong><p>Best confidence among the reports below. On the map, solid lines are corroborated and dashed lines rest on single sources.</p></div></div>
       <div class="facts">

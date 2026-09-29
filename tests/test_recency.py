@@ -12,6 +12,14 @@ def ev(i, summary, hours_ago=5):
             "reports": [{"platform": "rss", "url": f"https://news.google.com/rss/articles/{i}"}]}
 
 
+def test_news_only_waves_are_checked_but_live_ones_and_alerts_are_not():
+    wave = dict(ev("w", "Iran targets sites in Bahrain and Kuwait."), wave=True)
+    live = dict(wave, id="l", reports=wave["reports"] + [{"platform": "telegram", "url": "https://t.me/x/1"}])
+    alert = dict(wave, id="a", wave=False, alert=True)
+    assert recency._needs_check(wave)
+    assert not recency._needs_check(live) and not recency._needs_check(alert)
+
+
 def rss(items):
     body = "".join(f"<item><title>{t}</title><link>https://example.com/{n}</link><pubDate>{d}</pubDate></item>"
                    for n, (t, d) in enumerate(items))
