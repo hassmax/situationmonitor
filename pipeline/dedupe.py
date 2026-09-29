@@ -133,12 +133,25 @@ def groups(events: list[dict], judged: dict, now) -> list[list[dict]]:
                         seen.add(f["id"])
                         todo.append(f)
             for part in _chunks(sorted(comp, key=lambda e: e["time"])):
-                if len(part) > 1 and any(not _settled(judged.get(_key(a["id"], b["id"])), now)
-                                         for i, a in enumerate(part) for b in part[i + 1:]):
-                    out.append(part)
-    # biggest groups first (a story reported many times over is the likeliest duplicate), then newest
-    out.sort(key=lambda c: (len(c), c[-1]["time"]), reverse=True)
-    return out
+                waits = [_waiting_since(judged.get(_key(a["id"], b["id"])), a, b)
+                         for i, a in enumerate(part) for b in part[i + 1:]
+                         if not _settled(judged.get(_key(a["id"], b["id"])), now)]
+                if len(part) > 1 and waits:
+                    out.append((min(waits), part))
+    # The group whose question has waited longest goes first. Biggest-first let the big diplomacy
+    # groups, which gain a new event every few runs, keep a small group (two Belgian reports of
+    # one story) waiting until it left the window.
+    out.sort(key=lambda w: w[0])
+    return [part for _, part in out]
+
+
+def _waiting_since(v: dict | None, a: dict, b: dict) -> str:
+    """When a pair became due: when the later of the two arrived, or when its second look fell due."""
+    if v:
+        at = parse_time(v.get("at"))
+        if at:
+            return iso(at + SECOND_LOOK)
+    return max(a["time"], b["time"])
 
 
 def _chunks(comp: list[dict]) -> list[list[dict]]:
