@@ -31,14 +31,27 @@ the earliest event.
   check runs on a weaker backup, which once called nearly every pair different (among them two
   reports of the same EU fund release), and a first "different" used to stand for a week.
   After the second answer the pair is settled either way.
+- Up to MAX_CALLS_PER_RUN calls while groups are waiting (a backlog of 68 groups kept a Myanmar
+  airstrike reported four times waiting for hours at one call per run); the second and third
+  only while at least EXTRA_CALLS_FLOOR calls are left today.
+- For each set of events it folds, the model also writes one headline from the facts the events
+  agree on ("Myanmar military airstrike on a market in Rakhine kills 50"), in the same call; it
+  leads until a new report arrives. A headline with a number none of the events gives is dropped.
+- Late follow-ups: a story reported again days later (the RAF Fairford arrests, 62 hours after
+  the first event) falls outside PAIR_WINDOW. So each event from the last NEW_HOURS is also
+  compared with up to LATE_CANDIDATES older events of the same kind and country, up to LATE_DAYS
+  back (hybrid attacks, deployments, incursions, naval incidents: the closest in wording; strikes,
+  fighting and talks: only with close wording and the same names): in the working set (folded as usual, so the event keeps its first date) and in the
+  archive (the new event takes the archived event's date, so an old story isn't shown as new).
 """
 from __future__ import annotations
 
 import json
+import re
 from datetime import timedelta
 
 from common import iso, log, parse_time
-from merge import FAMILY, _absorb, _words
+from merge import FAMILY, MIN_SHARED, _absorb, _names, _words
 
 MIN_INTERVAL = timedelta(hours=1)
 RETRY = timedelta(minutes=15)
@@ -50,6 +63,12 @@ TALKS_OVERLAP = 0.2  # with the same (or two shared) parties
 TALKS_BARE_OVERLAP = 0.4  # when either event lists no parties
 MAX_GROUP = 20
 MAX_EVENTS = 60
+MAX_CALLS_PER_RUN = 3
+EXTRA_CALLS_FLOOR = 100  # a second or third call in one run only while this many calls are left today
+NEW_HOURS = 36       # events this recent are compared with older ones (late follow-ups)
+LATE_DAYS = 14       # how far back
+LATE_OVERLAP = 0.4   # strikes, fighting, talks: wording an older event needs, plus the same names
+LATE_CANDIDATES = 2  # older events compared per new event
 KEEP_DAYS = 7
 # Families that can describe the same incident (a drone strike reported as an explosion).
 GROUP = {"strike": "violence", "ground": "violence", "naval": "naval", "deployment": "deployment",
@@ -63,8 +82,10 @@ Group the events that describe the same specific incident or statement: the same
 Reports often tell one event from different angles or with different details (who gets the money, what was said first, who attended); that is still one event.
 Keep events apart when they are separate incidents that resemble each other (two strikes on the same city, two drills, arrests in two different cases, two meetings between the same countries), when one is only background to the other, or when you are unsure. For meetings, statements and legal steps, a response by another government or body is its own event (a third country criticizing a meeting is not the meeting).
 
+For each group, also write "summary": one neutral sentence of at most 25 words stating what the events agree on, taking the most recent figures they give (a death toll that rose). Use only facts in the summaries; keep attributions ("Russian MoD claims", "reportedly") where the events have them; never add a number, place, or name they don't give.
+
 Reply with one JSON object and nothing else, with one entry for every case. In "groups" list only groups of two or more ids; events in no group stay separate. Use "groups": [] when a case has no duplicates:
-{"results": [{"i": <case number>, "groups": [["<id>", "<id>", ...], ...]}]}"""
+{"results": [{"i": <case number>, "groups": [{"ids": ["<id>", "<id>", ...], "summary": "<one sentence>"}, ...]}]}"""
 
 
 def _key(a: str, b: str) -> str:
@@ -104,7 +125,12 @@ def _settled(v: dict | None, now) -> bool:
 
 
 def groups(events: list[dict], judged: dict, now) -> list[list[dict]]:
-    """Groups worth asking about (some pair in them not settled yet), newest first."""
+    """Groups worth asking about (some pair in them not settled yet), longest waiting first."""
+    return [part for _, part in sorted(_due(events, judged, now), key=lambda w: w[0])]
+
+
+def _due(events: list[dict], judged: dict, now) -> list[tuple[str, list[dict]]]:
+    """(waiting since, group) for every group with a pair not settled yet."""
     since = now - LOOKBACK
     buckets: dict[tuple, list[dict]] = {}
     for e in events:
@@ -138,11 +164,52 @@ def groups(events: list[dict], judged: dict, now) -> list[list[dict]]:
                          if not _settled(judged.get(_key(a["id"], b["id"])), now)]
                 if len(part) > 1 and waits:
                     out.append((min(waits), part))
-    # The group whose question has waited longest goes first. Biggest-first let the big diplomacy
-    # groups, which gain a new event every few runs, keep a small group (two Belgian reports of
-    # one story) waiting until it left the window.
-    out.sort(key=lambda w: w[0])
-    return [part for _, part in out]
+    # The group whose question has waited longest goes first (see groups). Biggest-first let the
+    # big diplomacy groups, which gain a new event every few runs, keep a small group (two Belgian
+    # reports of one story) waiting until it left the window.
+    return out
+
+
+def late_cases(events: list[dict], history: list[dict], judged: dict, now) -> list[tuple[str, list[dict]]]:
+    """(waiting since, [older, newer]) pairs: an event from the last NEW_HOURS and an older event
+    of the same kind and country (or parties, for talks) beyond PAIR_WINDOW, up to LATE_DAYS back,
+    with similar wording. Older events come from the working set and the archive (`history`)."""
+    new_since, old_since = now - timedelta(hours=NEW_HOURS), now - timedelta(days=LATE_DAYS)
+    ok = lambda e: not e.get("wave") and not e.get("alert") and GROUP.get(FAMILY.get(e.get("type")))  # noqa: E731
+    fresh = [e for e in events if ok(e) and (parse_time(e.get("time")) or old_since) >= new_since]
+    older = [e for e in events + history if ok(e) and (parse_time(e.get("time")) or now) >= old_since]
+    out = []
+    for n in fresh:
+        g, nt = GROUP[FAMILY[n["type"]]], parse_time(n["time"])
+        scored = []
+        for o in older:
+            if o["id"] == n["id"] or nt - (parse_time(o["time"]) or nt) <= PAIR_WINDOW:
+                continue
+            og = GROUP[FAMILY[o["type"]]]
+            if g == "talks" or og == "talks":
+                if not (g == og == "talks" and _linked({**o, "time": n["time"]}, n, "talks")):
+                    continue
+            elif og != g or not n.get("country") or o.get("country") != n.get("country"):
+                continue
+            ov = _overlap(o, n)
+            if g in WHOLE:
+                # compared whatever their wording within the window, so here too: the closest ones
+                # (the RAF Fairford arrests, told again in other words, shared 15%)
+                if _shared(o, n) >= 1:
+                    scored.append((ov, o))
+                continue
+            a, b = sorted((_names(o.get("summary")), _names(n.get("summary"))), key=len)
+            if ov >= LATE_OVERLAP and _shared(o, n) >= MIN_SHARED and a <= b:
+                scored.append((ov, o))
+        for _, o in sorted(scored, key=lambda x: -x[0])[:LATE_CANDIDATES]:
+            if not _settled(judged.get(_key(o["id"], n["id"])), now):
+                out.append((n["time"], [o, n]))
+    return out
+
+
+def _shared(e: dict, f: dict) -> int:
+    places = _words(" ".join(str(x.get("place") or "") for x in (e, f)))
+    return len((_words(e.get("summary")) - places) & (_words(f.get("summary")) - places))
 
 
 def _waiting_since(v: dict | None, a: dict, b: dict) -> str:
@@ -165,8 +232,18 @@ def _chunks(comp: list[dict]) -> list[list[dict]]:
     return [comp[i:i + MAX_GROUP] for i in starts]
 
 
-def _fold(events: list[dict], same: list[tuple[str, str]], skip: set[str]) -> tuple[list[dict], list[dict]]:
+def _fold(events: list[dict], same: list[tuple[str, str]], skip: set[str],
+          history: list[dict] | None = None) -> tuple[list[dict], list[dict]]:
+    """Fold events judged the same into the earliest. An event judged the same as an archived one
+    (no longer in the working set) takes the archived event's date instead: the story is old."""
+    archived = {h["id"]: h for h in history or []}
     by_id = {e["id"]: e for e in events}
+    for a, b in same:
+        old, new = (a, b) if a in archived else (b, a) if b in archived else (None, None)
+        if old and new in by_id and by_id[new]["time"] > archived[old]["time"]:
+            log(f"[dedupe] {by_id[new]['summary'][:70]!r} is a late report of {archived[old]['summary'][:70]!r} "
+                f"({archived[old]['time'][:10]}); dated to then")
+            by_id[new]["time"] = archived[old]["time"]
     parent = {i: i for i in by_id}
 
     def root(i):
@@ -197,8 +274,9 @@ def _fold(events: list[dict], same: list[tuple[str, str]], skip: set[str]) -> tu
 
 
 def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: int,
-        skip: set[str]) -> tuple[list[dict], list[dict]]:
-    """Returns (events, the events folded away). `ask` is extract.ask_json."""
+        skip: set[str], history: list[dict] | None = None) -> tuple[list[dict], list[dict]]:
+    """Returns (events, the events folded away). `ask` is extract.ask_json; `history` holds archived
+    events no longer in the working set (compared with new events as late follow-ups)."""
     st = state.setdefault("dedupe", {})
     cutoff = iso(now - timedelta(days=KEEP_DAYS))
     st["judged"] = judged = {k: v for k, v in (st.get("judged") or {}).items() if v.get("at", "") >= cutoff}
@@ -208,28 +286,48 @@ def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: in
     wait = RETRY if st.get("backlog") else MIN_INTERVAL
     if (done and now - done < wait) or (failed and now - failed < RETRY):
         return events, folded
-    cases, size, due = [], 0, groups([e for e in events if e["id"] not in skip], judged, now)
-    for comp in due:
-        if size + len(comp) > MAX_EVENTS:
-            continue
-        cases.append(comp)
-        size += len(comp)
-    if not cases:
-        return events, folded
-    if remaining < int(settings.get("dedupe_min_calls", 10)):
-        log(f"[dedupe] skipped: only {remaining} model calls left today")
-        return events, folded
-    payload = [{"i": n, "events": [{"id": e["id"], "summary": e.get("summary"), "place": e.get("place"),
-                                    "time": e.get("time")} for e in comp]} for n, comp in enumerate(cases)]
-    reply = ask(PROMPT, json.dumps({"cases": payload}, ensure_ascii=False), state, settings, now, max_tokens=2000)
-    if not isinstance(reply, dict) or not isinstance(reply.get("results"), list):
-        st["failed"] = iso(now)
-        log(f"[dedupe] no model answer; will try again in {int(RETRY.total_seconds() // 60)} minutes")
-        return events, folded
-    st["attempt"] = iso(now)
-    st["backlog"] = len(cases) < len(due)
-    st.pop("failed", None)
-    same = []
+    have = {e["id"] for e in events}
+    history = [h for h in (history or []) if h.get("id") not in have and h.get("id") not in skip]
+    for call in range(MAX_CALLS_PER_RUN):
+        live = [e for e in events if e["id"] not in skip]
+        due = sorted(_due(live, judged, now) + late_cases(live, history, judged, now), key=lambda w: w[0])
+        cases, size = [], 0
+        for _, comp in due:
+            if size + len(comp) > MAX_EVENTS:
+                continue
+            cases.append(comp)
+            size += len(comp)
+        if not cases:
+            st["backlog"] = False
+            break
+        if remaining - call < int(settings.get("dedupe_min_calls", 10)):
+            log(f"[dedupe] skipped: only {remaining - call} model calls left today")
+            break
+        if call and remaining - call < EXTRA_CALLS_FLOOR:
+            break  # the backlog waits for the next run rather than eat into extraction
+        payload = [{"i": n, "events": [{"id": e["id"], "summary": e.get("summary"), "place": e.get("place"),
+                                        "time": e.get("time")} for e in comp]} for n, comp in enumerate(cases)]
+        reply = ask(PROMPT, json.dumps({"cases": payload}, ensure_ascii=False), state, settings, now, max_tokens=3000)
+        if not isinstance(reply, dict) or not isinstance(reply.get("results"), list):
+            st["failed"] = iso(now)
+            log(f"[dedupe] no model answer; will try again in {int(RETRY.total_seconds() // 60)} minutes")
+            break
+        st["attempt"] = iso(now)
+        st["backlog"] = len(cases) < len(due)
+        st.pop("failed", None)
+        same, heads = _read(reply, cases, judged, now)
+        events, more = _fold(events, same, skip, history)
+        _headlines(events, heads)
+        log(f"[dedupe] asked about {len(cases)} groups ({size} events), folded {len(more)} events")
+        folded += more
+        if not st["backlog"]:
+            break
+    return events, folded
+
+
+def _read(reply: dict, cases: list[list[dict]], judged: dict, now) -> tuple[list[tuple[str, str]], list]:
+    """Record the model's answers. Returns (pairs judged the same, [(member events, headline)])."""
+    same, heads = [], []
     answered = set()
     now_seen: set[str] = set()  # a pair shown in two overlapping cases counts as one answer
     for res in reply["results"]:
@@ -239,8 +337,9 @@ def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: in
         answered.add(n_case)
         comp = cases[n_case]
         ids = {e["id"] for e in comp}
-        where = {}
-        for n, grp in enumerate(_groups(res)):
+        where, texts = {}, {}
+        for n, (grp, text) in enumerate(_groups(res)):
+            texts[n] = text
             for i in grp:
                 i = str(i).strip()
                 if i in ids and i not in where:
@@ -260,13 +359,32 @@ def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: in
             members = [e for e in comp if where.get(e["id"]) == n]
             if len(members) > 1:
                 log("[dedupe] same story: " + " + ".join(repr(e["summary"][:60]) for e in members))
-    events, more = _fold(events, same, skip)
-    log(f"[dedupe] asked about {len(cases)} groups ({size} events), folded {len(more)} events")
+                heads.append((members, texts.get(n)))
     if len(answered) < len(cases):
         sample = json.dumps(reply["results"][:1], ensure_ascii=False)[:200]
         log(f"[dedupe] {len(cases) - len(answered)} of {len(cases)} groups got no usable answer "
             f"(asked again later); first result looked like: {sample}")
-    return events, folded + more
+    return same, heads
+
+
+_NUMBER = re.compile(r"\d+(?:[.,]\d+)*")
+
+
+def _headlines(events: list[dict], heads: list) -> None:
+    """Give each folded event the model's combined headline, when it keeps to the members' facts
+    (every number in it appears in one of their summaries or casualty counts)."""
+    by_id = {e["id"]: e for e in events}
+    for members, text in heads:
+        keep = next((by_id[m["id"]] for m in sorted(members, key=lambda m: (m["time"], m["id"])) if m["id"] in by_id), None)
+        text = " ".join(str(text or "").split())
+        if keep is None or not text or len(text) > 220:
+            continue
+        known = " ".join([m.get("summary") or "" for m in members]
+                         + [str(m.get(k)) for m in members for k in ("killed", "injured") if m.get(k) is not None])
+        if all(n in _NUMBER.findall(known) for n in _NUMBER.findall(text)):
+            keep["headline"] = text
+        else:
+            log(f"[dedupe] combined headline dropped (a number the events don't give): {text[:90]!r}")
 
 
 def _case_number(res) -> int | None:
@@ -283,12 +401,15 @@ def _case_number(res) -> int | None:
     return None
 
 
-def _groups(res: dict) -> list[list]:
-    """The id groups of a result: lists of ids, or objects holding them ({"ids": [...]})."""
+def _groups(res: dict) -> list[tuple[list, str | None]]:
+    """The id groups of a result, with the combined headline when given: lists of ids, or objects
+    holding them ({"ids": [...], "summary": "..."})."""
     out = []
     for g in res.get("groups") or res.get("same") or []:
+        text = None
         if isinstance(g, dict):
+            text = g.get("summary") or g.get("headline")
             g = g.get("ids") or g.get("events") or []
         if isinstance(g, list) and len(g) > 1:
-            out.append(g)
+            out.append((g, text if isinstance(text, str) else None))
     return out

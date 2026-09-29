@@ -147,3 +147,60 @@ def test_a_small_old_group_is_not_starved_by_a_big_new_one():
               hours_ago=40)]
     new = [ev(f"n{k}", f"Hybrid incident report {k}.", country="PL", hours_ago=3 - k * 0.1) for k in range(12)]
     assert [e["id"] for e in dedupe.groups(new + old, {}, NOW)[0]] == ["o1", "o2"]
+
+
+def test_a_story_told_again_days_later_is_compared_and_folded():
+    old = ev("o", "British counterterrorism police made explosives arrests near RAF Fairford, an air base used for "
+             "American strikes on Iran.", place="Fairford",
+             hours_ago=62)
+    new = ev("n", "Five men were arrested on suspicion of a bomb plot near a Royal Air Force base.", place=None,
+             hours_ago=1)
+    assert dedupe.groups([old, new], {}, NOW) == []               # beyond the 48-hour pair window
+    assert [[e["id"] for e in p] for _, p in dedupe.late_cases([old, new], [], {}, NOW)] == [["o", "n"]]
+    ask = lambda *a, **k: {"results": [{"i": 0, "groups": [{"ids": ["o", "n"], "summary": "Police arrested five men "
+                                                            "near RAF Fairford."}]}]}
+    out, folded = dedupe.run([old, new], {}, SETTINGS, NOW, ask, remaining=100, skip=set())
+    assert [e["id"] for e in out] == ["o"] and out[0]["time"] == old["time"]  # keeps its first date
+
+
+def test_a_late_report_of_an_archived_story_takes_its_date():
+    archived = ev("o", "British counterterrorism police made explosives arrests near RAF Fairford, an air base.",
+                  place="Fairford", hours_ago=24 * 9)
+    new = ev("n", "Five men were arrested on suspicion of a bomb plot near a Royal Air Force base.", place=None,
+             hours_ago=1)
+    ask = lambda *a, **k: {"results": [{"i": 0, "groups": [["o", "n"]]}]}
+    out, folded = dedupe.run([new], {}, SETTINGS, NOW, ask, remaining=100, skip=set(), history=[archived])
+    assert [e["id"] for e in out] == ["n"] and folded == [] and out[0]["time"] == archived["time"]
+
+
+def test_strikes_told_again_need_close_wording_and_the_same_names():
+    old = ev("o", "Shelling killed two civilians in Kherson.", country="UA", type_="artillery", hours_ago=60)
+    same = ev("s", "Shelling killed two civilians in Kherson, officials said.", country="UA", type_="artillery",
+              hours_ago=1)
+    other = ev("t", "Shelling killed two civilians in Nikopol.", country="UA", type_="artillery", hours_ago=1)
+    pairs = [[e["id"] for e in p] for _, p in dedupe.late_cases([old, same, other], [], {}, NOW)]
+    assert pairs == [["o", "s"]]
+
+
+def test_folded_events_get_the_combined_headline_unless_it_adds_a_number():
+    a = ev("a", "A Myanmar military airstrike in Rakhine killed 33 people.", country="MM", type_="airstrike",
+           place="Rakhine State", hours_ago=20, killed=33)
+    b = ev("b", "The death toll from a Myanmar airstrike in Rakhine state rose to 50.", country="MM",
+           type_="airstrike", place="Rakhine State", hours_ago=3, killed=50)
+    for text, expect in (("Myanmar military airstrike in Rakhine kills 50 people.", True),
+                         ("Myanmar military airstrike in Rakhine kills 70 people.", False)):
+        ask = lambda *x, **k: {"results": [{"i": 0, "groups": [{"ids": ["a", "b"], "summary": text}]}]}
+        out, _ = dedupe.run([dict(a), dict(b)], {}, SETTINGS, NOW, ask, remaining=100, skip=set())
+        assert (out[0].get("headline") == text) is expect
+
+
+def test_several_calls_in_one_run_while_groups_wait(monkeypatch):
+    monkeypatch.setattr(dedupe, "MAX_EVENTS", 2)
+    evs = [ev(f"{c}{k}", f"Hybrid incident {c}.", country=c.upper() * 2, hours_ago=5 - k) for c in "pqrs" for k in (0, 1)]
+    calls = []
+    ask = lambda *a, **k: calls.append(1) or {"results": [{"i": 0, "groups": []}]}
+    dedupe.run(evs, {}, SETTINGS, NOW, ask, remaining=300, skip=set())
+    assert len(calls) == dedupe.MAX_CALLS_PER_RUN
+    calls.clear()
+    dedupe.run(evs, {}, SETTINGS, NOW, ask, remaining=60, skip=set())  # low budget: one call, the rest waits
+    assert len(calls) == 1

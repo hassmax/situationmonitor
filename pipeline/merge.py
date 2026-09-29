@@ -420,6 +420,7 @@ def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
         if any(r["url"] == rep["url"] for r in match["reports"]):
             continue
         match["reports"].append(rep)
+        match.pop("headline", None)  # a new report may change the facts (a rising death toll)
         _absorb(match, cand)
     return events
 
@@ -609,7 +610,9 @@ def apply_status(events: list[dict], cells: list[dict]) -> None:
             e["status"] = "claimed"
         e["sources_count"] = len(counted)
         if not e.get("wave") and not e.get("alert"):
-            e["summary"] = _headline(e)["summary"]
+            # a combined headline written when duplicates were folded (dedupe.py) leads until a new
+            # report arrives; then the best single report leads again
+            e["summary"] = e.get("headline") or _headline(e)["summary"]
 
 
 WEAK_GROUPS = {"google-news"}
@@ -627,7 +630,7 @@ def prune(events: list[dict], now: datetime, retention_days: int, max_events: in
 
 def public_event(e: dict) -> dict:
     """Strip internal fields before publishing."""
-    out = {k: v for k, v in e.items() if k not in ("reports", "us", "cn", "wave_key", "alert_key", "origin", "checked", "checks")}
+    out = {k: v for k, v in e.items() if k not in ("reports", "us", "cn", "wave_key", "alert_key", "origin", "checked", "checks", "headline")}
     if not e.get("alert"):
         out.pop("alert", None)
     if e.get("origin") and not e.get("origins"):

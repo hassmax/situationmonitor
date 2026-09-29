@@ -724,6 +724,8 @@ h2 {
 .flow-dot.is-dashed { background: repeating-linear-gradient(90deg, var(--news) 0 3px, transparent 3px 5px); }
 .flow-dot.is-active { box-shadow: 0 0 0 3px rgba(63, 193, 201, 0.25); }
 .flow-dot--pledge { width: 10px; height: 10px; border-radius: 50%; background: transparent; border: 1.5px dashed var(--news); margin: 0 2px; }
+.flow-dot.is-money { --news: rgb(96, 214, 122); }
+.flow-dot.is-money.is-active { box-shadow: 0 0 0 3px rgba(96, 214, 122, 0.25); }
 .flow-spark rect { fill: rgba(63, 193, 201, 0.5); }
 .flow-spark rect.today { fill: var(--news); }
 .flow-meta { display: flex; flex-wrap: wrap; gap: 3px 10px; padding-left: 23px; font-size: 12.5px; color: var(--ink-3); }
@@ -869,6 +871,7 @@ h2 {
 .cat-hybrid { --c: 177, 140, 255; }
 .cat-diplo { --c: 233, 238, 245; }
 .cat-supply { --c: 63, 193, 201; }
+.cat-aid { --c: 96, 214, 122; }
 .cat-fleet, .mk-cvn { --c: 205, 228, 255; }
 
 /* the globe positions .mk; .mk-in can shift sideways when markers overlap */
@@ -1050,6 +1053,7 @@ h2 {
 .ico.cat-hybrid { --c: 177, 140, 255; }
 .ico.cat-diplo { --c: 233, 238, 245; }
 .ico.cat-supply { --c: 63, 193, 201; }
+.ico.cat-aid { --c: 96, 214, 122; }
 .ico.cat-fleet { --c: 205, 228, 255; }
 .ico svg { width: 62%; height: 62%; }
 .ico.conf-outline { background: transparent; color: rgb(var(--c)); }
@@ -1205,3 +1209,15 @@ h2 {
 
 /* while the globe is dragged or pinched, markers jump to their spots instead of sliding */
 .moving .mk-in { transition: none; }
+
+/* live update note: slides in at the top when new events arrive */
+.live-note {
+  position: fixed; left: 50%; top: 14px; z-index: 50;
+  transform: translate(-50%, -150%);
+  padding: 7px 14px; border-radius: 999px;
+  background: rgba(8, 22, 39, 0.94); color: #eaf0f6; font-size: 13px;
+  border: 1px solid rgba(111, 212, 154, 0.45); box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  transition: transform 0.35s ease; pointer-events: none;
+}
+.live-note.is-on { transform: translate(-50%, 0); }
+@media (prefers-reduced-motion: reduce) { .live-note { transition: none; } }
