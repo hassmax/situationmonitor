@@ -2,7 +2,11 @@
 
 The model gives a place name and a rough coordinate. OpenStreetMap's Nominatim
 geocoder (free, 1 request/second, results cached) confirms it. If the two disagree
-by more than 300 km, the model's estimate is kept and the event is marked approximate.
+by more than 300 km, the model's estimate is kept and the event is marked approximate,
+unless the model's coordinates are not even in the country it named (a reverse lookup):
+the model once put Baidoa, Somalia 20 degrees east, in the Indian Ocean, while the lookup
+had found Baidoa itself. Then the lookup wins. Stored approximate events are re-checked
+the same way once per REPAIR_VERSION, a few per run.
 """
 from __future__ import annotations
 
@@ -11,6 +15,9 @@ import time
 from common import haversine_km, log
 
 NOMINATIM = "https://nominatim.openstreetmap.org/search"
+NOMINATIM_REVERSE = "https://nominatim.openstreetmap.org/reverse"
+REPAIR_VERSION = 1
+REPAIR_PER_RUN = 10
 
 # ISO alpha-2 -> ISO numeric (the ids used by the globe's country shapes).
 ISO_NUMERIC = {
@@ -85,6 +92,28 @@ class Geocoder:
             self.cache.pop(next(iter(self.cache)))
         return found
 
+    def country_at(self, lat: float, lon: float) -> str | None:
+        """ISO alpha-2 code of the country at a point ("" at sea), or None if it can't be looked up."""
+        key = f"rev|{lat:.1f}|{lon:.1f}"
+        if key in self.cache:
+            return self.cache[key]
+        if self.budget <= 0:
+            return None
+        self.budget -= 1
+        params = {"lat": lat, "lon": lon, "format": "jsonv2", "zoom": 3, "accept-language": "en"}
+        try:
+            r = self.session.get(NOMINATIM_REVERSE, params=params, timeout=20)
+            time.sleep(1.1)
+            self.calls += 1
+            if r.status_code != 200:
+                return None
+            code = str(((r.json() or {}).get("address") or {}).get("country_code") or "").upper()
+        except Exception as exc:  # noqa: BLE001
+            log(f"[geo] reverse {lat},{lon}: {exc}")
+            return None
+        self.cache[key] = code
+        return code
+
     def locate(self, place, admin1, country, hint):
         cands = self.candidates(place, admin1, country)
         if not cands:
@@ -92,6 +121,11 @@ class Geocoder:
         if hint:
             best = min(cands, key=lambda c: haversine_km(c[0], c[1], hint[0], hint[1]))
             if haversine_km(best[0], best[1], hint[0], hint[1]) > 300:
+                # The lookup was limited to the named country; if the model's coordinates are
+                # outside it (or at sea), they are wrong and the lookup's best match is used.
+                if country and self.country_at(hint[0], hint[1]) not in (None, country.upper()):
+                    log(f"[geo] {place}: the model's coordinates {hint} are outside {country}; using the map lookup")
+                    return cands[0]
                 return None
             return best
         return cands[0]
@@ -112,6 +146,32 @@ SEAS = {
 def _sea(name: str | None):
     low = (name or "").lower()
     return next((v for k, v in SEAS.items() if k in low), None)
+
+
+def repair(events: list[dict], geocoder: Geocoder, state: dict) -> int:
+    """Re-check stored approximate events (a few per run, once per REPAIR_VERSION) with today's
+    rule. Returns how many were moved."""
+    st = state.setdefault("geo_repair", {})
+    if st.get("version") != REPAIR_VERSION:
+        st.clear()
+        st.update(version=REPAIR_VERSION, done=[])
+    done = set(st["done"])
+    todo = [e for e in events if e.get("approx") and e.get("place") and e.get("country") and e["id"] not in done
+            and not e.get("wave") and not e.get("alert") and not _sea(e["place"])]
+    moved = 0
+    for e in todo[:REPAIR_PER_RUN]:
+        if geocoder.budget <= 1:
+            break
+        if geocoder.candidates(e["place"], None, e["country"]) is None:
+            break  # no lookup possible now (budget or network): try again next run
+        done.add(e["id"])
+        hit = geocoder.locate(e["place"], None, e["country"], (e["lat"], e["lon"]))
+        if hit and haversine_km(hit[0], hit[1], e["lat"], e["lon"]) > 1:
+            log(f"[geo] moved {e['summary'][:60]!r} from {e['lat']},{e['lon']} to {hit[0]},{hit[1]} ({e['place']})")
+            e.update(lat=hit[0], lon=hit[1], approx=False)
+            moved += 1
+    st["done"] = sorted(done & {e["id"] for e in events})
+    return moved
 
 
 def place_record(rec: dict, geocoder: Geocoder, theaters: list[dict]) -> dict | None:

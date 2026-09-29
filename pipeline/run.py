@@ -189,6 +189,7 @@ def main() -> int:
     geocoder = geo.Geocoder(state["geocache"], session, settings["geocode_per_run"])
     candidates = [c for c in (geo.place_record(r, geocoder, cfg.theaters) for r in records) if c]
     log(f"[geo] placed {len(candidates)}/{len(records)} ({geocoder.calls} lookups)")
+    geo.repair(events, geocoder, state)  # stored approximate pins, re-checked a few per run
     # Reports of hidden events, and dropped reports, never create or join an event again.
     blocked = corrections.blocked_urls(events, fixes)
     candidates = [c for c in candidates if c["report"]["url"] not in blocked]

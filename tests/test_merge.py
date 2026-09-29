@@ -129,3 +129,43 @@ def test_stored_talks_fold_only_with_close_wording():
               type_="diplomacy", country="DE", parties=["DE", "EE", "RU"])
     out, folded = merge.consolidate([a, b], set())
     assert folded == [] and len(out) == 2
+
+
+ADDIS, ETHIOPIA, ISTANBUL, ATLANTIC = (9.04, 38.75), (10.21, 38.65), (41.01, 28.98), (36.9, -75.5)
+
+
+def test_one_shared_word_is_not_similar_wording():
+    ike = event("i", "Atlantic Ocean", ATLANTIC, "2026-09-29T03:00:00Z", "Four personnel injured in a mishap aboard "
+                "the carrier USS Dwight D. Eisenhower.", type_="naval", country=None, approx=True)
+    plane = event("p", "Istanbul", ISTANBUL, "2026-09-29T04:00:00Z", "An Iranian aircraft is seized in Istanbul.",
+                  type_="naval", country="TR")
+    assert not merge._similar(ike, plane)
+    assert len(merge.merge([], [cand(ike), cand(plane)])) == 2
+
+
+def test_country_level_fighting_joins_the_same_story_pinned_to_a_city():
+    a = event("a", "Addis Ababa", ADDIS, "2026-09-29T08:19:00Z", "Fighting in Ethiopia intensifies amid ongoing "
+              "conflict dynamics.", type_="ground", country="ET", theater="horn")
+    b = event("b", "Ethiopia", ETHIOPIA, "2026-09-29T08:23:00Z", "Fighting in Ethiopia intensifies.",
+              type_="ground", country="ET", theater="horn")
+    assert len(merge.merge([], [cand(a), cand(b)])) == 1
+    out, folded = merge.consolidate([a, b], set())
+    assert [e["id"] for e in out] == ["a"]
+
+
+def test_the_same_template_about_different_places_stays_apart():
+    a = event("a", "Sumy Oblast", (51.0, 34.5), "2026-09-29T08:00:00Z", "Russian Sever group forces took control "
+              "of Maryino in Sumy Oblast.", type_="territory", country="UA", theater="ukraine")
+    b = event("b", "Ukraine", (48.4, 31.2), "2026-09-29T09:00:00Z", "Russian Sever group forces took control "
+              "of Petropavlivka and Lozova in Sumy Oblast.", type_="territory", country="UA", theater="ukraine")
+    out, folded = merge.consolidate([a, b], set())
+    assert folded == []
+
+
+def test_a_report_citing_ukmto_leads_a_shipping_incident():
+    e = event("s", "Gulf of Aden", (12.5, 47.5), "2026-09-29T05:00:00Z", "A tanker was hit by a projectile.",
+              type_="naval", country=None, theater="mideast")
+    e["reports"][0]["weight"] = 3
+    e["reports"].append(dict(e["reports"][0], url="https://example.com/ukmto", weight=1, time="2026-09-29T06:00:00Z",
+                             summary="UKMTO reports a vessel hit by an unknown projectile 40 nautical miles east of Aden."))
+    assert merge._headline(e)["url"] == "https://example.com/ukmto"

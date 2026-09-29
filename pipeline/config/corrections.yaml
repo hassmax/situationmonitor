@@ -36,3 +36,6 @@ corrections:
   - id: 3b7a5d0f7b8b
     hide: true
     note: Old news. The hospital strike in which Mojtaba Khamenei was reportedly hurt dates from March 2026; new claims about it resurfaced with fresh dates.
+  - id: be29f7e59ee6
+    hide: true
+    note: Duplicate of 8ec7cd9c620d (the USS Dwight D. Eisenhower landing mishap off Virginia), wrongly pinned to Istanbul after merging with unrelated reports of an Iranian plane seized at Istanbul Airport.

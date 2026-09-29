@@ -32,7 +32,7 @@
   };
   // type -> [category, icon, animation]
   const CAT = {
-    missile_drone: ["strike", "missile", "impact"], airstrike: ["strike", "air", "drop"], air_defense: ["strike", "shield", ""],
+    missile_drone: ["strike", "missile", "impact"], airstrike: ["strike", "air", "drop"], air_defense: ["strike", "missile", ""],
     explosion: ["strike", "blast", "flash"], artillery: ["ground", "artillery", "shell"], ground: ["ground", "ground", "clash"],
     territory: ["ground", "territory", "pulse"], naval: ["naval", "naval", "ripple"], deployment: ["deploy", "deploy", ""],
     hybrid: ["hybrid", "hybrid", "pulse"], incursion: ["hybrid", "incursion", "pulse"], diplomacy: ["diplo", "diplo", ""],
@@ -61,8 +61,8 @@
   const svgIcon = (name) => `<svg viewBox="0 0 16 16" aria-hidden="true">${ICONS[name] || ICONS.blast}</svg>`;
   // "On the map": each entry is also a filter. The key is the marker's icon (see legendKey).
   const LEGEND = [
-    ["missile", "strike", "Drone or missile"], ["alert", "strike", "Drone alerts"], ["air", "strike", "Airstrike"],
-    ["blast", "strike", "Explosion"], ["shield", "strike", "Air defense"], ["artillery", "ground", "Shelling"],
+    ["missile", "strike", "Drone or missile"], ["air", "strike", "Airstrike"],
+    ["blast", "strike", "Explosion"], ["artillery", "ground", "Shelling"],
     ["ground", "ground", "Ground fighting"], ["territory", "ground", "Territory change"], ["naval", "naval", "Naval"],
     ["hybrid", "hybrid", "Hybrid attack"], ["incursion", "hybrid", "Incursion"], ["deploy", "deploy", "Deployment"],
     ["diplo", "diplo", "Diplomacy, legal"], ["crate", "supply", "Arms transfer"], ["carrier", "fleet", "US carrier at sea"],
@@ -144,7 +144,8 @@
   // Alerts (drones or missiles reported in flight, grouped per country per day) get a siren and never animate.
   const catOf = (e) => (e.alert ? ["strike", "alert", ""] : CAT[e.type] || ["strike", "blast", ""]);
   // Which "On the map" entry an event belongs to (legal steps share the diplomacy entry).
-  const legendKey = (e) => { const icon = catOf(e)[1]; return icon === "legal" ? "diplo" : icon; };
+  // Drone and missile attacks, interceptions, and warnings of drones in flight are one filter.
+  const legendKey = (e) => { const icon = catOf(e)[1]; return icon === "legal" ? "diplo" : icon === "alert" ? "missile" : icon; };
   const alertsText = (e) => { const n = e.alerts || (e.reports || []).length || 1; return `${n} ${n === 1 ? "alert" : "alerts"}`; };
   const isDiplomacy = (e) => e.type === "diplomacy" || e.type === "ceasefire" || e.type === "legal";
   const tkind = (e) => (e.transfer && e.transfer.kind) || "delivery";
@@ -218,7 +219,7 @@
   mat.shininess = 5;
   const controls = world.controls();
   controls.autoRotate = false;
-  controls.minDistance = 150;
+  controls.minDistance = 120; // globe radius is 100; closer, the painted land turns blocky
   controls.maxDistance = 650;
   if (PHONE) world.renderer().setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
   // While the globe is being dragged or pinched, markers stop sliding into place and heavier
@@ -361,7 +362,7 @@
 
   // Dot and ring sizes follow the zoom, but are only rebuilt once a gesture ends.
   function applyZoomScale() {
-    const k = clamp(world.pointOfView().altitude, 0.9, 2.6) / 1.1;
+    const k = clamp(world.pointOfView().altitude, 0.3, 2.6) / 1.1;
     if (Math.abs(k - zoomK) / zoomK > 0.12) {
       zoomK = k;
       world.pointRadius((d) => (d.alert ? 0.09 : 0.13) * zoomK);
@@ -398,11 +399,18 @@
     return el;
   }
 
+  // The bigger an incident's reported numbers (killed, injured, drones or missiles launched), the
+  // bigger its marker, on top of the size its severity gives: +4px at 10, +8px at 100, +12px at 1,000.
+  const SIZE_PX = { sm: 20, md: 24, lg: 31 };
+  const magnitude = (e) => (e.killed || 0) + 0.5 * (e.injured || 0) + 0.25 * (e.launched || 0);
+  const markerPx = (e, size) => Math.min(PHONE ? 40 : 46, SIZE_PX[size] + 4 * Math.log10(1 + magnitude(e)));
+
   function eventMarker(e, labelIt, animate) {
     const [cat, icon, fx] = catOf(e);
     const el = markerEl(`ev:${e.id}`);
     const live = animate && !reduceMotion;
     const size = e.alert ? "md" : e.severity >= 3 ? "lg" : e.severity === 2 ? "md" : "sm";
+    el.style.setProperty("--s", `${markerPx(e, size).toFixed(1)}px`);
     el.className = `mk cat-${cat} conf-${STATUS[e.status].conf} size-${size}${live && fx ? ` fx-${fx}` : ""}${e.id === S.selectedId ? " is-selected" : ""}${el.classList.contains("spread") ? " spread" : ""}`;
     el.style.setProperty("--fade", String(fade(e)));
     const label = labelIt ? (e.alert ? alertsText(e) : e.wave ? (e.launched ? `${e.launched} launched` : `${e.targets.length} places hit`) : e.place || "") : "";
@@ -411,12 +419,12 @@
     btn.setAttribute("aria-label", `${typeLabel(e)}, ${metaLine(e)}. ${STATUS[e.status].label}.`);
     btn.onclick = (ev) => {
       ev.stopPropagation();
-      if (el.classList.contains("cluster-lead")) zoomTo(e.lat, e.lon, 1.05); // a count bubble zooms in to show its events
+      if (el.classList.contains("cluster-lead")) zoomTo(e.lat, e.lon, 0.7); // a count bubble zooms in to show its events
       else select(e.id, true);
     };
     btn.onmouseenter = () => showTip(el, tipEvent(e));
     btn.onmouseleave = hideTip;
-    return { key: `ev:${e.id}`, el, lat: e.lat, lon: e.lon, hAlt: 0.014, isEvent: true, prio: e.severity * 10 + (isNew(e) ? 5 : 0) + (e._t / 1e13) };
+    return { key: `ev:${e.id}`, el, lat: e.lat, lon: e.lon, hAlt: 0.014, isEvent: true, prio: e.severity * 10 + (isNew(e) ? 5 : 0) + Math.log10(1 + magnitude(e)) + (e._t / 1e13) };
   }
 
   function carrierMarker(c) {
@@ -486,13 +494,14 @@
   // Whole-globe view: 3+ events on one spot become the most important one's icon with a count.
   // Closer in (or for 2 events): they fan out around the spot instead.
   let clusterMode = false;
+  const CLUSTER_ON = 0.95, CLUSTER_OFF = 0.8;
   function declutter() {
     if (!S.html.length) return;
     const pov = world.pointOfView();
     const horizon = (Math.acos(1 / (1 + pov.altitude)) * 180) / Math.PI - 1;
     const R = isMobile() ? 30 : 27; // about one marker width
-    // Count bubbles appear above 1.5 and go away below 1.3, so a pinch near the line doesn't flicker.
-    clusterMode = clusterMode ? pov.altitude > 1.3 : pov.altitude > 1.5;
+    // Count bubbles appear above 0.95 and go away below 0.8, so a pinch near the line doesn't flicker.
+    clusterMode = clusterMode ? pov.altitude > CLUSTER_OFF : pov.altitude > CLUSTER_ON;
     const vis = [];
     for (const d of S.html) {
       if (!d.el) continue;
@@ -514,7 +523,8 @@
     const hidden = new Set();
     vis.forEach((v) => { if (v.d.isEvent) setCluster(v.d, 0); });
     if (clusterMode) {
-      for (const g of group(vis.filter((v) => v.d.isEvent), R * 1.6)) {
+      // the selected event always stays visible
+      for (const g of group(vis.filter((v) => v.d.isEvent && v.d.key !== `ev:${S.selectedId}`), R * 1.6)) {
         if (g.m.length < 3) continue;
         g.m.forEach((v, i) => { if (i === 0) setCluster(v.d, g.m.length); else hidden.add(v); });
       }
