@@ -204,3 +204,15 @@ def test_several_calls_in_one_run_while_groups_wait(monkeypatch):
     calls.clear()
     dedupe.run(evs, {}, SETTINGS, NOW, ask, remaining=60, skip=set())  # low budget: one call, the rest waits
     assert len(calls) == 1
+
+
+def test_a_backlog_is_worked_every_run_otherwise_every_half_hour():
+    calls = []
+    ask = lambda *a, **k: calls.append(1) or {"results": [{"i": 0, "groups": []}]}
+    state = {"dedupe": {"attempt": (NOW - timedelta(minutes=13)).strftime("%Y-%m-%dT%H:%M:%SZ"), "backlog": True}}
+    dedupe.run(fresh(), state, SETTINGS, NOW, ask, remaining=50, skip=set())
+    assert len(calls) == 1                                   # 13 minutes after the last run: asks again
+    state["dedupe"].update(attempt=(NOW - timedelta(minutes=13)).strftime("%Y-%m-%dT%H:%M:%SZ"), backlog=False)
+    evs = fresh() + [ev("y", "Another hybrid incident in London.", hours_ago=1)]
+    dedupe.run(evs, state, SETTINGS, NOW, ask, remaining=50, skip=set())
+    assert len(calls) == 1                                   # nothing was waiting: waits for 30 minutes
