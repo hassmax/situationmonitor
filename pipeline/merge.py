@@ -44,6 +44,10 @@ BUILDUP_OVERLAP = 0.25  # share of words two deployment summaries need in common
 # country-level reports are grouped as attack waves or alerts instead.
 LOOSE_FAMILIES = {"deployment", "hybrid", "naval", "incursion"}
 STORY_OVERLAP = 0.25
+# Short summaries can pass a share test on one word: "Four personnel injured in a mishap aboard the
+# carrier USS Dwight D. Eisenhower" and "An Iranian aircraft is seized in Istanbul" share only
+# "aircraft", a quarter of the shorter one, and the carrier ended up pinned to Istanbul.
+MIN_SHARED = 2
 STORY_MAX_KM = 2500
 STRIKE_FOLD_OVERLAP = 0.6  # stored strikes/fighting at one place fold only with wording this close
 # Meetings, visits, statements and legal steps. Their theater is a judgement call (a German
@@ -155,17 +159,44 @@ def _same_story(e: dict, cand: dict) -> bool:
     return _similar(e, cand)
 
 
+def _same_broad_hit(e: dict, cand: dict) -> bool:
+    """Strikes and fighting: a report pinned only to a whole country or region ("Fighting in Ethiopia
+    intensifies") is the same story as one pinned to a spot in that country (the same outlet's other
+    article, pinned to Addis Ababa) when the wording matches closely. Country-level reports hold many
+    separate incidents, so close wording is required, not just similar."""
+    if not (_broad(e) or _broad(cand)) or not e.get("country") or e.get("country") != cand.get("country"):
+        return False
+    if haversine_km(e["lat"], e["lon"], cand["lat"], cand["lon"]) > STORY_MAX_KM:
+        return False
+    x, y = e.get("attacker"), cand.get("attacker")
+    if x and y and x != y:
+        return False
+    # The same template can describe different places ("Russian forces took control of Maryino" /
+    # "... of Petropavlivka and Lozova"): the names in the shorter summary must be in the other.
+    a, b = sorted((_names(e["summary"]), _names(cand["summary"])), key=len)
+    return a <= b and _similar(e, cand, STRIKE_FOLD_OVERLAP)
+
+
+def _names(text: str) -> set[str]:
+    """Capitalized words other than the first ("Maryino", "Sumy"), lowercased, without a final s."""
+    words = re.findall(r"[A-Za-z][\w'-]*", text or "")
+    return {w.lower().rstrip("s").removesuffix("'") for w in words[1:] if w[0].isupper()}
+
+
 def _similar(e: dict, cand: dict, threshold: float = 0.0) -> bool:
     """Similar wording, not counting the place names themselves ("Strait of Hormuz" is in every
     report from there)."""
     places = _words(" ".join(str(x.get("place") or "") for x in (e, cand)))
     a, b = _words(e["summary"]) - places, _words(cand["summary"]) - places
-    return bool(a and b) and len(a & b) / min(len(a), len(b)) >= (threshold or STORY_OVERLAP)
+    return (bool(a and b) and len(a & b) >= MIN_SHARED
+            and len(a & b) / min(len(a), len(b)) >= (threshold or STORY_OVERLAP))
 
 
 def _overlap(a: str, b: str) -> float:
     wa, wb = _words(a), _words(b)
-    return len(wa & wb) / min(len(wa), len(wb)) if wa and wb else 0.0
+    if not (wa and wb) or len(wa & wb) < MIN_SHARED:
+        return 0.0
+    return len(wa & wb) / min(len(wa), len(wb))
 
 
 def _same_talks(e: dict, cand: dict) -> bool:
@@ -220,7 +251,8 @@ def _find_match(events: list[dict], cand: dict) -> dict | None:
             continue  # two reports that only share a region or sea pin need similar wording too
         if d > radius:
             far = ((fam == "deployment" and _same_buildup(e, cand)) or (fam in LOOSE_FAMILIES and _same_story(e, cand))
-                   or (talks and _same_statement(e, cand)))
+                   or (talks and _same_statement(e, cand))
+                   or (fam in ("strike", "ground") and _same_broad_hit(e, cand)))
             if not far:
                 continue
             d += 100_000  # a match, but ranked after any event that is actually nearby
@@ -481,11 +513,21 @@ def _absorb(match: dict, cand: dict) -> None:
     _add_origins(match, cand.get("origins"))
 
 
+# UK Maritime Trade Operations (and the Joint Maritime Information Center) are the primary
+# authority on incidents involving merchant ships: their notices give the position and what was
+# seen, and they keep "unknown projectile" unknown.
+MARITIME_AUTHORITY = re.compile(r"\b(?:UKMTO|UK Maritime Trade Operations|JMIC)\b", re.IGNORECASE)
+
+
 def _headline(event: dict) -> dict:
-    """Prefer an unaligned source, then higher weight, then the earliest report."""
+    """Prefer an unaligned source, then (for incidents at sea) a report citing UKMTO or JMIC, then
+    higher weight, then the earliest report."""
+    naval = FAMILY.get(event.get("type")) == "naval"
     return sorted(
         event["reports"],
-        key=lambda r: (r.get("side") is not None, -int(r.get("weight", 1)), r["time"]),
+        key=lambda r: (r.get("side") is not None,
+                       naval and not MARITIME_AUTHORITY.search(r.get("summary") or ""),
+                       -int(r.get("weight", 1)), r["time"]),
     )[0]
 
 
