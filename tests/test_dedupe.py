@@ -100,7 +100,7 @@ def test_answers_in_other_shapes_are_still_read():
         assert sorted(e["id"] for e in folded) == ["b", "c"], reply
 
 
-def test_biggest_group_is_asked_first():
+def test_the_group_waiting_longest_is_asked_first():
     small = [ev("s1", "Drones hit a depot.", country="UA", type_="hybrid", hours_ago=1),
              ev("s2", "A depot was hit by drones.", country="UA", type_="hybrid", hours_ago=1)]
     first = dedupe.groups(fresh() + small, {}, NOW)[0]
@@ -139,3 +139,11 @@ def test_big_groups_are_shown_in_overlapping_runs_so_early_reports_are_compared(
     shown = {e["id"] for p in parts for e in p}
     assert shown == {e["id"] for e in evs}
     assert any({"h00", "h01"} <= {e["id"] for e in p} for p in parts)
+
+
+def test_a_small_old_group_is_not_starved_by_a_big_new_one():
+    old = [ev("o1", "A Belgian official says Iran is behind attacks on Jewish sites.", country="BE", hours_ago=50),
+           ev("o2", "Belgium's intelligence chief says Tehran is behind attacks on Jewish sites.", country="BE",
+              hours_ago=40)]
+    new = [ev(f"n{k}", f"Hybrid incident report {k}.", country="PL", hours_ago=3 - k * 0.1) for k in range(12)]
+    assert [e["id"] for e in dedupe.groups(new + old, {}, NOW)[0]] == ["o1", "o2"]
