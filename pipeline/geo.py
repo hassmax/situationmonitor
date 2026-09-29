@@ -10,6 +10,7 @@ the same way once per REPAIR_VERSION, a few per run.
 """
 from __future__ import annotations
 
+import re
 import time
 
 from common import haversine_km, log
@@ -146,6 +147,46 @@ SEAS = {
 def _sea(name: str | None):
     low = (name or "").lower()
     return next((v for k, v in SEAS.items() if k in low), None)
+
+
+# US combatant commands name a region, not a place: "six F-16s moved from Aviano to CENTCOM" was
+# pinned to CENTCOM's headquarters in Tampa and its route drawn to the middle of the US. Events
+# placed at a command, and transfers sent to one, go to the region instead, marked approximate
+# and labeled as the command's area (routes to a region are drawn faint, like country-level ones).
+# The anchors are over open water or a region's middle, never a particular base.
+COMMANDS = [
+    (re.compile(r"\bCENTCOM\b|\bCentral Command\b", re.IGNORECASE), "Middle East (CENTCOM area)", 27.0, 51.0),
+    (re.compile(r"\bEUCOM\b|\bEuropean Command\b", re.IGNORECASE), "Europe (EUCOM area)", 50.0, 15.0),
+    (re.compile(r"\bAFRICOM\b|\bAfrica Command\b", re.IGNORECASE), "Africa (AFRICOM area)", 5.0, 20.0),
+    (re.compile(r"\bINDOPACOM\b|\bIndo-Pacific Command\b|\bPACOM\b", re.IGNORECASE),
+     "Indo-Pacific (INDOPACOM area)", 15.0, 135.0),
+    (re.compile(r"\bSOUTHCOM\b|\bSouthern Command\b", re.IGNORECASE), "Latin America (SOUTHCOM area)", 15.0, -75.0),
+]
+
+
+def _command(text: str | None):
+    return next(((label, lat, lon) for rx, label, lat, lon in COMMANDS if rx.search(text or "")), None)
+
+
+def pin_commands(events: list[dict]) -> int:
+    """Move events placed at a US command to its region, and point transfers sent to a command at
+    it. Runs every run over all events (cheap, and a no-op once done). Returns how many changed."""
+    changed = 0
+    for e in events:
+        if e.get("wave") or e.get("alert"):
+            continue
+        c = _command(e.get("place"))
+        if c and (e.get("lat"), e.get("lon")) != (c[1], c[2]):
+            e.update(place=c[0], lat=c[1], lon=c[2], approx=True)
+            changed += 1
+        t = e.get("transfer")
+        if e.get("type") == "arms_transfer" and isinstance(t, dict):
+            to = t.get("to") or {}
+            dest = _command(to.get("place")) or (None if to.get("place") else _command(e.get("place")) or _command(e.get("summary")))
+            if dest and to.get("place") != dest[0]:
+                t["to"] = {"place": dest[0], "lat": dest[1], "lon": dest[2], "region": True}
+                changed += 1
+    return changed
 
 
 def repair(events: list[dict], geocoder: Geocoder, state: dict) -> int:

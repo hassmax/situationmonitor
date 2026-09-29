@@ -199,6 +199,7 @@ def main() -> int:
     known = {e["id"] for e in events}
     events = merge.merge(events, candidates)
     events, folded = merge.consolidate(events, hidden)
+    geo.pin_commands(events)  # events placed at a US command go to its region (not its headquarters)
     events = merge.prune(events, t0, settings["event_retention_days"], settings["max_events"])
     events = corrections.drop_reports(events, fixes)  # before scoring, so confidence is recomputed
     merge.apply_status(events, cells)

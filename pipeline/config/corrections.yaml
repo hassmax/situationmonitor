@@ -39,3 +39,6 @@ corrections:
   - id: be29f7e59ee6
     hide: true
     note: Duplicate of 8ec7cd9c620d (the USS Dwight D. Eisenhower landing mishap off Virginia), wrongly pinned to Istanbul after merging with unrelated reports of an Iranian plane seized at Istanbul Airport.
+  - id: 9c05db1001f2
+    hide: true
+    note: Old news. Iran's strikes on sites in Bahrain and Kuwait after a wave of US strikes date from July 2026; one outlet's article resurfaced with a fresh date.
