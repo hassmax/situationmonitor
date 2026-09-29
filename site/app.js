@@ -219,7 +219,7 @@
   mat.shininess = 5;
   const controls = world.controls();
   controls.autoRotate = false;
-  controls.minDistance = 120; // globe radius is 100; closer, the painted land turns blocky
+  controls.minDistance = 106; // globe radius is 100: close to city scale (the painted land is coarse this close)
   controls.maxDistance = 650;
   if (PHONE) world.renderer().setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
   // While the globe is being dragged or pinched, markers stop sliding into place and heavier
@@ -327,6 +327,9 @@
 
   // ------------------------------------------------------------------ 3D layers: wave target dots, impact rings, lines
   let zoomK = 1.6;
+  // Line widths are in globe units, so zoomed in close they would turn into wide bands: below
+  // about altitude 1 they narrow with the zoom, like the dots.
+  const arcStroke = (a) => (a.stroke == null ? null : a.stroke * Math.min(1, zoomK / 0.9));
   world
     .pointLat("lat").pointLng("lon")
     .pointAltitude(0.005)
@@ -350,7 +353,7 @@
   };
   world
     .arcStartLat("sLat").arcStartLng("sLng").arcEndLat("eLat").arcEndLng("eLng")
-    .arcColor((a) => a.color).arcStroke((a) => a.stroke)
+    .arcColor((a) => a.color).arcStroke(arcStroke)
     .arcDashLength((a) => ARC[a.kind].dash).arcDashGap((a) => ARC[a.kind].gap)
     .arcDashInitialGap((a) => (a.kind === "flow" ? 0 : a.seed))
     .arcDashAnimateTime((a) => (reduceMotion ? 0 : a.ms || 0))
@@ -362,11 +365,12 @@
 
   // Dot and ring sizes follow the zoom, but are only rebuilt once a gesture ends.
   function applyZoomScale() {
-    const k = clamp(world.pointOfView().altitude, 0.3, 2.6) / 1.1;
+    const k = clamp(world.pointOfView().altitude, 0.12, 2.6) / 1.1;
     if (Math.abs(k - zoomK) / zoomK > 0.12) {
       zoomK = k;
       world.pointRadius((d) => (d.alert ? 0.09 : 0.13) * zoomK);
       world.ringMaxRadius((r) => r.max * zoomK);
+      world.arcStroke(arcStroke);
     }
   }
   world.onZoom(() => {
@@ -419,7 +423,7 @@
     btn.setAttribute("aria-label", `${typeLabel(e)}, ${metaLine(e)}. ${STATUS[e.status].label}.`);
     btn.onclick = (ev) => {
       ev.stopPropagation();
-      if (el.classList.contains("cluster-lead")) zoomTo(e.lat, e.lon, 0.7); // a count bubble zooms in to show its events
+      if (el.classList.contains("cluster-lead")) zoomTo(e.lat, e.lon, 0.35); // a count bubble zooms in to show its events
       else select(e.id, true);
     };
     btn.onmouseenter = () => showTip(el, tipEvent(e));
@@ -494,13 +498,13 @@
   // Whole-globe view: 3+ events on one spot become the most important one's icon with a count.
   // Closer in (or for 2 events): they fan out around the spot instead.
   let clusterMode = false;
-  const CLUSTER_ON = 0.95, CLUSTER_OFF = 0.8;
+  const CLUSTER_ON = 0.55, CLUSTER_OFF = 0.45;
   function declutter() {
     if (!S.html.length) return;
     const pov = world.pointOfView();
     const horizon = (Math.acos(1 / (1 + pov.altitude)) * 180) / Math.PI - 1;
     const R = isMobile() ? 30 : 27; // about one marker width
-    // Count bubbles appear above 0.95 and go away below 0.8, so a pinch near the line doesn't flicker.
+    // Count bubbles appear above 0.55 and go away below 0.45, so a pinch near the line doesn't flicker.
     clusterMode = clusterMode ? pov.altitude > CLUSTER_OFF : pov.altitude > CLUSTER_ON;
     const vis = [];
     for (const d of S.html) {
