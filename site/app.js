@@ -970,18 +970,126 @@
     return arcs;
   }
 
+  // ------------------------------------------------------------------ sea lanes for carrier lines
+  // A carrier line between two points is drawn along the usual sea lanes (open ocean, straits,
+  // canals a carrier can use), not straight over land: San Diego to the Arabian Sea crosses the
+  // Pacific and goes through Malacca, not over Russia. Carriers can't use the Panama Canal. The
+  // route shows the likely way, not a reported track.
+  const SEA = {
+    SD: [32.3, -118.5], CAL: [37, -124.5], PNW: [48.3, -125.5], NEP: [42, -140], HAW: [20.5, -158.5],
+    GUAM: [13.3, 144.3], YOK: [34.5, 140.2], JPS: [31, 135], PHS: [18, 132], ECS: [29, 125.5], KOR: [33.5, 128.5],
+    LUZ: [20.8, 121.5], SCSN: [18, 115.5], SCS: [12, 113], SING: [1.8, 105.2], SSTR: [1.2, 103.8],
+    MALS: [2.5, 101], MALN: [6.2, 97.2], SRI: [5.2, 81], DIEGO: [-7, 72.5], ARB: [15, 63], OMN: [21, 61],
+    GOM: [25.3, 57.6], HOR: [26.55, 56.65], PGE: [26.2, 54], PG: [27.2, 51.2], ADEN: [12.8, 48.5],
+    BAB: [12.6, 43.3], RSS: [16, 41.5], RSN: [26, 35.2], SUEZ: [29.8, 32.6], PSAID: [31.8, 32.3],
+    EMED: [33.8, 28], CRETE: [34.6, 23], IONIAN: [36, 17], SICILY: [36.8, 11.2], WMED: [38.2, 5],
+    GIB: [35.95, -5.8], ATLE: [38, -15], FIN: [44, -10.5], CHAN: [49.8, -3], DOV: [51.1, 1.6], NSEA: [57, 3],
+    AZO: [38.5, -28], NOR: [36.7, -74.5], WAF1: [10, -20], WAF2: [-12, 2], CAPE: [-36.5, 19], SMAD: [-28, 47],
+  };
+  const SEA_LANES = ("SD-CAL CAL-PNW PNW-NEP NEP-HAW SD-HAW SD-YOK PNW-YOK HAW-GUAM HAW-YOK HAW-PHS GUAM-PHS GUAM-YOK " +
+    "PHS-JPS JPS-YOK JPS-ECS ECS-KOR ECS-LUZ PHS-LUZ LUZ-SCSN SCSN-SCS SCS-SING SING-SSTR SSTR-MALS MALS-MALN " +
+    "MALN-SRI SRI-ARB SRI-DIEGO DIEGO-ARB ARB-OMN OMN-GOM GOM-HOR HOR-PGE PGE-PG ARB-ADEN ADEN-BAB BAB-RSS " +
+    "RSS-RSN RSN-SUEZ SUEZ-PSAID PSAID-EMED EMED-CRETE CRETE-IONIAN IONIAN-SICILY SICILY-WMED WMED-GIB GIB-ATLE " +
+    "GIB-AZO ATLE-AZO AZO-NOR ATLE-FIN FIN-CHAN CHAN-DOV DOV-NSEA ATLE-WAF1 WAF1-WAF2 WAF2-CAPE CAPE-SMAD SMAD-DIEGO")
+    .split(" ").map((p) => p.split("-"));
+  const seaCache = new Map();
+  // A coarse land map (half a degree), painted once from the same country shapes as the globe, to
+  // tell whether a straight line stays at sea.
+  let landMask = null;
+  function isLand(lat, lon) {
+    if (!landMask) {
+      if (!landShapes.length) return false;
+      const c = document.createElement("canvas");
+      c.width = 720; c.height = 360;
+      const g = c.getContext("2d", { willReadFrequently: true });
+      g.fillStyle = "#000"; g.fillRect(0, 0, 720, 360); g.fillStyle = "#fff";
+      for (const f of landShapes) {
+        g.beginPath();
+        for (const poly of f.geometry.coordinates) for (const ring of poly) {
+          ring.forEach(([lo, la], i) => (i ? g.lineTo((lo + 180) * 2, (90 - la) * 2) : g.moveTo((lo + 180) * 2, (90 - la) * 2)));
+          g.closePath();
+        }
+        g.fill("evenodd");
+      }
+      landMask = g.getImageData(0, 0, 720, 360).data;
+      seaCache.clear();
+    }
+    const x = Math.min(719, Math.max(0, Math.floor(((((lon + 180) % 360) + 360) % 360) * 2))), y = Math.min(359, Math.max(0, Math.floor((90 - lat) * 2)));
+    return landMask[(y * 720 + x) * 4] > 127;
+  }
+  // Does the straight (great-circle) line from a to b stay at sea? The first and last 80 km are
+  // not checked: ports and coasts sit next to land on a map this coarse.
+  function atSea(a, b) {
+    const d = km(a.lat, a.lon, b.lat, b.lon), n = Math.ceil(d / 50);
+    for (let i = 1; i < n; i++) {
+      if (d * (i / n) < 80 || d * (1 - i / n) < 80) continue;
+      const p = slerp(a, b, i / n);
+      if (isLand(p.lat, p.lon)) return false;
+    }
+    return true;
+  }
+  // Points from a to b along the sea lanes (a and b included). A line that stays at sea is drawn
+  // straight; otherwise each end joins the network at the waypoints it can reach at sea.
+  function seaPath(a, b) {
+    const direct = [a, b];
+    const d0 = km(a.lat, a.lon, b.lat, b.lon);
+    if (d0 < 300) return direct;
+    // until the country shapes load there is no land map: draw straight, remember nothing
+    if (!landShapes.length) return direct;
+    const key = [a.lat, a.lon, b.lat, b.lon].map((x) => x.toFixed(2)).join(",");
+    if (seaCache.has(key)) return seaCache.get(key);
+    if (atSea(a, b)) { seaCache.set(key, direct); return direct; }
+    const pt = (n) => ({ lat: SEA[n][0], lon: SEA[n][1] });
+    const adj = new Map(Object.keys(SEA).map((n) => [n, []]));
+    for (const [x, y] of SEA_LANES) {
+      const d = km(SEA[x][0], SEA[x][1], SEA[y][0], SEA[y][1]);
+      adj.get(x).push([y, d]); adj.get(y).push([x, d]);
+    }
+    // each end joins the network at every waypoint it can reach at sea (or its three nearest)
+    const near = (p) => {
+      const all = Object.keys(SEA).map((n) => [n, km(p.lat, p.lon, SEA[n][0], SEA[n][1])]).sort((u, v) => u[1] - v[1]);
+      const open = all.filter(([n]) => atSea(p, { lat: SEA[n][0], lon: SEA[n][1] }));
+      return open.length ? open : all.slice(0, 3);
+    };
+    adj.set("A", near(a)); near(b).forEach(([n, d]) => adj.get(n).push(["B", d]));
+    const dist = new Map([["A", 0]]), prev = new Map(), done = new Set();
+    while (true) {
+      let u = null;
+      for (const [n, d] of dist) if (!done.has(n) && (u === null || d < dist.get(u))) u = n;
+      if (u === null || u === "B") break;
+      done.add(u);
+      for (const [v, w] of adj.get(u) || []) {
+        const nd = dist.get(u) + w;
+        if (!dist.has(v) || nd < dist.get(v)) { dist.set(v, nd); prev.set(v, u); }
+      }
+    }
+    let path = direct;
+    if (prev.has("B")) {
+      const nodes = [];
+      for (let n = prev.get("B"); n !== "A"; n = prev.get(n)) nodes.unshift(n);
+      path = [a, ...nodes.map(pt), b];
+    }
+    seaCache.set(key, path);
+    return path;
+  }
+  const alongSea = (a, b, base, lift) => {
+    const pts = seaPath(a, b), out = [];
+    for (let i = 0; i < pts.length - 1; i++) out.push(...surfaceArcs(pts[i], pts[i + 1], base, lift));
+    return out;
+  };
+
   function fleetArcs() {
     const arcs = [];
     for (const c of S.fleet) {
       if (!carrierOnMap(c)) continue;
       // where it came from: faint and still
       if (c.prev && c._moved && Date.now() - c._moved < 14 * DAY && km(c.prev.lat, c.prev.lon, c._lat, c._lon) > 100) {
-        arcs.push(...surfaceArcs({ lat: c.prev.lat, lon: c.prev.lon }, { lat: c._lat, lon: c._lon },
+        arcs.push(...alongSea({ lat: c.prev.lat, lon: c.prev.lon }, { lat: c._lat, lon: c._lon },
           { carrier: c, kind: "track", color: rgba(CAT_RGB.fleet, 0.28), stroke: 0.2, ms: 0, seed: 0 }, 0.002));
       }
       // where it is headed: dashes flow from the last reported position toward the stated destination
       if (c.heading_to && km(c._lat, c._lon, c.heading_to.lat, c.heading_to.lon) > 100) {
-        arcs.push(...surfaceArcs({ lat: c._lat, lon: c._lon }, c.heading_to,
+        arcs.push(...alongSea({ lat: c._lat, lon: c._lon }, c.heading_to,
           { carrier: c, kind: "plan", color: rgba(CAT_RGB.fleet, 0.7), stroke: 0.3, ms: 6000, seed: 0 }, 0.002));
       }
     }
