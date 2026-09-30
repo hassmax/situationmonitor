@@ -161,3 +161,9 @@ def test_shin_plus_another_osint_telegram_channel():
     assert alerts.event_matches(ev("t", reports=[shin, rep("https://x.com/a", platform="bluesky")], **base), RULES) == []
     msg = run(started(), [ev("p", reports=[shin, rep("https://t.me/DeepStateUA/55")], **base)])[0]
     assert "reported by two OSINT Telegram channels" in msg
+
+
+def test_possibly_old_stories_send_no_alert():
+    import alerts
+    e = {"id": "o", "severity": 3, "status": "corroborated", "theater": "mideast", "possibly_old": True}
+    assert alerts.event_matches(e, {"rules": {"major_corroborated": {"enabled": True}}}) == []

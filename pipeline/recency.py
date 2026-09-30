@@ -24,8 +24,10 @@ Held back: a headline like "Yemen's Houthis launched ballistic missiles at Israe
 attack that recurs, so the model can't tell a March article relisted today from a new attack, and
 rightly keeps "another incident of the same kind". But a real attack of that size is covered widely
 within hours. So a notable event resting on one source, whose search finds older coverage of the
-topic and no current coverage from any other outlet, is held off the map (`held`) until a second,
-independent source reports it; it is kept, and shown as soon as that happens.
+topic and no current coverage from any other outlet, is flagged "possibly an old story" (`held`):
+still on the map, but faded, not animated, and left out of alerts, until a second, independent
+source reports it. It is not hidden: the search can miss current coverage worded differently, or
+of places few outlets cover, and a real event must not disappear.
 
 Searches or model calls that fail leave the event on the map and are retried on later runs.
 Dropped events are kept in state. When the rule changes (CHECK_VERSION), they are put back and
@@ -145,8 +147,8 @@ def _outlet_of(title: str) -> str:
 
 
 def held(e: dict) -> bool:
-    """Kept off the map until a second source reports it: a notable news-only event from a single
-    source whose check found older coverage of the topic and no current coverage elsewhere."""
+    """Flagged "possibly an old story" until a second source reports it: a notable news-only event
+    from a single source whose check found older coverage of the topic and no current coverage."""
     cov = e.get("coverage") or {}
     groups = {r.get("group") or r.get("source") for r in e.get("reports", [])}
     return (bool(cov.get("older")) and not cov.get("current") and int(e.get("severity") or 1) >= HOLD_MIN_SEVERITY

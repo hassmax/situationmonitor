@@ -1221,3 +1221,7 @@ h2 {
 }
 .live-note.is-on { transform: translate(-50%, 0); }
 @media (prefers-reduced-motion: reduce) { .live-note { transition: none; } }
+
+/* "possibly an old story": a single-source event with only older coverage */
+.verdict--doubt { border-color: rgba(243, 193, 75, 0.45); margin-bottom: 8px; }
+.verdict--doubt strong { color: var(--warn); }

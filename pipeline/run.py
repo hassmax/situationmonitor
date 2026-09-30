@@ -217,15 +217,13 @@ def main() -> int:
 
     # 7. Situation brief: at most one model call an hour, from the same daily budget
     # Hidden events are left out and edits applied; everything below uses this published list.
-    # Single-source stories that look like old news are held off the map until a second source
-    # reports them (recency.held); they stay in the working set.
-    held = [e for e in events if recency.held(e)]
-    if held:
-        log(f"[recency] held until a second source reports it: {len(held)} "
-            f"({'; '.join(repr(e['summary'][:60]) for e in held[:3])})")
-    held_ids = {e["id"] for e in held}
-    published = corrections.publish([merge.public_event(e) for e in events if e["id"] not in held_ids],
-                                    fixes, extract.EVENT_TYPES)
+    # Single-source stories that look like old news stay on the map but are flagged "possibly an
+    # old story" (recency.held): faded, not animated, left out of alerts, until a second source joins.
+    doubtful = {e["id"] for e in events if recency.held(e)}
+    if doubtful:
+        log(f"[recency] flagged as possibly old until a second source reports it: {len(doubtful)}")
+    published = corrections.publish([{**merge.public_event(e), **({"possibly_old": True} if e["id"] in doubtful else {})}
+                                     for e in events], fixes, extract.EVENT_TYPES)
     if not args.no_llm:
         brief.update(state, published, {t["id"]: t["name"] for t in cfg.theaters}, settings, t0,
                      extract.ask_json, extract.calls_remaining(state, settings, t0))
@@ -252,7 +250,6 @@ def main() -> int:
     taken_down = {str(i): None for i in cfg.removed}
     taken_down.update({e["id"]: archive._day(e) for e in events if e["id"] in hidden})
     taken_down.update({e["id"]: archive._day(e) for e in folded})  # now part of another event
-    taken_down.update({e["id"]: archive._day(e) for e in held})  # back once a second source reports it
     for d in state.get("dropped_as_old", []):
         if d.get("event"):
             taken_down[d["event"]["id"]] = archive._day(d["event"])

@@ -191,7 +191,7 @@
     for (const k of Object.keys(viewed)) if (!(viewed[k] > cutoff)) delete viewed[k];
     try { localStorage.setItem("gsm_viewed", JSON.stringify(viewed)); } catch (_) { /* storage blocked */ }
   }
-  const isNew = (e) => !viewed[e.id] && (e._t > Date.now() - HOUR || (lastSeen && e._t > lastSeen && e._t > Date.now() - DAY));
+  const isNew = (e) => !viewed[e.id] && !e.possibly_old && (e._t > Date.now() - HOUR || (lastSeen && e._t > lastSeen && e._t > Date.now() - DAY));
   const isLive = (e) => !viewed[e.id] && (Date.now() - e._t < LIVE_MS || isNew(e));
 
   // ------------------------------------------------------------------ state
@@ -432,7 +432,7 @@
   function eventMarker(e, labelIt, animate) {
     const [cat, icon, fx] = catOf(e);
     const el = markerEl(`ev:${e.id}`);
-    const live = animate && !reduceMotion;
+    const live = animate && !reduceMotion && !e.possibly_old;
     const size = e.alert ? "md" : e.severity >= 3 ? "lg" : e.severity === 2 ? "md" : "sm";
     el.style.setProperty("--s", `${markerPx(e, size).toFixed(1)}px`);
     el.className = `mk cat-${cat} conf-${STATUS[e.status].conf} size-${size}${live && fx ? ` fx-${fx}` : ""}${e.id === S.selectedId ? " is-selected" : ""}${el.classList.contains("spread") ? " spread" : ""}`;
@@ -574,7 +574,7 @@
       : e.wave && e.targets && e.targets.length > 1 ? `<span>${e.targets.length} locations</span>` : "";
     return `<div class="tip"><div class="tip-meta">${eventIcon(e)}<b>${esc(typeLabel(e))}</b><span>${esc(metaLine(e))}</span></div>
       <div class="tip-sum">${esc(e.summary)}</div>
-      <div class="tip-foot"><span>${esc(STATUS[e.status].label)}</span>${extra}<span>${esc(ago(e._t))}</span></div></div>`;
+      <div class="tip-foot"><span>${esc(STATUS[e.status].label)}</span>${e.possibly_old ? "<span>Possibly an old story</span>" : ""}${extra}<span>${esc(ago(e._t))}</span></div></div>`;
   }
   function tipCarrier(c) {
     return `<div class="tip"><div class="tip-meta">${iconBadge("carrier", "fleet")}<b>${esc(c.name)}</b><span>${esc(c.hull)}</span></div>
@@ -810,9 +810,10 @@
   // Deliveries and pledges are drawn as supply routes, not as markers.
   const onMap = (e) => e.type !== "arms_transfer" || tkind(e) === "interdiction";
   function fade(e) {
-    if (S.windowH <= 6) return 1;
+    const doubt = e.possibly_old ? 0.55 : 1; // may be an old story: shown, but quieter
+    if (S.windowH <= 6) return doubt;
     const age = Date.now() - e._t;
-    return clamp(1 - ((age - 6 * HOUR) / (S.windowH * HOUR - 6 * HOUR)) * 0.6, 0.4, 1);
+    return doubt * clamp(1 - ((age - 6 * HOUR) / (S.windowH * HOUR - 6 * HOUR)) * 0.6, 0.4, 1);
   }
 
   // ------------------------------------------------------------------ supply routes (the time window)
@@ -1311,6 +1312,7 @@
       ${(e.corrected || []).length ? `<div class="corrected"><span class="corrected-tag">Corrected</span><ul>${e.corrected.map((c) => `<li>${esc(c.change)}: ${esc(c.note)}</li>`).join("")}</ul></div>` : ""}
       <h3>${esc(e.summary)}</h3>
       <p class="detail-where">${where}<br>${e.alert ? "First alert" : "Happened"} ${esc(fmtTime(e._t))}${e._tu - e._t > 30 * 60e3 ? `, latest report ${esc(ago(e._tu))}` : ""}</p>
+      ${e.possibly_old ? `<div class="verdict verdict--doubt"><span class="conf-swatch conf-dashed" aria-hidden="true"></span><div><strong>Possibly an old story</strong><p>Only one outlet has this, and a news search found earlier coverage of the same topic but nothing current from other outlets. It may be an old article republished with a new date. It stays on the map, quieter, and is confirmed if another source reports it.</p></div></div>` : ""}
       <div class="verdict"><span class="conf-swatch conf-${STATUS[e.status].conf}" aria-hidden="true"></span><div><strong>${esc(STATUS[e.status].label)}</strong><p>${esc(STATUS[e.status].note(e.sources_count, e.news_nearby))}</p></div></div>
       ${facts.length ? `<div class="facts">${facts.join("")}</div>` : ""}
       ${e.legal_basis ? `<div class="legal-basis"><span>Stated legal basis</span><strong>${esc(e.legal_basis)}</strong><p>As reported by the sources below. The dashboard records claimed justifications; it does not assess them.</p></div>` : ""}
