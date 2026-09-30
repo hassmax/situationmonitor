@@ -31,7 +31,7 @@ EVENT_TYPES = {
     "naval": "incident at sea involving ships or submarines",
     "explosion": "blast or sabotage with unclear cause",
     "deployment": "troop or ship buildups, exercises, shows of force (a move between two named places, such as aircraft returning home from a region, is arms_transfer)",
-    "diplomacy": "ceasefires, peace talks, signed agreements, summits, visits or meetings between leaders, alliance or defense-pact meetings and invocations, UN Security Council action, or formal escalations such as declarations of war",
+    "diplomacy": "ceasefires, peace talks, signed agreements, summits, visits or meetings between leaders, alliance or defense-pact meetings and invocations, UN Security Council action, or formal escalations such as declarations of war; also a country's formal change in its international commitments or relations: leaving, suspending, or joining a treaty, alliance, or international body, expelling diplomats, recalling an ambassador, closing an embassy, cutting relations, or a new sanctions package against another state",
     "hybrid": "sabotage, arson, undersea cable or pipeline damage, GPS jamming, cyberattacks with physical effects, or foiled plots of these",
     "incursion": "airspace violations, drone incursions, border provocations, or military buildups at a border",
     "arms_transfer": "major arms deliveries, air or sea bridges (surges of cargo flights or ships carrying weapons), military aid deliveries, intercepted weapons shipments, or a country moving its own aircraft, ships or units between named places (deploying to a region, or returning home from one: supplier and recipient are both that country, with from and to)",
@@ -40,7 +40,7 @@ EVENT_TYPES = {
 
 SYSTEM_PROMPT = """You turn raw posts from OSINT accounts, official military channels, and news feeds into structured records for a live armed-conflict map. Reply with one JSON object and nothing else.
 
-For every input item (identified by "i"), decide whether it reports a specific, new, concrete development in an armed conflict or a notable military action. Relevant: strikes, attacks, shelling, battles, territorial gains or losses, air-defense interceptions, missile or drone launches, naval or air incidents, significant troop deployments or military exercises, casualty reports tied to a specific attack, and hybrid-warfare incidents (sabotage, arson, cable or pipeline damage, GPS jamming, airspace or border violations, drone incursions) when a state is blamed or suspected. Arrests or charges count when they reveal a specific incident or plot. Credible reports of preparations for military action also count (units ordered or put on notice, operational planning reported by officials, force buildups), typed as deployment. Also relevant: major diplomatic developments that bear on these conflicts, such as ceasefire or peace talks, signed agreements, summits between parties or mediators, alliance or defense-pact meetings and invocations (for example NATO Article 4 consultations or meetings under the Saudi-Pakistan-Turkey Mecca defense pact), UN Security Council votes, and visits or meetings between heads of state or government, or foreign or defense ministers, that bear on these conflicts, even when no outcome is announced (for example Israel's prime minister visiting the UAE, or Ukraine's president meeting the US president; a secret, unannounced, or first-ever visit is especially significant). Also relevant: major arms transfers and air or sea bridges to parties in these conflicts, and formal legal steps about uses of force (see the legal type). Not relevant: opinion, analysis with no new event, fundraising, memes, anniversaries, domestic politics, routine condemnations or statements of concern, routine phone calls, visits by lower-level officials with no stated outcome, and items that fit none of the theaters below.
+For every input item (identified by "i"), decide whether it reports a specific, new, concrete development in an armed conflict or a notable military action. Relevant: strikes, attacks, shelling, battles, territorial gains or losses, air-defense interceptions, missile or drone launches, naval or air incidents, significant troop deployments or military exercises, casualty reports tied to a specific attack, and hybrid-warfare incidents (sabotage, arson, cable or pipeline damage, GPS jamming, airspace or border violations, drone incursions) when a state is blamed or suspected. Arrests or charges count when they reveal a specific incident or plot. Credible reports of preparations for military action also count (units ordered or put on notice, operational planning reported by officials, force buildups), typed as deployment. Also relevant: major diplomatic developments that bear on these conflicts, such as ceasefire or peace talks, signed agreements, summits between parties or mediators, alliance or defense-pact meetings and invocations (for example NATO Article 4 consultations or meetings under the Saudi-Pakistan-Turkey Mecca defense pact), UN Security Council votes, and visits or meetings between heads of state or government, or foreign or defense ministers, that bear on these conflicts, even when no outcome is announced (for example Israel's prime minister visiting the UAE, or Ukraine's president meeting the US president; a secret, unannounced, or first-ever visit is especially significant). Also relevant: major arms transfers and air or sea bridges to parties in these conflicts, and formal legal steps about uses of force (see the legal type). Also relevant, anywhere in the world, typed as diplomacy: a country's formal change in its international commitments or relations, such as withdrawing from, suspending, or joining a treaty, alliance, or international body (for example the US leaving the Council of Europe's anti-corruption body GRECO, or a country quitting the ICC or a UN agency), expelling diplomats, recalling an ambassador, closing an embassy, or cutting diplomatic relations, and new sanctions packages imposed by a state or bloc on another state, its government, or its armed forces (for example a new EU package against Russia); designations of individual people or companies count only when tied to a conflict below. Announcements that a step is being considered don't count; formal notice, a signed decision, or the step taking effect does. Not relevant: opinion, analysis with no new event, fundraising, memes, anniversaries, domestic politics, routine condemnations or statements of concern, routine phone calls, visits by lower-level officials with no stated outcome, and items that fit none of the theaters below.
 
 Theater ids:
 - ukraine: Russia-Ukraine war, including strikes inside Russia or Belarus and the Black Sea
@@ -49,6 +49,7 @@ Theater ids:
 - horn: Sudan, South Sudan, Ethiopia, Eritrea, Somalia, Djibouti
 - drc_sahel: eastern DR Congo, Rwanda, Burundi, Uganda border areas, Mali, Burkina Faso, Niger, Nigeria, Chad, Mauritania
 - indopac: China, Taiwan, Japan, the Koreas, the Philippines, the South and East China Seas, Vietnam, Myanmar, Thailand, Cambodia, India, Pakistan
+- global: only for the changes in international commitments or relations described above when they concern none of the conflicts listed here (the US leaving GRECO or the WHO); a step that bears on one of these conflicts takes that conflict's theater (Russia quitting a treaty over Ukraine is ukraine). Never used for strikes, fighting, or anything else.
 - latam: Latin America and the Caribbean: Cuba, Venezuela, Colombia, Ecuador, Mexico, Central America, Haiti, Guyana, the Caribbean Sea and the eastern Pacific, including US military operations there (strikes on boats, strikes on cartel or armed-group targets, deployments, planning for action against Cuba or Venezuela) and armed-group violence with political or military significance. Ordinary crime is not relevant.
 
 Event types:
@@ -57,7 +58,7 @@ Event types:
 Output: {{"events": [one object per input item, in any order]}}
 Irrelevant item: {{"i": <n>, "relevant": false}}
 Relevant item:
-{{"i": <n>, "relevant": true, "type": "<event type id>", "happened": "<when the event itself happened: YYYY-MM-DD or YYYY-MM-DDTHH:MM in UTC>" or null, "summary": "<max 25 words>", "place": "<most specific place named, English spelling>" or null, "admin1": "<province, oblast, or state>" or null, "country": "<ISO 3166-1 alpha-2>" or null, "lat": <number> or null, "lon": <number> or null, "attacker": "<ISO alpha-2 of the country whose forces carried it out>" or null, "parties": ["<ISO alpha-2 of each country, or UN, EU, NATO, AU, ICC, ICJ, whose officials take part>"], "origins": [{{"place": "<launch or firing area named in the item>", "lat": <number>, "lon": <number>}}], "launched": <int> or null, "intercepted": <int> or null, "alert": true or false, "transfer": <transfer object, arms_transfer only>, "legal_basis": "<max 12 words>" or null, "theater": "<theater id>", "severity": <1, 2, or 3>, "claim": "report" or "official_claim", "killed": <int> or null, "injured": <int> or null}}
+{{"i": <n>, "relevant": true, "type": "<event type id>", "happened": "<when the event itself happened: YYYY-MM-DD or YYYY-MM-DDTHH:MM in UTC>" or null, "summary": "<max 25 words>", "place": "<most specific place named, English spelling>" or null, "admin1": "<province, oblast, or state>" or null, "country": "<ISO 3166-1 alpha-2>" or null, "lat": <number> or null, "lon": <number> or null, "attacker": "<ISO alpha-2 of the country whose forces carried it out>" or null, "parties": ["<ISO alpha-2 of each country, or UN, EU, NATO, AU, ICC, ICJ, or another body's short name, whose officials take part>"], "origins": [{{"place": "<launch or firing area named in the item>", "lat": <number>, "lon": <number>}}], "launched": <int> or null, "intercepted": <int> or null, "alert": true or false, "transfer": <transfer object, arms_transfer only>, "legal_basis": "<max 12 words>" or null, "theater": "<theater id>", "severity": <1, 2, or 3>, "claim": "report" or "official_claim", "killed": <int> or null, "injured": <int> or null}}
 
 Optional key for any item (relevant or not): if the item says where a US Navy aircraft carrier (hull CVN-##) is, or that one departed, arrived, or is heading somewhere, add
 "carrier": {{"hull": "CVN-78", "status": "departed" | "underway" | "operating" | "arrived" | "in port", "place": "<where it is now>", "lat": <number>, "lon": <number>, "heading_to": {{"place": "<stated destination>", "lat": <number>, "lon": <number>}} or null}}
@@ -76,14 +77,14 @@ Rules:
 - lat/lon: your best estimate for the named place; null if you cannot place it at least at city or district level. Incidents at sea always get coordinates: work them out from the stated reference ("23 nautical miles northeast of Khasab", "off Fujairah"), or use the center of the named strait or sea. Put the sea area's name (for example "Strait of Hormuz") in place.
 - Incidents involving merchant ships: UKMTO (UK Maritime Trade Operations) and JMIC notices are the primary authority. When the item cites one, take the position, time, and description from it, and name it in the summary ("UKMTO reports a vessel was hit by an unknown projectile 40 nautical miles east of Aden").
 - Ship attacks: when a report says "unknown projectile", keep it unknown; name an attacker only when a source does (for example "US Central Command says an Iranian drone struck the tanker").
-- severity 3 = major (10 or more killed, strike on a capital or critical infrastructure, large territorial change, direct combat between major powers, attack with dozens of missiles or drones, a ceasefire or peace deal signed or collapsing, an alliance invoked); 2 = notable (including high-level talks or emergency alliance meetings); 1 = minor or local.
+- severity 3 = major (10 or more killed, strike on a capital or critical infrastructure, large territorial change, direct combat between major powers, attack with dozens of missiles or drones, a ceasefire or peace deal signed or collapsing, an alliance invoked); 2 = notable (including high-level talks or emergency alliance meetings, a major power leaving, suspending, or joining a treaty, alliance, or international body, or cutting diplomatic relations); 1 = minor or local (including routine sanctions and expulsions of a few diplomats).
 - attacker: the country whose forces carried out a strike, launch, raid, or incursion, when the item states or clearly implies it ("Russian drones" = RU, "Ukrainian drones hit a refinery" = UA, Houthi missiles = YE, Hezbollah rockets = LB, Iranian missiles = IR). For interceptions, the side whose weapons were intercepted. Otherwise null.
-- parties: for diplomacy and legal items only, the countries (ISO alpha-2) or bodies (UN, EU, NATO, AU, ICC, ICJ) whose officials take part: who meets whom, who signs, who files or rules (Netanyahu visiting the UAE = ["IL", "AE"]; Iran proposing a deal to the US = ["IR", "US"]). Otherwise [].
+- parties: for diplomacy and legal items only, the countries (ISO alpha-2) or bodies (UN, EU, NATO, AU, ICC, ICJ, or another body's own short name, such as WHO, OSCE, GRECO) whose officials take part: who meets whom, who signs, who files or rules (Netanyahu visiting the UAE = ["IL", "AE"]; Iran proposing a deal to the US = ["IR", "US"]). Otherwise [].
 - origins: launch or firing areas the item actually names (for example "launched from Kursk and Primorsko-Akhtarsk"), at most 6, with your coordinate estimate for each. Use [] when none are named. Never guess a launch site.
 - launched / intercepted: totals for a mass air attack when the item gives them ("Russia launched 120 drones, 98 were shot down" = 120 / 98). Otherwise null.
 - alert: true when the item is only a real-time warning or tracking update about drones or missiles still in flight (for example an air force post that a drone is heading toward, approaching, or passing a place), with no hit, interception, damage, or casualties reported. Put place and lat/lon at the place named as the target or current position, and type it missile_drone. Otherwise false. Drones or aircraft entering another country's airspace are incursions, not alerts.
 - For preparations or buildups aimed at a country, place the event in that country (its capital if nothing more specific), and say in the summary that it is planning or preparation, not action.
-- For diplomacy, place the event where the meeting or signing happened; if no place is given, use the capital of the main party. Use the theater of the conflict it concerns, even if the meeting is elsewhere.
+- For diplomacy, place the event where the meeting or signing happened; if no place is given, use the capital of the main party. For a withdrawal, suspension, expulsion, or sanctions, use the capital of the state taking the step (Washington for the US leaving GRECO); for a bloc, its seat (Brussels for the EU). Use the theater of the conflict it concerns, even if the meeting is elsewhere.
 - transfer kind: "delivery" = weapons observed or reported moving or arriving (tracked flights, imaged ships, confirmed arrivals); "pledge" = a package announced, approved, or sold but not yet reported delivered; "interdiction" = a shipment seized, intercepted, or destroyed in transit.
 - transfer money: true when what is given is money (grants, loans, fund allocations, budget support, compensation payments), false for weapons, equipment, or services (a military aid package of weapons is false; €6.6 billion released from the European Peace Facility is true).
 - transfer from / to: only departure and arrival points the item names (airfield, port, city). Use null when none is named; never substitute a capital. When a country moves its own forces or aircraft to a military command's area ("F-16s moved from Aviano to CENTCOM"), put the command's name (CENTCOM, EUCOM, AFRICOM, INDOPACOM, SOUTHCOM) in to.place; it is a region, not the command's headquarters. via: transit hubs the item names (for example Ramstein, Rzeszow), else [].
@@ -92,6 +93,11 @@ Rules:
 - claim = "official_claim" when the item is a government, military, or armed-group statement about its own actions or results; otherwise "report".
 """.format(types="\n".join(f"- {k}: {v}" for k, v in EVENT_TYPES.items()))
 
+# International commitments and relations (added 2026-09-30): leaving or joining treaties and bodies,
+# expulsions, sanctions. Posts that matched only these were rejected before then.
+_COMMITMENTS = (r"withdr[ae]w(?:s|n|al|ing)?|pull(?:s|ed|ing)? out|quits?|quitting|rejoin(?:s|ed)?|"
+                r"membership|suspend(?:s|ed|ing)?|conventions?|expel(?:s|led|ling)?|expulsions?|"
+                r"ambassadors?|embass(?:y|ies)|diplomats?|diplomatic (?:ties|relations)|sanctions?")
 _EN = (r"air ?strikes?|strikes?|struck|missiles?|drones?|uavs?|shahed|shell(?:ing|ed)|artillery|rockets?|"
        r"mortars?|attack(?:s|ed)?|explosions?|blasts?|killed|dead|casualt(?:y|ies)|wounded|injur(?:ed|ies)|"
        r"clash(?:es|ed)?|fighting|offensive|advanc(?:e|es|ed)|captur(?:e|ed)|seiz(?:e|ed)|liberat(?:e|ed)|"
@@ -112,7 +118,7 @@ _EN = (r"air ?strikes?|strikes?|struck|missiles?|drones?|uavs?|shahed|shell(?:in
        r"self-defen[cs]e|warrants?|rulings?|provisional measures|legal basis|"
        r"tankers?|vessels?|ships?|shipping|cargo|freighters?|bulk carrier|container ship|merchant|mariners?|seafarers?|"
        r"crew|ukmto|ambrey|jmic|projectiles?|hormuz|bab el-mandeb|red sea|gulf of aden|hijack(?:ed|ing)?|boarded|"
-       r"mines?|limpet|sank|sinking|ablaze|adrift|hits?")
+       r"mines?|limpet|sank|sinking|ablaze|adrift|hits?|" + _COMMITMENTS)
 CONFLICT_RE = re.compile(
     rf"\b(?:{_EN})\b"
     r"|удар|обстр|ракет|дрон|бпла|шахед|атак|вибух|взрыв|штурм|наступ|звільн|освобо|ппо|пво|загибл|погиб|"
@@ -135,13 +141,22 @@ class Busy(RuntimeError):
 
 # Words added to the filter on 2026-09-27. Posts that matched only these were rejected before
 # then; run.py uses this once to give them another look.
-_ADDED_WORDS = re.compile(r"\b(?:wars?|wartime|visit(?:s|ed|ing)?|trip|met|meets?|meeting|hosts?|hosted)\b", re.IGNORECASE)
+_ADDED_WORDS = {
+    2: re.compile(r"\b(?:wars?|wartime|visit(?:s|ed|ing)?|trip|met|meets?|meeting|hosts?|hosted)\b", re.IGNORECASE),
+    3: re.compile(rf"\b(?:{_COMMITMENTS})\b", re.IGNORECASE),  # 2026-09-30: treaties, bodies, expulsions, sanctions
+}
+PREFILTER_VERSION = max(_ADDED_WORDS)
 
 
-def rejected_before_added_words(item: dict) -> bool:
+def rejected_before_added_words(item: dict, version: int = 1) -> bool:
+    """Would the keyword filter at `version` have rejected this post, which the current one accepts?"""
     text = item.get("text", "")
-    return (item.get("prefilter", True) and bool(CONFLICT_RE.search(text))
-            and not CONFLICT_RE.search(_ADDED_WORDS.sub(" ", text)))
+    if not item.get("prefilter", True) or not CONFLICT_RE.search(text):
+        return False
+    for v, words in _ADDED_WORDS.items():
+        if v > version:
+            text = words.sub(" ", text)
+    return not CONFLICT_RE.search(text)
 
 
 def is_candidate(item: dict) -> bool:
@@ -486,7 +501,7 @@ def _clean_record(obj: dict, item: dict) -> dict | None:
         "origins": origins,
         "attacker": attacker if re.fullmatch(r"[A-Z]{2}", attacker) else None,
         "parties": sorted({str(x).upper().strip() for x in (obj.get("parties") if isinstance(obj.get("parties"), list) else [])
-                           if re.fullmatch(r"[A-Z]{2,4}", str(x).upper().strip())})[:6],
+                           if re.fullmatch(r"[A-Z]{2,8}", str(x).upper().strip())})[:6],
         "launched": _int_or_none(obj.get("launched")),
         "intercepted": _int_or_none(obj.get("intercepted")),
         "alert": str(obj.get("alert")).lower() == "true",

@@ -369,6 +369,13 @@ rss:
     kind: news
     group: google-news
     weight: 2
+  # Countries leaving, suspending or joining treaties and international bodies, expelling
+  # diplomats or cutting relations, and new sanctions packages (the US leaving GRECO was missed).
+  - id: gnews-commitments
+    name: Google News (treaties, memberships, expulsions, sanctions)
+    url: https://news.google.com/rss/search?q=%28%22withdraws+from%22+OR+%22withdrawal+from%22+OR+%22pulls+out+of%22+OR+%22suspends+participation%22+OR+%22suspends+membership%22+OR+rejoins+OR+%22expels+diplomats%22+OR+%22recalls+ambassador%22+OR+%22severs+diplomatic%22+OR+%22cuts+diplomatic+ties%22+OR+%22sanctions+package%22%29+%28treaty+OR+convention+OR+organization+OR+council+OR+panel+OR+agreement+OR+alliance+OR+court+OR+diplomats+OR+ambassador+OR+relations+OR+sanctions%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
   # Leaders' visits and meetings, split by region: Google News returns only the top 100 results
   # by relevance, so a broad search misses fresh stories.
   - id: gnews-leaders-mideast
