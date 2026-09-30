@@ -20,6 +20,13 @@ extraction model no way to tell. So every event built only from news feeds is ch
 Model calls: one per run at most, and at most every MODEL_GAP unless MODEL_BATCH events are
 waiting, from the shared daily budget.
 
+Held back: a headline like "Yemen's Houthis launched ballistic missiles at Israel" describes an
+attack that recurs, so the model can't tell a March article relisted today from a new attack, and
+rightly keeps "another incident of the same kind". But a real attack of that size is covered widely
+within hours. So a notable event resting on one source, whose search finds older coverage of the
+topic and no current coverage from any other outlet, is held off the map (`held`) until a second,
+independent source reports it; it is kept, and shown as soon as that happens.
+
 Searches or model calls that fail leave the event on the map and are retried on later runs.
 Dropped events are kept in state. When the rule changes (CHECK_VERSION), they are put back and
 every event is checked again under the new rule.
@@ -36,7 +43,7 @@ import feedparser
 from common import clean_text, iso, log, parse_time
 from sources.rss import _entry_time
 
-CHECK_VERSION = 3
+CHECK_VERSION = 4    # 4: coverage is recorded so a single-source story with only older coverage is held
 KEEP_DROPS_FROM = 2  # drops made under this version or later stand (version 3 only drops more)
 AGE_DAYS = 14        # older coverage must be at least this much older than the event
 RECENT_DAYS = 2      # "current" coverage: within this many days of the event
@@ -44,6 +51,7 @@ MODEL_GAP = timedelta(minutes=30)
 MODEL_BATCH = 8
 CHECKS_PER_RUN = 15
 MAX_TRIES = 3
+HOLD_MIN_SEVERITY = 2  # holding applies to notable events (a minor local item isn't widely covered anyway)
 _STOP = set("""a an the of in on at to for and or by with as is are was were be been its it this that
 from after over into amid near during against about says said say claims claimed claim reports
 reported report according officials official state states stated warns warned new following""".split())
@@ -111,17 +119,38 @@ def _evidence(session, e: dict):
     if not t or len(q.split()) < 3:
         return [], []
     own = {r.get("url") for r in e.get("reports", [])}
+    outlets = {_outlet(r.get("source")) for r in e.get("reports", [])} - {""}
     rw = _words(e.get("summary", ""))
     recent = _search(session, f"{q} after:{(t - timedelta(days=RECENT_DAYS)).strftime('%Y-%m-%d')}")
     if recent is None:
         return None
     recent = _distinct([r for r in recent if abs(r["when"] - t) <= timedelta(days=RECENT_DAYS)
-                        and r["link"] not in own and _on_topic(rw, r["title"])])
+                        and r["link"] not in own and _outlet_of(r["title"]) not in outlets
+                        and _on_topic(rw, r["title"])])
     older = _search(session, f"{q} before:{(t - timedelta(days=AGE_DAYS)).strftime('%Y-%m-%d')}")
     if older is None:
         return None
     older = [r for r in older if r["when"] < t - timedelta(days=AGE_DAYS) and _on_topic(rw, r["title"])][:8]
     return [r for r in recent if not any(_same_headline(r, o) for o in older)], older
+
+
+def _outlet(source: str | None) -> str:
+    """"Mid-Day (via Google News)" -> "mid-day"."""
+    return (source or "").split(" (via ")[0].strip().lower()
+
+
+def _outlet_of(title: str) -> str:
+    """The outlet a Google News title ends with ("... - Mid-Day")."""
+    return title.rsplit(" - ", 1)[1].strip().lower() if " - " in title else ""
+
+
+def held(e: dict) -> bool:
+    """Kept off the map until a second source reports it: a notable news-only event from a single
+    source whose check found older coverage of the topic and no current coverage elsewhere."""
+    cov = e.get("coverage") or {}
+    groups = {r.get("group") or r.get("source") for r in e.get("reports", [])}
+    return (bool(cov.get("older")) and not cov.get("current") and int(e.get("severity") or 1) >= HOLD_MIN_SEVERITY
+            and len(groups) < 2 and not e.get("alert"))
 
 
 def _same_headline(a: dict, b: dict) -> bool:
@@ -171,6 +200,7 @@ def check(events: list[dict], new_ids: set[str], session, ask, state: dict, sett
                 e["checked"] = CHECK_VERSION
             continue
         recent, older = found
+        e["coverage"] = {"current": len(recent), "older": len(older)}
         if not older:
             e["checked"] = CHECK_VERSION
             log(f"[recency] kept (no older coverage found): {e.get('summary', '')[:90]!r}")
