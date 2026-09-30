@@ -42,3 +42,6 @@ corrections:
   - id: 9c05db1001f2
     hide: true
     note: Old news. Iran's strikes on sites in Bahrain and Kuwait after a wave of US strikes date from July 2026; one outlet's article resurfaced with a fresh date.
+  - id: 5c72e4f6e275
+    hide: true
+    note: Old photo. "USS Abraham Lincoln and USS Robert Smalls transited the South China Sea" came from a photo on the Pacific Fleet website posted with a fresh date; USNI places the Lincoln near Hawaii.

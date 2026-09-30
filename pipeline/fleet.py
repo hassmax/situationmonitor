@@ -529,6 +529,16 @@ def public(state: dict, now: datetime) -> list[dict]:
     return sorted(out, key=lambda c: c["hull"])
 
 
+def drop_held(state: dict, urls: set[str]) -> None:
+    """Forget held position reports whose article was taken down by a correction (an old photo
+    must not later confirm a move)."""
+    for c in (state.get("fleet") or {}).values():
+        if isinstance(c, dict) and c.get("held"):
+            c["held"] = [h for h in c["held"] if h.get("url") not in urls]
+            if not c["held"]:
+                c.pop("held")
+
+
 def repair(state: dict) -> None:
     """Once per FLEET_VERSION: re-check stored positions against the rules for news reports.
     A carrier whose position fails them goes back to its home-port baseline; a previous position

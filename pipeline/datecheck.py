@@ -34,6 +34,10 @@ PER_RUN = 8
 TRIES = 2                           # an article that can't be read is tried once more, on a later run
 RECENT = timedelta(days=3)          # only events this recent are checked
 MIN_SEVERITY = 2
+# Military and government sites post photos and releases long after the fact ("USS Abraham Lincoln
+# and USS Robert Smalls transited the South China Sea" was an old photo on the Pacific Fleet site):
+# their items are checked whatever their severity.
+OFFICIAL = re.compile(r"\.mil\b|dvidshub|defense\.gov|\.gov\.uk|nato\.int|mod\.gov|mil\.ru|idf\.il", re.I)
 MAX_BYTES = 400_000
 BROWSER = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) "
            "Chrome/126.0 Safari/537.36")
@@ -91,7 +95,12 @@ def _eligible(e: dict, now) -> bool:
     t = parse_time(e.get("time"))
     d = e.get("dated") or {}
     return (not d.get("published") and int(d.get("tries", 0)) < TRIES and not e.get("alert") and len(reps) == 1 and reps[0].get("platform") == "rss"
-            and int(e.get("severity") or 1) >= MIN_SEVERITY and bool(t) and now - t <= RECENT)
+            and (int(e.get("severity") or 1) >= MIN_SEVERITY or _official(reps[0]))
+            and bool(t) and now - t <= RECENT)
+
+
+def _official(report: dict) -> bool:
+    return bool(OFFICIAL.search(f"{report.get('source') or ''} {report.get('url') or ''}"))
 
 
 def _publisher_url(session, url: str) -> str | None:
@@ -159,13 +168,33 @@ def _published(session, url: str) -> datetime | None:
 
 
 def published_in(html: str) -> datetime | None:
+    """The page's first-published date or, for a photo, the date it was taken, whichever is earlier
+    (photo pages are often posted weeks after the picture: DVIDS and navy.mil give both)."""
+    published = None
     for rx in _PATTERNS:
         m = rx.search(html or "")
         if m:
-            t = _parse(m.group(1))
-            if t:
-                return t
-    return None
+            published = _parse(m.group(1))
+            if published:
+                break
+    taken = _taken(html or "")
+    return min((t for t in (published, taken) if t), default=None)
+
+
+# "Date Taken: 03.14.2026" (DVIDS, navy.mil photo pages), or the image's structured dateCreated
+_TAKEN = [re.compile(r"Date Taken:?\s*(?:<[^>]+>\s*)*(\d{1,2})\.(\d{1,2})\.(\d{4})", re.I),
+          re.compile(r"\"dateCreated\"\s*:\s*\"([^\"]+)\"")]
+
+
+def _taken(html: str) -> datetime | None:
+    m = _TAKEN[0].search(html)
+    if m:
+        try:
+            return datetime(int(m.group(3)), int(m.group(1)), int(m.group(2)), tzinfo=UTC)
+        except ValueError:
+            pass
+    m = _TAKEN[1].search(html)
+    return _parse(m.group(1)) if m else None
 
 
 def _parse(value: str) -> datetime | None:
