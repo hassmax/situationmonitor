@@ -23,7 +23,7 @@ DEFAULT_SETTINGS = {
     # with a separate, smaller daily limit. Unknown names are skipped.
     "llm_fallback_models": ["gemini-3.5-flash", "gemini-flash-latest", "gemini-3.1-flash", "gemini-2.5-flash"],
     # Gemini's free Flash-Lite quota is about 500 requests/day; keep headroom.
-    "daily_llm_calls": 400,
+    "daily_llm_calls": 470,
     "max_calls_per_run": 6,
     # Extraction stops when fewer than this many calls are left today, keeping room for the
     # situation brief (which is skipped when fewer than brief_min_calls are left).
