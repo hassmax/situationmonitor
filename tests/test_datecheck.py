@@ -103,3 +103,12 @@ def test_the_most_serious_and_longest_waiting_are_opened_first(monkeypatch):
            for i, (h, sev) in enumerate([(1, 2), (20, 2), (5, 3), (2, 2)])]
     datecheck.check(evs, s, {}, NOW)
     assert s.calls == ["https://example.com/2", "https://example.com/1"]  # severity 3, then the oldest
+
+
+def test_no_new_article_is_opened_after_the_time_budget(monkeypatch):
+    clock = iter([0, 0, 50, 50, 50])
+    monkeypatch.setattr(datecheck.time, "monotonic", lambda: next(clock))
+    s = Session({})
+    evs = [dict(event(f"https://example.com/{i}", hours_ago=i + 1), id=str(i)) for i in range(3)]
+    datecheck.check(evs, s, {}, NOW)
+    assert len(s.calls) == 1

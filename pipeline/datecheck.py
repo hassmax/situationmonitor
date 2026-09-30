@@ -23,6 +23,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import time
 from datetime import datetime, timedelta
 from email.utils import parsedate_to_datetime
 from urllib.parse import quote
@@ -32,6 +33,8 @@ from common import UTC, iso, log, parse_time
 OLD_DAYS = 14
 SLACK = timedelta(hours=6)
 PER_RUN = 20
+BUDGET_SECONDS = 45                 # no new article is opened after this much time in one run
+TIMEOUT = 10                        # seconds per web request
 TRIES = 2                           # an article that can't be read is tried once more, on a later run
 RECENT = timedelta(days=3)          # only events this recent are checked
 MIN_SEVERITY = 2
@@ -62,9 +65,13 @@ def check(events: list[dict], session, state: dict, now) -> list[dict]:
     # push older ones back for hours (a relisted March report of Houthi missiles at Israel waited
     # behind 146 others).
     todo.sort(key=lambda e: (-int(e.get("severity") or 1), e.get("time") or ""))
-    dated = old = moved = 0
+    dated = old = moved = opened = 0
     drop = set()
+    started = time.monotonic()
     for e in todo[:PER_RUN]:
+        if time.monotonic() - started > BUDGET_SECONDS:
+            break  # slow sites this run: the rest wait for the next run, in the same order
+        opened += 1
         report = e["reports"][0]
         url = _publisher_url(session, report.get("url") or "")
         published = _published(session, url) if url else None
@@ -86,9 +93,9 @@ def check(events: list[dict], session, state: dict, now) -> list[dict]:
             moved += 1
             log(f"[datecheck] dated to the article: {e['summary'][:80]!r} {e['time'][:16]} -> {iso(published)[:16]}")
             e["time"] = iso(published)
-    if todo[:PER_RUN]:
-        log(f"[datecheck] {len(todo[:PER_RUN])} articles opened: {dated} dated, {old} old, {moved} moved back, "
-            f"{len(todo[:PER_RUN]) - dated} without a readable date")
+    if opened:
+        log(f"[datecheck] {opened} articles opened: {dated} dated, {old} old, {moved} moved back, "
+            f"{opened - dated} without a readable date; {len(todo) - opened} waiting")
     state["dropped_as_old"] = state.get("dropped_as_old", [])[-100:]
     return [e for e in events if e["id"] not in drop]
 
@@ -139,7 +146,7 @@ def _ask_google(session, gid: str) -> str | None:
     """Newer ids are opaque: Google's article page gives a signature and timestamp, and its
     batchexecute endpoint returns the address for them."""
     try:
-        page = session.get(f"https://news.google.com/rss/articles/{gid}", timeout=15, headers={"User-Agent": BROWSER})
+        page = session.get(f"https://news.google.com/rss/articles/{gid}", timeout=TIMEOUT, headers={"User-Agent": BROWSER})
         sig = re.search(r'data-n-a-sg="([^"]+)"', page.text)
         ts = re.search(r'data-n-a-ts="([^"]+)"', page.text)
         if not (sig and ts):
@@ -147,7 +154,7 @@ def _ask_google(session, gid: str) -> str | None:
         inner = (f'["garturlreq",[["X","X",["X","X"],null,null,1,1,"US:en",null,1,null,null,null,null,null,0,1],'
                  f'"X","X",1,[1,1,1],1,1,null,0,0,null,0],"{gid}",{ts.group(1)},"{sig.group(1)}"]')
         body = "f.req=" + quote(json.dumps([[["Fbv4je", inner, None, "generic"]]]))
-        r = session.post("https://news.google.com/_/DotsSplashUi/data/batchexecute", data=body, timeout=15,
+        r = session.post("https://news.google.com/_/DotsSplashUi/data/batchexecute", data=body, timeout=TIMEOUT,
                          headers={"Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
                                   "User-Agent": BROWSER})
         chunk = r.text.split("\n\n", 1)[1]
@@ -161,7 +168,7 @@ def _ask_google(session, gid: str) -> str | None:
 def _published(session, url: str) -> datetime | None:
     """The article's own publication date, read from its page, or None."""
     try:
-        r = session.get(url, timeout=15, stream=True, headers={"User-Agent": BROWSER})
+        r = session.get(url, timeout=TIMEOUT, stream=True, headers={"User-Agent": BROWSER})
         if r.status_code != 200:
             return None
         html = r.raw.read(MAX_BYTES, decode_content=True).decode(r.encoding or "utf-8", "ignore")
