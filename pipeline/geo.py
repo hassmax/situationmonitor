@@ -169,6 +169,30 @@ _FROM_COMMAND = re.compile(r"\bfrom\s+(?:the\s+)?(?:US\s+|U\.S\.\s+)?(CENTCOM|EU
 _AIRCRAFT = re.compile(r"\b(?:aircraft|jets?|planes?|tankers?|bombers?|fighters?|KC-\d+s?|F-\d+s?|B-\d+s?|C-\d+s?)\b", re.IGNORECASE)
 
 
+# Region names are not places to look up: "Middle East" went to a Baltimore neighborhood of that
+# name. Events placed at a region go to a labeled anchor, marked approximate.
+REGIONS = {
+    "middle east": (29.0, 45.0), "the middle east": (29.0, 45.0), "levant": (33.5, 36.0),
+    "persian gulf": (27.0, 51.5), "gulf region": (27.0, 51.5), "horn of africa": (8.0, 44.0),
+    "sahel": (15.0, 2.0), "the sahel": (15.0, 2.0), "africa": (5.0, 20.0), "north africa": (28.0, 10.0),
+    "europe": (50.0, 10.0), "eastern europe": (50.0, 28.0), "western europe": (48.0, 5.0),
+    "balkans": (43.0, 20.0), "the balkans": (43.0, 20.0), "caucasus": (42.0, 45.0), "central asia": (42.0, 65.0),
+    "east asia": (35.0, 118.0), "southeast asia": (10.0, 108.0), "indo-pacific": (15.0, 135.0),
+    "asia-pacific": (15.0, 135.0), "latin america": (5.0, -70.0), "caribbean": (15.0, -75.0),
+    "scandinavia": (62.0, 15.0), "arctic": (78.0, 20.0), "nato's eastern flank": (54.0, 23.0),
+}
+
+
+def region_anchor(place: str | None):
+    return REGIONS.get(re.sub(r"\s+", " ", str(place or "")).strip().lower())
+
+
+# Strikes, fighting and incidents at sea happen in their theater: a lookup that lands farther than
+# this from the theater's center is a different place with the same name.
+IN_THEATER_TYPES = {"airstrike", "missile_drone", "air_defense", "explosion", "artillery", "ground", "territory", "naval"}
+THEATER_KM = 5000
+
+
 def _command(text: str | None):
     return next(((label, lat, lon) for rx, label, lat, lon in COMMANDS if rx.search(text or "")), None)
 
@@ -183,6 +207,10 @@ def pin_commands(events: list[dict]) -> int:
         c = _command(e.get("place"))
         if c and (e.get("lat"), e.get("lon")) != (c[1], c[2]):
             e.update(place=c[0], lat=c[1], lon=c[2], approx=True)
+            changed += 1
+        r = region_anchor(e.get("place"))
+        if r and (e.get("lat"), e.get("lon")) != r:
+            e.update(lat=r[0], lon=r[1], approx=True)
             changed += 1
         # forces leaving a command's area ("KC-135s returning home from CENTCOM bases", stored as a
         # deployment at the home base) become a movement out of that region to where they went
@@ -238,8 +266,20 @@ def place_record(rec: dict, geocoder: Geocoder, theaters: list[dict]) -> dict | 
     hint = (rec["lat"], rec["lon"]) if rec["lat"] is not None and rec["lon"] is not None else None
     lat = lon = None
     approx = False
-    if rec["place"]:
+    center = next((t.get("camera") for t in theaters if t["id"] == rec.get("theater")), None)
+    far = lambda p: bool(center and rec.get("type") in IN_THEATER_TYPES  # noqa: E731
+                         and haversine_km(p[0], p[1], center["lat"], center["lng"]) > THEATER_KM)
+    region = region_anchor(rec["place"])
+    if region:
+        lat, lon = region
+        approx = True
+    elif rec["place"]:
         hit = geocoder.locate(rec["place"], rec["admin1"], rec["country"], hint)
+        if hit and far(hit):
+            log(f"[geo] {rec['place']}: the lookup's match {hit} is far outside the {rec['theater']} theater; not used")
+            hit = None
+            if hint and far(hint):
+                hint = None
         if hit:
             lat, lon = hit
         elif hint:

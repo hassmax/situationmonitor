@@ -97,3 +97,36 @@ def test_forces_returning_from_a_command_are_a_movement_out_of_its_region():
     assert t["from"]["place"] == "Middle East (CENTCOM area)" and t["from"]["region"]
     assert t["to"]["place"] == "Eielson Air Force Base" and drill["type"] == "deployment"
     assert geo.pin_commands([kc, drill]) == 0
+
+
+MIDEAST = [{"id": "mideast", "camera": {"lat": 28.5, "lng": 45, "altitude": 1.25}, "iso2": ["IR", "IL"]}]
+
+
+def record(place, lat=None, lon=None, type_="missile_drone", country=None):
+    return {"item": {"time": "2026-09-29T19:26:20Z", "source": "s", "platform": "rss", "kind": "news",
+                     "group": "g", "url": "u"}, "place": place, "admin1": None, "country": country, "lat": lat,
+            "lon": lon, "type": type_, "theater": "mideast", "severity": 2, "summary": "s", "claim": "report",
+            "killed": None, "injured": None}
+
+
+def test_a_region_name_goes_to_its_anchor_not_a_lookup():
+    class Baltimore(Session):  # Nominatim's "Middle East" is a Baltimore neighborhood
+        def get(self, url, params=None, timeout=None):
+            return Resp([{"lat": "39.3014", "lon": "-76.5888"}])
+    g = geo.Geocoder({}, Baltimore(), budget=10)
+    c = geo.place_record(record("Middle East"), g, MIDEAST)
+    assert (c["lat"], c["lon"], c["approx"]) == (29.0, 45.0, True)
+    assert g.session.calls == []
+
+
+def test_a_lookup_far_outside_the_theater_is_not_used_for_a_strike():
+    class Faraway(Session):
+        def get(self, url, params=None, timeout=None):
+            return Resp([{"lat": "39.3", "lon": "-76.6"}])
+    c = geo.place_record(record("Al Asad", lat=33.8, lon=42.4), geo.Geocoder({}, Faraway(), budget=10), MIDEAST)
+    assert (c["lat"], c["lon"], c["approx"]) == (33.8, 42.4, True)   # the model's estimate, in the theater
+
+
+def test_stored_events_at_a_region_name_move_to_its_anchor():
+    e = {"id": "r", "type": "missile_drone", "place": "Middle East", "lat": 39.3, "lon": -76.59, "summary": "s"}
+    assert geo.pin_commands([e]) == 1 and (e["lat"], e["lon"], e["approx"]) == (29.0, 45.0, True)
