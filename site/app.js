@@ -86,6 +86,10 @@
   const ISO_NUM = new Map("AD020,AE784,AF004,AG028,AI660,AL008,AM051,AO024,AQ010,AR032,AS016,AT040,AU036,AW533,AX248,AZ031,BA070,BB052,BD050,BE056,BF854,BG100,BH048,BI108,BJ204,BL652,BM060,BN096,BO068,BQ535,BR076,BS044,BT064,BV074,BW072,BY112,BZ084,CA124,CC166,CD180,CF140,CG178,CH756,CI384,CK184,CL152,CM120,CN156,CO170,CR188,CU192,CV132,CW531,CX162,CY196,CZ203,DE276,DJ262,DK208,DM212,DO214,DZ012,EC218,EE233,EG818,EH732,ER232,ES724,ET231,FI246,FJ242,FK238,FM583,FO234,FR250,GA266,GB826,GD308,GE268,GF254,GG831,GH288,GI292,GL304,GM270,GN324,GP312,GQ226,GR300,GS239,GT320,GU316,GW624,GY328,HK344,HM334,HN340,HR191,HT332,HU348,ID360,IE372,IL376,IM833,IN356,IO086,IQ368,IR364,IS352,IT380,JE832,JM388,JO400,JP392,KE404,KG417,KH116,KI296,KM174,KN659,KP408,KR410,KW414,KY136,KZ398,LA418,LB422,LC662,LI438,LK144,LR430,LS426,LT440,LU442,LV428,LY434,MA504,MC492,MD498,ME499,MF663,MG450,MH584,MK807,ML466,MM104,MN496,MO446,MP580,MQ474,MR478,MS500,MT470,MU480,MV462,MW454,MX484,MY458,MZ508,NA516,NC540,NE562,NF574,NG566,NI558,NL528,NO578,NP524,NR520,NU570,NZ554,OM512,PA591,PE604,PF258,PG598,PH608,PK586,PL616,PM666,PN612,PR630,PS275,PT620,PW585,PY600,QA634,RE638,RO642,RS688,RU643,RW646,SA682,SB090,SC690,SD729,SE752,SG702,SH654,SI705,SJ744,SK703,SL694,SM674,SN686,SO706,SR740,SS728,ST678,SV222,SX534,SY760,SZ748,TC796,TD148,TF260,TG768,TH764,TJ762,TK772,TL626,TM795,TN788,TO776,TR792,TT780,TV798,TW158,TZ834,UA804,UG800,UM581,US840,UY858,UZ860,VA336,VC670,VE862,VG092,VI850,VN704,VU548,WF876,WS882,YE887,YT175,ZA710,ZM894,ZW716".split(",").map((s) => [s.slice(0, 2), s.slice(2)]));
   let regionNames = null;
   try { regionNames = new Intl.DisplayNames(["en"], { type: "region" }); } catch (_) { /* old browser */ }
+  // Region words for search: events store countries, but people search for "Europe" or "Middle East".
+  const EUROPE = new Set("AL AD AT BY BE BA BG HR CY CZ DK EE FI FR DE GR HU IS IE IT XK LV LI LT LU MT MD MC ME NL MK NO PL PT RO SM RS SK SI ES SE CH UA GB VA".split(" "));
+  const THEATER_WORDS = { mideast: "middle east", horn: "africa", drc_sahel: "africa", indopac: "asia", latam: "latin america" };
+  const regionWords = (e) => [EUROPE.has(e.country) || (e.theater === "nato_east" && !e.country) ? "europe european" : "", THEATER_WORDS[e.theater] || ""].join(" ");
   const countryName = (code) => { if (!code) return ""; try { return (regionNames && regionNames.of(code)) || code; } catch (_) { return code; } };
 
   // Known launch areas, used only when a report doesn't name one (those lines are drawn faint).
@@ -700,7 +704,7 @@
       const t = e.transfer || {};
       e._search = [e.summary, e.place, e.targets.map((x) => x.place).join(" "), typeLabel(e), countryName(e.attacker),
         countryName(e.country), countryName(t.supplier), countryName(t.recipient), t.what,
-        ...(e.reports || []).map((r) => r.source)].join(" ").toLowerCase();
+        regionWords(e), ...(e.reports || []).map((r) => r.source)].join(" ").toLowerCase();
     }
     data.heat = (data.heat || []).map((c) => ({ ...c, _t: Date.parse(c.last) }));
     const byHull = new Map(S.fleet.map((c) => [c.hull, c]));
@@ -797,13 +801,16 @@
   }
 
   // ------------------------------------------------------------------ filtering
-  const q = () => S.query.trim().toLowerCase();
+  // Search matches each word on its own, anywhere in the event ("hybrid attacks europe" finds a
+  // sabotage or hybrid attack in Germany). A trailing "s" is dropped, so plurals match too.
+  const words = () => S.query.toLowerCase().split(/[^\p{L}\p{N}-]+/u).filter(Boolean).map((w) => (w.length > 3 ? w.replace(/s$/, "") : w));
+  const matches = (e) => words().every((w) => e._search.includes(w));
   function passes(e, ignoreTheater = false) {
     if (e._t < Date.now() - S.windowH * HOUR) return false;
     if (!ignoreTheater && !S.theaterOn.has(e.theater)) return false;
     if (!S.statusOn.has(e.status)) return false;
     if (S.off.has(legendKey(e))) return false;
-    if (q() && !e._search.includes(q())) return false;
+    if (!matches(e)) return false;
     return true;
   }
   const visibleEvents = () => (S.data ? S.data.events.filter((e) => passes(e)).sort((a, b) => b._t - a._t) : []);
@@ -829,7 +836,7 @@
     for (const e of S.data.events) {
       const t = e.transfer;
       if (e.type !== "arms_transfer" || !t || e._t < since || !S.theaterOn.has(e.theater) || !S.statusOn.has(e.status)) continue;
-      if (q() && !e._search.includes(q())) continue;
+      if (!matches(e)) continue;
       const kind = tkind(e);
       if (kind === "interdiction") continue;
       const money = isMoney(e);
