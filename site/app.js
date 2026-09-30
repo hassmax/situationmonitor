@@ -817,8 +817,10 @@
     return true;
   }
   const visibleEvents = () => (S.data ? S.data.events.filter((e) => passes(e)).sort((a, b) => b._t - a._t) : []);
-  // Deliveries and pledges are drawn as supply routes, not as markers.
-  const onMap = (e) => e.type !== "arms_transfer" || tkind(e) === "interdiction";
+  // Deliveries and pledges are drawn as supply routes, not as markers. One with no route (the
+  // report named no supplier or recipient: "Ukraine received a new batch of NASAMS missiles") has
+  // nothing to draw a route with, so it gets a marker at its own place instead of vanishing.
+  const onMap = (e) => e.type !== "arms_transfer" || !e.transfer || tkind(e) === "interdiction";
   function fade(e) {
     const doubt = e.possibly_old ? 0.55 : 1; // may be an old story: shown, but quieter
     if (S.windowH <= 6) return doubt;

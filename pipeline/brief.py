@@ -165,7 +165,7 @@ def update(state: dict, events: list[dict], theater_names: dict, settings: dict,
         state["brief_attempt"] = iso(now)
         payload = {"now": iso(now), "window_hours": WINDOW_HOURS,
                    "events": [_facts(e, theater_names) for e in recent]}
-        reply = ask(PROMPT, json.dumps(payload, ensure_ascii=False), state, settings, now, max_tokens=1500)
+        reply = ask(PROMPT, json.dumps(payload, ensure_ascii=False), state, settings, now, max_tokens=1500, purpose="brief")
         new = validate(reply, recent)
         if new is None:
             log("[brief] no usable brief from the model; keeping the previous one")

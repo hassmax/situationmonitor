@@ -190,7 +190,8 @@ def region_anchor(place: str | None):
 # Strikes, fighting and incidents at sea happen in their theater: a lookup that lands farther than
 # this from the theater's center is a different place with the same name.
 IN_THEATER_TYPES = {"airstrike", "missile_drone", "air_defense", "explosion", "artillery", "ground", "territory", "naval"}
-THEATER_KM = 5000
+THEATER_KM = 5000  # a theater's `reach_km` in theaters.yaml overrides it (the Indo-Pacific spans Karachi to Tokyo)
+_far_logged: set[str] = set()  # one log line per place and run
 
 
 def _command(text: str | None):
@@ -266,9 +267,10 @@ def place_record(rec: dict, geocoder: Geocoder, theaters: list[dict]) -> dict | 
     hint = (rec["lat"], rec["lon"]) if rec["lat"] is not None and rec["lon"] is not None else None
     lat = lon = None
     approx = False
-    center = next((t.get("camera") for t in theaters if t["id"] == rec.get("theater")), None)
+    th = next((t for t in theaters if t["id"] == rec.get("theater")), {})
+    center, reach = th.get("camera"), float(th.get("reach_km") or THEATER_KM)
     far = lambda p: bool(center and rec.get("type") in IN_THEATER_TYPES  # noqa: E731
-                         and haversine_km(p[0], p[1], center["lat"], center["lng"]) > THEATER_KM)
+                         and haversine_km(p[0], p[1], center["lat"], center["lng"]) > reach)
     region = region_anchor(rec["place"])
     if region:
         lat, lon = region
@@ -276,7 +278,9 @@ def place_record(rec: dict, geocoder: Geocoder, theaters: list[dict]) -> dict | 
     elif rec["place"]:
         hit = geocoder.locate(rec["place"], rec["admin1"], rec["country"], hint)
         if hit and far(hit):
-            log(f"[geo] {rec['place']}: the lookup's match {hit} is far outside the {rec['theater']} theater; not used")
+            if rec["place"] not in _far_logged:
+                _far_logged.add(rec["place"])
+                log(f"[geo] {rec['place']}: the lookup's match {hit} is far outside the {rec['theater']} theater; not used")
             hit = None
             if hint and far(hint):
                 hint = None

@@ -169,3 +169,16 @@ def test_a_report_citing_ukmto_leads_a_shipping_incident():
     e["reports"].append(dict(e["reports"][0], url="https://example.com/ukmto", weight=1, time="2026-09-29T06:00:00Z",
                              summary="UKMTO reports a vessel hit by an unknown projectile 40 nautical miles east of Aden."))
     assert merge._headline(e)["url"] == "https://example.com/ukmto"
+
+
+def test_two_events_from_one_roundup_article_get_different_ids():
+    import merge as m
+    a = {"id": "x", "summary": "US-China summit in Beijing.", "time": "2026-09-27T01:40:00Z", "reports": [{"url": "u"}, {"url": "v"}]}
+    b = {"id": "x", "summary": "Erdogan met Bangladesh's leader in New York.", "time": "2026-09-27T00:00:00Z", "reports": [{"url": "u"}]}
+    events = [b, a]
+    assert m.unique_ids(events) == 1
+    assert a["id"] == "x" and b["id"] != "x"          # the one with more reports keeps its id
+    assert m.unique_ids(events) == 0                  # stable afterwards
+    taken = {"id": m.short_hash("event", "u")}
+    assert m._new_id([], "u", "another meeting") == taken["id"]
+    assert m._new_id([taken], "u", "another meeting") != taken["id"]

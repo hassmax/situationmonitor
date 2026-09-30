@@ -388,6 +388,32 @@ def _fold_stored_alerts(events: list[dict]) -> list[dict]:
     return [e for e in events if id(e) not in folded]
 
 
+def _new_id(events: list[dict], url: str, summary: str) -> str:
+    """An event's id comes from its first report's link; a second event from the same article
+    (a roundup of two meetings) gets one from the link and its own summary."""
+    eid = short_hash("event", url)
+    return eid if all(e["id"] != eid for e in events) else short_hash("event", url, summary)
+
+
+def unique_ids(events: list[dict]) -> int:
+    """Stored events that share an id (made before _new_id) get their own: the one with the most
+    reports keeps it. Returns how many were given a new id."""
+    by_id: dict[str, list[dict]] = {}
+    for e in events:
+        by_id.setdefault(e["id"], []).append(e)
+    changed = 0
+    for eid, same in by_id.items():
+        if len(same) < 2:
+            continue
+        same.sort(key=lambda e: -len(e.get("reports") or []))
+        for e in same[1:]:
+            first = (e.get("reports") or [{}])[0].get("url") or eid
+            e["id"] = short_hash("event", first, e.get("summary"), e.get("time"))
+            changed += 1
+            log(f"[merge] shared id {eid}: {e.get('summary', '')[:60]!r} now {e['id']}")
+    return changed
+
+
 def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
     events = _fold_stored_alerts(events)
     for cand in sorted(candidates, key=lambda c: c["time"]):
@@ -405,7 +431,7 @@ def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
         match = _find_match(events, cand)
         if match is None:
             events.append({
-                "id": short_hash("event", rep["url"]), "alert": False,
+                "id": _new_id(events, rep["url"], cand["summary"]), "alert": False,
                 "theater": cand["theater"], "type": cand["type"], "summary": cand["summary"],
                 "place": cand["place"], "country": cand["country"], "attacker": cand.get("attacker"),
                 "lat": cand["lat"], "lon": cand["lon"], "approx": cand["approx"],
@@ -669,7 +695,8 @@ def split_mixed_talks(events: list[dict], state: dict, ask, settings: dict, now)
     if suspect:
         payload = [{"e": n, "reports": [{"r": k, "summary": r["summary"]} for k, r in enumerate(e["reports"][:40])]}
                    for n, e in enumerate(suspect)]
-        reply = ask(SPLIT_PROMPT, json.dumps({"events": payload}, ensure_ascii=False), state, settings, now, max_tokens=4000)
+        reply = ask(SPLIT_PROMPT, json.dumps({"events": payload}, ensure_ascii=False), state, settings, now, max_tokens=4000,
+                    purpose="split")
         if not isinstance(reply, dict) or not isinstance(reply.get("events"), list):
             log("[merge] mixed-talks repair: no model answer; will retry next run")
             return events

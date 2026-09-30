@@ -49,16 +49,19 @@ bluesky:
     group: isw
     weight: 3
   - handle: auroraintel.bsky.social
+    disabled: true   # no posts on Bluesky since early 2025
     name: Aurora Intel
     kind: osint
     group: aurora
     weight: 2
   - handle: blackbirdgroup.bsky.social
+    disabled: true   # no posts on Bluesky since early 2025
     name: Black Bird Group
     kind: osint
     group: blackbird
     weight: 2
   - handle: casusbelli.bsky.social
+    disabled: true   # no posts on Bluesky since early 2025
     name: Casus Belli
     kind: osint
     group: casusbelli
@@ -371,9 +374,16 @@ rss:
     weight: 2
   # Countries leaving, suspending or joining treaties and international bodies, expelling
   # diplomats or cutting relations, and new sanctions packages (the US leaving GRECO was missed).
+  # Two short searches: one long query (57 terms) came back with results a week old, as if
+  # Google dropped its "last day" limit; searches of up to ~30 terms stay current.
   - id: gnews-commitments
-    name: Google News (treaties, memberships, expulsions, sanctions)
-    url: https://news.google.com/rss/search?q=%28%22withdraws+from%22+OR+%22withdrawal+from%22+OR+%22pulls+out+of%22+OR+%22suspends+participation%22+OR+%22suspends+membership%22+OR+rejoins+OR+%22expels+diplomats%22+OR+%22recalls+ambassador%22+OR+%22severs+diplomatic%22+OR+%22cuts+diplomatic+ties%22+OR+%22sanctions+package%22%29+%28treaty+OR+convention+OR+organization+OR+council+OR+panel+OR+agreement+OR+alliance+OR+court+OR+diplomats+OR+ambassador+OR+relations+OR+sanctions%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    name: Google News (treaty and membership changes)
+    url: https://news.google.com/rss/search?q=%28%22withdraws+from%22+OR+%22pulls+out+of%22+OR+%22suspends+membership%22+OR+quits+OR+rejoins%29+%28treaty+OR+convention+OR+council+OR+organization+OR+court+OR+alliance%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+  - id: gnews-relations
+    name: Google News (expulsions, cut relations, sanctions)
+    url: https://news.google.com/rss/search?q=%28%22expels+diplomats%22+OR+%22recalls+ambassador%22+OR+%22severs+diplomatic%22+OR+%22cuts+diplomatic+ties%22+OR+%22sanctions+package%22+OR+%22new+sanctions%22%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
     kind: news
     group: google-news
   # Leaders' visits and meetings, split by region: Google News returns only the top 100 results
@@ -434,7 +444,9 @@ rss:
   # report Article 51 letters, War Powers reports, and court orders.
   - id: justsecurity
     name: Just Security
-    url: https://www.justsecurity.org/feed/
+    # Its own feed blocks GitHub's servers (403 on every run since at least 2026-09-30), so its
+    # articles are read through a Google News search of the site instead.
+    url: https://news.google.com/rss/search?q=site%3Ajustsecurity.org+when%3A2d&hl=en-US&gl=US&ceid=US%3Aen
     kind: news
     group: justsecurity
   - id: lieber
