@@ -363,7 +363,7 @@
     .ringRepeatPeriod((r) => r.period)
     .ringAltitude(0.006);
   const ARC = {
-    strike: { dash: 0.4, gap: 0.22 }, strikeApprox: { dash: 0.3, gap: 0.3 },
+    strike: { dash: 0.5, gap: 0.18 }, strikeApprox: { dash: 0.34, gap: 0.28 },
     flow: { dash: 1, gap: 0 }, flowDashed: { dash: 0.12, gap: 0.07 }, particles: { dash: 0.012, gap: 0.11 },
     track: { dash: 0.06, gap: 0.04 }, plan: { dash: 0.2, gap: 0.14 }, hit: { dash: 1, gap: 0 },
   };
@@ -913,9 +913,9 @@
     const push = (e, o, d, approx) => {
       const dist = km(o.lat, o.lon, d.lat, d.lon);
       if (dist < 25 || (approx && dist > 1800)) return;
-      const a = STATUS[e.status].alpha * fade(e) * (approx ? 0.55 : 1);
+      const a = Math.min(1, STATUS[e.status].alpha * fade(e) * (approx ? 0.65 : 1.15));
       arcs.push({ ref: e, sLat: o.lat, sLng: o.lon, eLat: d.lat, eLng: d.lon, kind: approx ? "strikeApprox" : "strike",
-        color: [rgba(CAT_RGB.strike, 0.04), rgba(CAT_RGB.strike, a)], stroke: approx ? 0.2 : 0.32,
+        color: [rgba(CAT_RGB.strike, 0.12), rgba(CAT_RGB.strike, a)], stroke: approx ? 0.26 : 0.42,
         ms: approx ? 3600 : 2200, seed: Math.random() });
     };
     for (const e of events) {
