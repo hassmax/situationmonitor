@@ -25,7 +25,9 @@ settings:
   # Backups, tried only when every model above is overloaded or gone (regular Flash: also free, with
   # a separate, smaller daily limit). The preferred models are tried again after an hour.
   llm_fallback_models: [gemini-3.5-flash, gemini-flash-latest, gemini-3.1-flash, gemini-2.5-flash]
-  daily_llm_calls: 400
+  # Google's free Flash-Lite limit is about 500 a day (AI Studio shows the current one); 470 leaves
+  # a margin. Going over it only makes Google refuse calls (HTTP 429): the run stops and retries later.
+  daily_llm_calls: 470
   max_calls_per_run: 6
   # Every model call counts against daily_llm_calls. Extraction stops when fewer than
   # extraction_reserve calls are left for the day; the situation brief (one call, at most
