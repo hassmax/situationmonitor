@@ -75,6 +75,10 @@ GROUP = {"strike": "violence", "ground": "violence", "naval": "naval", "deployme
          "hybrid": "hybrid", "incursion": "incursion", "diplomacy": "talks", "legal": "talks"}
 WHOLE = {"naval", "deployment", "hybrid", "incursion"}  # shown as one group per country
 STATEMENT_KINDS = {"hybrid", "deployment"}  # with parties named, also grouped with talks
+# An explosion whose summary speaks of sabotage (or of what saboteurs hit) is also grouped with the
+# country's hybrid events: one Syrian pipeline fire came in as sabotage from some outlets and as an
+# explosion from Reuters, and the two were never compared.
+SABOTAGE_RE = re.compile(r"\b(?:sabotage|saboteurs?|arson|pipelines?|cables?|railways?|rail line|substation|power station)\b", re.I)
 
 PROMPT = """You check a live conflict map for duplicates. Each case is a list of events from the map in the same country, or diplomatic and legal events between the same parties, each with an id, its summary, place, and time.
 
@@ -139,6 +143,8 @@ def _due(events: list[dict], judged: dict, now) -> list[tuple[str, list[dict]]]:
         g = GROUP.get(FAMILY.get(e["type"]))
         if g and g != "talks" and e.get("country"):
             buckets.setdefault((e["country"], g), []).append(e)
+            if e["type"] == "explosion" and SABOTAGE_RE.search(e.get("summary") or ""):
+                buckets.setdefault((e["country"], "hybrid"), []).append(e)
         # talks are linked by who takes part, wherever they were pinned
         if g == "talks" or (g in STATEMENT_KINDS and e.get("parties")):
             buckets.setdefault(("", "talks"), []).append(e)

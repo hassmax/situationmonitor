@@ -499,6 +499,8 @@ h2 {
 }
 .sev-3 .item-summary { font-weight: 600; }
 
+.more { padding: 10px 12px 14px; }
+.map-note { margin: 0 4px 6px; padding: 0 8px; color: var(--ink-3); font-size: 12px; line-height: 1.4; }
 .empty {
   padding: 22px 16px;
   color: var(--ink-2);
