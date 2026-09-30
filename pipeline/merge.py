@@ -630,7 +630,7 @@ def prune(events: list[dict], now: datetime, retention_days: int, max_events: in
 
 def public_event(e: dict) -> dict:
     """Strip internal fields before publishing."""
-    out = {k: v for k, v in e.items() if k not in ("reports", "us", "cn", "wave_key", "alert_key", "origin", "checked", "checks", "headline", "coverage")}
+    out = {k: v for k, v in e.items() if k not in ("reports", "us", "cn", "wave_key", "alert_key", "origin", "checked", "checks", "headline", "coverage", "dated")}
     if not e.get("alert"):
         out.pop("alert", None)
     if e.get("origin") and not e.get("origins"):

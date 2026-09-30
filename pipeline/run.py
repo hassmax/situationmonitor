@@ -23,6 +23,7 @@ import archive  # noqa: E402
 import brief  # noqa: E402
 import config as config_mod  # noqa: E402
 import corrections  # noqa: E402
+import datecheck  # noqa: E402
 import dedupe  # noqa: E402
 import extract  # noqa: E402
 import fleet  # noqa: E402
@@ -203,6 +204,8 @@ def main() -> int:
     events = merge.prune(events, t0, settings["event_retention_days"], settings["max_events"])
     events = corrections.drop_reports(events, fixes)  # before scoring, so confidence is recomputed
     merge.apply_status(events, cells)
+    # Old articles listed with a fresh date: the article's own publication date (no model calls).
+    events = datecheck.check(events, session, state, t0)
     # Old stories that arrived with a fresh date are dropped (see recency.py).
     if not args.no_llm:
         events = recency.check(events, {e["id"] for e in events} - known, session, extract.ask_json, state, settings, t0)
