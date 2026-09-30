@@ -123,13 +123,15 @@ def main() -> int:
 
     # 2. Keep only new, recent, conflict-related items
     seen = state["seen"]
-    # One-time: posts that the keyword filter rejected before visits, meetings, and "war" were
-    # added to it (they were marked seen then) get one more look.
-    if state.get("prefilter_version", 1) < 2:
-        again = [it["id"] for it in items if it["id"] in seen and extract.rejected_before_added_words(it)]
+    # One-time, after words are added to the keyword filter (visits, meetings and "war"; then
+    # treaties, bodies, expulsions and sanctions): posts it rejected before (marked seen then) get
+    # one more look.
+    before = state.get("prefilter_version", 1)
+    if before < extract.PREFILTER_VERSION:
+        again = [it["id"] for it in items if it["id"] in seen and extract.rejected_before_added_words(it, before)]
         for i in again:
             seen.pop(i, None)
-        state["prefilter_version"] = 2
+        state["prefilter_version"] = extract.PREFILTER_VERSION
         log(f"[filter] re-checking {len(again)} posts rejected by the older keyword filter")
     fresh = []
     for it in items:

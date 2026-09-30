@@ -97,3 +97,15 @@ theaters:
     gdelt_require: {types: [MIL, REB, INS], countries: [USA]}
     gdelt_posture: true
     highlight: [CU, VE, CO, EC, HT]
+
+  - id: global
+    name: Treaties, sanctions and relations
+    camera: {lat: 30.0, lng: 10.0, altitude: 2.6}
+    # Not a conflict area: a country leaving, suspending or joining a treaty, alliance or
+    # international body, expelling diplomats or cutting relations, or a new sanctions package,
+    # when it concerns none of the conflicts above (the US leaving the Council of Europe's GRECO).
+    # Such steps that bear on a conflict go to that conflict's theater. The model assigns this
+    # theater; no country maps to it, and GDELT never uses it.
+    iso2: []
+    fips: []
+    highlight: []
