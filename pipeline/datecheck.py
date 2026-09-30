@@ -15,7 +15,8 @@ news report, the article is opened once and its publication date read:
 
 Google News links are redirects (news.google.com/rss/articles/...). The publisher's address is
 decoded from the link, or asked of Google when the link doesn't carry it. No model calls; at most
-PER_RUN articles a run, each event once (twice if its page couldn't be read the first time).
+PER_RUN articles a run, most serious and longest waiting first, each event once (twice if its page
+couldn't be read the first time).
 """
 from __future__ import annotations
 
@@ -30,7 +31,7 @@ from common import UTC, iso, log, parse_time
 
 OLD_DAYS = 14
 SLACK = timedelta(hours=6)
-PER_RUN = 8
+PER_RUN = 20
 TRIES = 2                           # an article that can't be read is tried once more, on a later run
 RECENT = timedelta(days=3)          # only events this recent are checked
 MIN_SEVERITY = 2
@@ -57,7 +58,10 @@ _PATTERNS = [
 def check(events: list[dict], session, state: dict, now) -> list[dict]:
     """Returns events without old articles; moves others back to their article's date."""
     todo = [e for e in events if _eligible(e, now)]
-    todo.sort(key=lambda e: e.get("time") or "", reverse=True)
+    # Most serious first, then the one waiting longest. Newest-first let each run's new stories
+    # push older ones back for hours (a relisted March report of Houthi missiles at Israel waited
+    # behind 146 others).
+    todo.sort(key=lambda e: (-int(e.get("severity") or 1), e.get("time") or ""))
     dated = old = moved = 0
     drop = set()
     for e in todo[:PER_RUN]:
