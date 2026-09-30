@@ -75,6 +75,9 @@ GROUP = {"strike": "violence", "ground": "violence", "naval": "naval", "deployme
          "hybrid": "hybrid", "incursion": "incursion", "diplomacy": "talks", "legal": "talks"}
 WHOLE = {"naval", "deployment", "hybrid", "incursion"}  # shown as one group per country
 STATEMENT_KINDS = {"hybrid", "deployment"}  # with parties named, also grouped with talks
+# Order of questions: groups holding a pair never asked about go first, second looks after (the
+# waiting-since times sort within each); prefixes of the sort key.
+NEW, SECOND = "0|", "1|"
 # An explosion whose summary speaks of sabotage (or of what saboteurs hit) is also grouped with the
 # country's hybrid events: one Syrian pipeline fire came in as sabotage from some outlets and as an
 # explosion from Reuters, and the two were never compared.
@@ -165,11 +168,14 @@ def _due(events: list[dict], judged: dict, now) -> list[tuple[str, list[dict]]]:
                         seen.add(f["id"])
                         todo.append(f)
             for part in _chunks(sorted(comp, key=lambda e: e["time"])):
-                waits = [_waiting_since(judged.get(_key(a["id"], b["id"])), a, b)
-                         for i, a in enumerate(part) for b in part[i + 1:]
-                         if not _settled(judged.get(_key(a["id"], b["id"])), now)]
+                open_pairs = [judged.get(_key(a["id"], b["id"])) for i, a in enumerate(part) for b in part[i + 1:]]
+                waits = [_waiting_since(v, a, b)
+                         for (a, b), v in zip(((a, b) for i, a in enumerate(part) for b in part[i + 1:]), open_pairs)
+                         if not _settled(v, now)]
                 if len(part) > 1 and waits:
-                    out.append((min(waits), part))
+                    # groups with a pair never asked about go before second looks (NEW / SECOND)
+                    fresh = any(v is None for v in open_pairs)
+                    out.append(((NEW if fresh else SECOND) + min(waits), part))
     # The group whose question has waited longest goes first (see groups). Biggest-first let the
     # big diplomacy groups, which gain a new event every few runs, keep a small group (two Belgian
     # reports of one story) waiting until it left the window.
@@ -208,8 +214,9 @@ def late_cases(events: list[dict], history: list[dict], judged: dict, now) -> li
             if ov >= LATE_OVERLAP and _shared(o, n) >= MIN_SHARED and a <= b:
                 scored.append((ov, o))
         for _, o in sorted(scored, key=lambda x: -x[0])[:LATE_CANDIDATES]:
-            if not _settled(judged.get(_key(o["id"], n["id"])), now):
-                out.append((n["time"], [o, n]))
+            v = judged.get(_key(o["id"], n["id"]))
+            if not _settled(v, now):
+                out.append(((NEW if v is None else SECOND) + n["time"], [o, n]))
     return out
 
 
@@ -280,9 +287,10 @@ def _fold(events: list[dict], same: list[tuple[str, str]], skip: set[str],
 
 
 def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: int,
-        skip: set[str], history: list[dict] | None = None) -> tuple[list[dict], list[dict]]:
+        skip: set[str], history: list[dict] | None = None, share: int | None = None) -> tuple[list[dict], list[dict]]:
     """Returns (events, the events folded away). `ask` is extract.ask_json; `history` holds archived
-    events no longer in the working set (compared with new events as late follow-ups)."""
+    events no longer in the working set (compared with new events as late follow-ups); `share` is
+    how many calls this check may still make now under its paced daily share (extract.share_left)."""
     st = state.setdefault("dedupe", {})
     cutoff = iso(now - timedelta(days=KEEP_DAYS))
     st["judged"] = judged = {k: v for k, v in (st.get("judged") or {}).items() if v.get("at", "") >= cutoff}
@@ -314,9 +322,14 @@ def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: in
             break
         if call and remaining - call < EXTRA_CALLS_FLOOR:
             break  # the backlog waits for the next run rather than eat into extraction
+        if share is not None and call >= share:
+            if not call:
+                log("[dedupe] waiting: its share of today's model calls is used for now")
+            break
         payload = [{"i": n, "events": [{"id": e["id"], "summary": e.get("summary"), "place": e.get("place"),
                                         "time": e.get("time")} for e in comp]} for n, comp in enumerate(cases)]
-        reply = ask(PROMPT, json.dumps({"cases": payload}, ensure_ascii=False), state, settings, now, max_tokens=3000)
+        reply = ask(PROMPT, json.dumps({"cases": payload}, ensure_ascii=False), state, settings, now, max_tokens=3000,
+                    purpose="dedupe")
         if not isinstance(reply, dict) or not isinstance(reply.get("results"), list):
             st["failed"] = iso(now)
             log(f"[dedupe] no model answer; will try again in {int(RETRY.total_seconds() // 60)} minutes")

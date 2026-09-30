@@ -42,6 +42,7 @@ from urllib.parse import quote_plus
 
 import feedparser
 
+import extract
 from common import clean_text, iso, log, parse_time
 from sources.rss import _entry_time
 
@@ -54,6 +55,7 @@ MODEL_GAP = timedelta(minutes=30)
 MODEL_BATCH = 8
 CHECKS_PER_RUN = 15
 MAX_TRIES = 3
+HOLD_MIN_OLDER = 2     # older headlines on the topic needed to flag an event
 HOLD_MIN_SEVERITY = 2  # holding applies to notable events (a minor local item isn't widely covered anyway)
 _STOP = set("""a an the of in on at to for and or by with as is are was were be been its it this that
 from after over into amid near during against about says said say claims claimed claim reports
@@ -156,8 +158,11 @@ def held(e: dict) -> bool:
     dated = e.get("dated") or {}
     undated = int(dated.get("tries", 0)) >= UNDATED_TRIES and not dated.get("published")
     groups = {r.get("group") or r.get("source") for r in e.get("reports", [])}
-    return (bool(cov.get("older")) and (not cov.get("current") or undated)
-            and int(e.get("severity") or 1) >= HOLD_MIN_SEVERITY and len(groups) < 2 and not e.get("alert"))
+    # One older on-topic headline is thin evidence for a recurring kind of story (Saudi airstrikes
+    # in Saada); and a corroborated event (GDELT's nearby coverage counts) isn't flagged at all.
+    return (int(cov.get("older") or 0) >= HOLD_MIN_OLDER and (not cov.get("current") or undated)
+            and int(e.get("severity") or 1) >= HOLD_MIN_SEVERITY and len(groups) < 2 and not e.get("alert")
+            and e.get("status") != "corroborated")
 
 
 def _same_headline(a: dict, b: dict) -> bool:
@@ -196,6 +201,8 @@ def check(events: list[dict], new_ids: set[str], session, ask, state: dict, sett
     asked = parse_time(state.get("recency_asked"))
     if asked and now - asked < MODEL_GAP and len(todo) < MODEL_BATCH:
         return events  # a few waiting: check them together in a while
+    if todo and extract.share_left(state, settings, now, "recency") <= 0:
+        return events  # its share of today's model calls is used for now (see extract.SHARES)
     todo.sort(key=lambda e: e.get("time") or "", reverse=True)
     todo = sorted(todo, key=lambda e: e["id"] not in new_ids)[:CHECKS_PER_RUN]  # this run's events, then newest
     cases = []
@@ -222,7 +229,8 @@ def check(events: list[dict], new_ids: set[str], session, ask, state: dict, sett
                 "older": [{"n": k, "title": r["title"], "date": day(r)} for k, r in enumerate(older)]}
                for n, (e, recent, older) in enumerate(cases)]
     state["recency_asked"] = iso(now)
-    reply = ask(PROMPT, json.dumps({"cases": payload}, ensure_ascii=False), state, settings, now, max_tokens=1500)
+    reply = ask(PROMPT, json.dumps({"cases": payload}, ensure_ascii=False), state, settings, now, max_tokens=1500,
+                purpose="recency")
     if not isinstance(reply, dict) or not isinstance(reply.get("results"), list):
         log("[recency] no model answer; will retry next run")
         for e, _, _ in cases:

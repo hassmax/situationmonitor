@@ -434,7 +434,7 @@ def read_tracker(state: dict, items: list[dict], session, settings: dict, now: d
         for line in evidence:
             log(f"[fleet]   {line}")
     else:
-        out = ask_json(TRACKER_PROMPT, _article_text(html), state, settings, now)
+        out = ask_json(TRACKER_PROMPT, _article_text(html), state, settings, now, purpose="fleet")
     if not isinstance(out, dict) or not isinstance(out.get("carriers"), list):
         log("[fleet] tracker article could not be read this run; will retry")
         return []

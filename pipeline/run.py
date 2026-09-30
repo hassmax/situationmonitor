@@ -87,6 +87,7 @@ def main() -> int:
     # Events taken off the map by hand (pipeline/config/removed.yaml).
     events = [e for e in events if e.get("id") not in cfg.removed]
     cells: list[dict] = [c for c in stored.get("cells", []) if c.get("theater") in cfg.theater_ids]
+    merge.unique_ids(events)  # two events once shared an id when one roundup article gave both
     # Nothing can have happened after this run started (repairs events stored with a feed's
     # future-dated timestamps, which the map showed as "just now").
     stamp = iso(t0)
@@ -216,7 +217,8 @@ def main() -> int:
         # New events are also compared with older ones, archived ones included (late follow-ups).
         events, same = dedupe.run(events, state, settings, t0, extract.ask_json,
                                   extract.calls_remaining(state, settings, t0), hidden,
-                                  archive.recent(state_dir, t0, dedupe.LATE_DAYS))
+                                  archive.recent(state_dir, t0, dedupe.LATE_DAYS),
+                                  share=extract.share_left(state, settings, t0, "dedupe"))
         folded += same
         if same:
             merge.apply_status(events, cells)

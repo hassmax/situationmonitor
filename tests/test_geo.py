@@ -130,3 +130,14 @@ def test_a_lookup_far_outside_the_theater_is_not_used_for_a_strike():
 def test_stored_events_at_a_region_name_move_to_its_anchor():
     e = {"id": "r", "type": "missile_drone", "place": "Middle East", "lat": 39.3, "lon": -76.59, "summary": "s"}
     assert geo.pin_commands([e]) == 1 and (e["lat"], e["lon"], e["approx"]) == (29.0, 45.0, True)
+
+
+def test_the_indo_pacific_reaches_the_arabian_sea_and_karachi():
+    class ArabianSea(Session):
+        def get(self, url, params=None, timeout=None):
+            return Resp([{"lat": "20.0", "lon": "65.0"}])
+    import config
+    theaters = config.load().theaters
+    rec = dict(record("Arabian Sea", type_="naval"), theater="indopac")
+    c = geo.place_record(rec, geo.Geocoder({}, ArabianSea(), budget=10), theaters)
+    assert (c["lat"], c["lon"]) == (20.0, 65.0)

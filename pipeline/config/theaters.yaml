@@ -81,6 +81,9 @@ theaters:
       - [8.0, 121.5, 27.0, 145.0]  # Philippine Sea
     gdelt_posture: true   # also count shows of force, alerts, mobilisation (exercises, buildups)
     highlight: [TW, PH, KP, KR, MM]
+    # How far from the camera point a looked-up strike or incident may be (geo.THEATER_KM is
+    # 5,000 km): this theater runs from Karachi and the Arabian Sea (5,200-5,500 km) to Japan.
+    reach_km: 6500
 
   - id: latam
     name: Latin America

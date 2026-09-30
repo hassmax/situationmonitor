@@ -2,7 +2,9 @@ name: Update conflict data
 
 on:
   schedule:
-    - cron: "*/15 * * * *"   # GitHub may start scheduled runs a few minutes late
+    # Off the hour and quarter-hours: GitHub delays, and under heavy load drops, scheduled runs at
+    # the start of the hour (no scheduled run started for 9 hours on 2026-09-29/30).
+    - cron: "4,19,34,49 * * * *"
   workflow_dispatch:
   push:
     branches: [main]

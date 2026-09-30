@@ -185,8 +185,41 @@ def calls_remaining(state: dict, settings: dict, now: datetime) -> int:
     day = now.strftime("%Y-%m-%d")
     usage = state.setdefault("llm_calls", {"date": day, "count": 0})
     if usage.get("date") != day:
-        usage.update(date=day, count=0)
+        usage.update(date=day, count=0, by={})
     return int(settings["daily_llm_calls"]) - int(usage["count"])
+
+
+def _spend(state: dict, purpose: str, n: int = 1) -> None:
+    """Count (or, with n=-1, uncount) a model call, in the day's total and under its purpose."""
+    usage = state.setdefault("llm_calls", {"count": 0})
+    usage["count"] = int(usage.get("count", 0)) + n
+    by = usage.setdefault("by", {})
+    by[purpose] = max(0, int(by.get(purpose, 0)) + n)
+
+
+def used_today(state: dict, purpose: str) -> int:
+    return int(((state.get("llm_calls") or {}).get("by") or {}).get(purpose, 0))
+
+
+# Daily shares of the model budget for the checks that run after extraction, so reading new posts
+# always has most of it. On 2026-09-30 the same-story check took most of the day's 400 calls (up to
+# three a run, every run, while its backlog never emptied) and extraction stopped with 358 posts
+# waiting. Each share is paced over the day: by noon, about half of it (plus SHARE_BURST).
+SHARES = {"dedupe": "dedupe_daily_max", "recency": "recency_daily_max"}
+SHARE_DEFAULTS = {"dedupe_daily_max": 90, "recency_daily_max": 48}
+SHARE_BURST = 4
+
+
+def share_left(state: dict, settings: dict, now: datetime, purpose: str) -> int:
+    """Calls `purpose` may still make now under its paced daily share (a large number if it has none)."""
+    key = SHARES.get(purpose)
+    if not key:
+        return 10 ** 6
+    cap = int(settings.get(key, SHARE_DEFAULTS[key]))
+    elapsed = (now.hour * 60 + now.minute) / (24 * 60)
+    paced = min(cap, int(cap * elapsed) + SHARE_BURST)
+    today = (state.get("llm_calls") or {}).get("date") == now.strftime("%Y-%m-%d")
+    return paced - (used_today(state, purpose) if today else 0)
 
 
 def calls_allowed(state: dict, settings: dict, now: datetime, reserve: int = 0) -> int:
@@ -320,17 +353,17 @@ def _find_model(token: str, settings: dict, state: dict, skip=()) -> dict | None
             }
             if json_mode:
                 body["response_format"] = {"type": "json_object"}
-            state["llm_calls"]["count"] += 1
+            _spend(state, "probe")
             try:
                 r = _post(url, body, token)
             except Exception as exc:  # noqa: BLE001
-                state["llm_calls"]["count"] -= 1  # never reached the model
+                _spend(state, "probe", -1)  # never reached the model
                 log(f"[extract] probe {model}: {exc}")
                 break
             if r.status_code == 429:
                 raise RateLimited(r.text[:200])
             if r.status_code >= 500:
-                state["llm_calls"]["count"] -= 1  # overloaded or down: not counted
+                _spend(state, "probe", -1)  # overloaded or down: not counted
                 log(f"[extract] probe {model}: busy ({_describe(r)[:60]}), trying the next model")
                 break
             try:
@@ -350,7 +383,7 @@ def _find_model(token: str, settings: dict, state: dict, skip=()) -> dict | None
                 log("[extract] the API key was rejected; check the GEMINI_API_KEY secret")
                 return None
             if r.status_code == 404 or "not found" in (r.text or "").lower():
-                state["llm_calls"]["count"] -= 1  # no such model: nothing was done
+                _spend(state, "probe", -1)  # no such model: nothing was done
                 break  # unknown model name: try the next one
     return None
 
@@ -559,7 +592,7 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
         if n:
             time.sleep(float(settings.get("seconds_between_calls", 0)))  # stay under the per-minute limit
         used += 1
-        state["llm_calls"]["count"] += 1
+        _spend(state, "extract")
         try:
             out = _call_model(batch, token, chosen, settings)
         except RateLimited as exc:
@@ -567,7 +600,7 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
             break
         except Busy as exc:
             used -= 1
-            state["llm_calls"]["count"] -= 1  # not counted: the model never did the work
+            _spend(state, "extract", -1)  # not counted: the model never did the work
             if not switched:
                 switched = True
                 log(f"[extract] {chosen['model']} is busy (not counted); looking for another model")
@@ -618,12 +651,13 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
 
 
 def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, now: datetime,
-             max_tokens: int = 4000, _retry: bool = True) -> dict | None:
+             max_tokens: int = 4000, _retry: bool = True, purpose: str = "other") -> dict | None:
     """One budgeted model call outside the batch loop. Returns parsed JSON or None. If the model
-    is busy, another model (a backup if need be) is tried once."""
+    is busy, another model (a backup if need be) is tried once. `purpose` names what the call is
+    for in the day's tally (state["llm_calls"]["by"]) and is checked against its share (share_left)."""
     token = os.environ.get("LLM_API_KEY", "").strip()
     chosen = state.get("llm_model")
-    if not token or not chosen or calls_allowed(state, settings, now) <= 0:
+    if not token or not chosen or calls_allowed(state, settings, now) <= 0 or share_left(state, settings, now, purpose) <= 0:
         return None
     body = {
         "model": chosen["model"], "temperature": 0, "max_tokens": max_tokens, "stream": False,
@@ -631,11 +665,11 @@ def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, no
     }
     if chosen.get("json_mode", True):
         body["response_format"] = {"type": "json_object"}
-    state["llm_calls"]["count"] += 1
+    _spend(state, purpose)
     try:
         r = _post(chosen["url"], body, token)
         if r.status_code >= 500:
-            state["llm_calls"]["count"] -= 1  # overloaded or down: not counted
+            _spend(state, purpose, -1)  # overloaded or down: not counted
             log(f"[extract] one-off call: the model is busy (not counted): {_describe(r)[:120]}")
             if _retry:
                 try:
@@ -643,14 +677,14 @@ def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, no
                 except RateLimited:
                     other = None
                 if other:
-                    return ask_json(system_prompt, user_text, state, settings, now, max_tokens, _retry=False)
+                    return ask_json(system_prompt, user_text, state, settings, now, max_tokens, _retry=False, purpose=purpose)
             return None
         if r.status_code >= 400:
             log(f"[extract] one-off call failed: {_describe(r)}")
             return None
         return _parse_json_object(_content_from_response(r))
     except requests.RequestException as exc:
-        state["llm_calls"]["count"] -= 1  # never reached the model
+        _spend(state, purpose, -1)  # never reached the model
         log(f"[extract] one-off call failed (not counted): {exc}")
         return None
     except Exception as exc:  # noqa: BLE001
