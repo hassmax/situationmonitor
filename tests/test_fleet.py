@@ -175,3 +175,12 @@ def test_near_hawaii_in_a_later_paragraph_naming_the_carrier():
 
 def test_departure_point_only_when_nothing_says_where_it_is():
     assert lincoln("") == ("Guam", "departed", "California")
+
+
+def test_held_reports_from_taken_down_articles_are_forgotten():
+    import fleet as fl
+    state = {"fleet": {"CVN-72": {"held": [{"url": "u-old-photo", "time": "2026-09-29T23:40:46Z"},
+                                           {"url": "u-other", "time": "2026-09-29T23:50:00Z"}]},
+                       "CVN-68": {"held": [{"url": "u-old-photo", "time": "2026-09-29T23:40:46Z"}]}}}
+    fl.drop_held(state, {"u-old-photo"})
+    assert [h["url"] for h in state["fleet"]["CVN-72"]["held"]] == ["u-other"] and "held" not in state["fleet"]["CVN-68"]

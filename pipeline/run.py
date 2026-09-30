@@ -193,6 +193,7 @@ def main() -> int:
     geo.repair(events, geocoder, state)  # stored approximate pins, re-checked a few per run
     # Reports of hidden events, and dropped reports, never create or join an event again.
     blocked = corrections.blocked_urls(events, fixes)
+    fleet.drop_held(state, blocked)
     candidates = [c for c in candidates if c["report"]["url"] not in blocked]
     # One-time repair of diplomacy events that merged unrelated talks (see merge.split_mixed_talks).
     if not args.no_llm:

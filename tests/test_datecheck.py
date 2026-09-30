@@ -80,3 +80,17 @@ def test_only_notable_single_report_news_events_are_opened():
     old = event("https://example.com/c.html", hours_ago=24 * 5)
     datecheck.check([minor, two, old], s, {}, NOW)
     assert s.calls == []
+
+
+def test_a_photo_is_dated_by_when_it_was_taken():
+    html = ('<meta property="article:published_time" content="2026-09-29T20:00:00Z">'
+            '<div><b>Date Taken:</b> 06.12.2026</div>')
+    assert datecheck.published_in(html) == datetime(2026, 6, 12, tzinfo=timezone.utc)
+
+
+def test_military_sites_are_checked_whatever_the_severity():
+    photo = event("https://www.cpf.navy.mil/Newsroom/Photos/igphoto/123/", severity=1)
+    photo["reports"][0]["source"] = "cpf.navy.mil (via Google News)"
+    s = Session({"https://www.cpf.navy.mil/Newsroom/Photos/igphoto/123/": "<b>Date Taken:</b> 06.12.2026"})
+    state = {}
+    assert datecheck.check([photo], s, state, NOW) == [] and state["dropped_as_old"][0]["match_date"] == "2026-06-12"
