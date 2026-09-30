@@ -45,3 +45,6 @@ corrections:
   - id: 5c72e4f6e275
     hide: true
     note: Old photo. "USS Abraham Lincoln and USS Robert Smalls transited the South China Sea" came from a photo on the Pacific Fleet website posted with a fresh date; USNI places the Lincoln near Hawaii.
+  - id: d8ae00040876
+    hide: true
+    note: Old story. "Iran-backed Houthis launch ballistic missiles at Israel" (Mid-Day, listed Sept 29) matches the coverage of the Houthis' first launch at Israel on March 28, 2026; no launch on Sept 29 was found, and Mid-Day's page blocks the date check.
