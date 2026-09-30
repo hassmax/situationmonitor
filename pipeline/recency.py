@@ -48,6 +48,7 @@ from sources.rss import _entry_time
 CHECK_VERSION = 4    # 4: coverage is recorded so a single-source story with only older coverage is held
 KEEP_DROPS_FROM = 2  # drops made under this version or later stand (version 3 only drops more)
 AGE_DAYS = 14        # older coverage must be at least this much older than the event
+UNDATED_TRIES = 2    # datecheck.TRIES: the article date check gave up
 RECENT_DAYS = 2      # "current" coverage: within this many days of the event
 MODEL_GAP = timedelta(minutes=30)
 MODEL_BATCH = 8
@@ -148,11 +149,15 @@ def _outlet_of(title: str) -> str:
 
 def held(e: dict) -> bool:
     """Flagged "possibly an old story" until a second source reports it: a notable news-only event
-    from a single source whose check found older coverage of the topic and no current coverage."""
+    from a single source whose check found older coverage of the topic and either no current
+    coverage or an article whose own date couldn't be read. A March report of Houthi missiles at
+    Israel, relisted in September by a site that blocks the date check, had one "current" match."""
     cov = e.get("coverage") or {}
+    dated = e.get("dated") or {}
+    undated = int(dated.get("tries", 0)) >= UNDATED_TRIES and not dated.get("published")
     groups = {r.get("group") or r.get("source") for r in e.get("reports", [])}
-    return (bool(cov.get("older")) and not cov.get("current") and int(e.get("severity") or 1) >= HOLD_MIN_SEVERITY
-            and len(groups) < 2 and not e.get("alert"))
+    return (bool(cov.get("older")) and (not cov.get("current") or undated)
+            and int(e.get("severity") or 1) >= HOLD_MIN_SEVERITY and len(groups) < 2 and not e.get("alert"))
 
 
 def _same_headline(a: dict, b: dict) -> bool:

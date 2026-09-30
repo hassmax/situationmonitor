@@ -94,6 +94,17 @@ def test_a_single_source_story_with_only_older_coverage_is_held_until_a_second_s
     assert not recency.held(second)                                        # a second source: shown
 
 
+def test_an_article_whose_date_could_not_be_read_is_held_despite_one_current_match():
+    e = dict(ev("h", "Yemen's Houthis launched ballistic missiles at Israel."), severity=2,
+             coverage={"current": 1, "older": 8})
+    e["reports"][0].update(group="google-news", source="Mid-Day (via Google News)")
+    assert not recency.held(e)                                                           # not checked yet
+    assert not recency.held(dict(e, dated={"published": None, "tries": 1}))              # one more try left
+    assert recency.held(dict(e, dated={"published": None, "tries": 2}))                  # gave up: flagged
+    assert not recency.held(dict(e, dated={"published": "2026-09-29T20:00:00Z", "tries": 1}))  # dated: current
+    assert not recency.held(dict(e, dated={"published": None, "tries": 2}, coverage={"current": 1, "older": 0}))
+
+
 def test_the_same_outlet_republishing_is_not_current_coverage():
     assert recency._outlet("Mid-Day (via Google News)") == "mid-day"
     assert recency._outlet_of("Yemen's Houthis launch missiles at Israel - Mid-Day") == "mid-day"
