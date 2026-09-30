@@ -165,7 +165,6 @@
     return TYPES[e.type] || "Event";
   };
   const originsOf = (e) => (e.origins && e.origins.length ? e.origins : e.origin ? [e.origin] : []);
-  const isKey = (e) => e.severity >= 3 && e.status === "corroborated";
   const bestStatus = (list) => list.reduce((b, e) => (STATUS[e.status].rank > STATUS[b].rank ? e.status : b), "claimed");
   const metaLine = (e) => (e.wave ? `${countryName(e.attacker)} → ${countryName(e.country)}`
     : e.alert ? countryName(e.country) || e.place || ""
@@ -1222,11 +1221,8 @@
         : `<li class="empty"><strong>No events in the last 7 days yet.</strong>The pipeline is running. New events appear here as sources report them.</li>`);
       return;
     }
-    const key = events.filter(isKey).slice(0, 4);
-    const keyIds = new Set(key.map((e) => e.id));
-    const rest = events.filter((e) => !keyIds.has(e.id)).slice(0, 250);
-    list.innerHTML = top + (key.length ? `<li class="group">Key developments</li>${key.map((e) => itemHtml(e, names)).join("")}<li class="group">Everything else</li>` : "")
-      + rest.map((e) => itemHtml(e, names)).join("");
+    // The brief above already sums up what matters; the list below it is simply newest first.
+    list.innerHTML = top + events.slice(0, 250).map((e) => itemHtml(e, names)).join("");
   }
 
   function sparkSvg(counts, w = 3, gap = 1.1, h = 12, cls = "") {
