@@ -49,6 +49,8 @@ def _rule(rules: dict, name: str) -> dict:
 
 
 def event_matches(e: dict, rules: dict) -> list[str]:
+    if e.get("possibly_old"):
+        return []  # a single-source story that may be old news: no alert until a second source joins
     """The rules this event matches right now (hidden events never reach this point)."""
     hits = []
     if _rule(rules, "major_corroborated") and (e.get("severity") or 0) >= 3 and e.get("status") == "corroborated":

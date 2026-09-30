@@ -164,6 +164,11 @@ COMMANDS = [
 ]
 
 
+_FROM_COMMAND = re.compile(r"\bfrom\s+(?:the\s+)?(?:US\s+|U\.S\.\s+)?(CENTCOM|EUCOM|AFRICOM|INDOPACOM|PACOM|SOUTHCOM|"
+                           r"(?:Central|European|Africa|Indo-Pacific|Southern)\s+Command)", re.IGNORECASE)
+_AIRCRAFT = re.compile(r"\b(?:aircraft|jets?|planes?|tankers?|bombers?|fighters?|KC-\d+s?|F-\d+s?|B-\d+s?|C-\d+s?)\b", re.IGNORECASE)
+
+
 def _command(text: str | None):
     return next(((label, lat, lon) for rx, label, lat, lon in COMMANDS if rx.search(text or "")), None)
 
@@ -178,6 +183,18 @@ def pin_commands(events: list[dict]) -> int:
         c = _command(e.get("place"))
         if c and (e.get("lat"), e.get("lon")) != (c[1], c[2]):
             e.update(place=c[0], lat=c[1], lon=c[2], approx=True)
+            changed += 1
+        # forces leaving a command's area ("KC-135s returning home from CENTCOM bases", stored as a
+        # deployment at the home base) become a movement out of that region to where they went
+        src = _FROM_COMMAND.search(e.get("summary") or "")
+        if e.get("type") == "deployment" and src and e.get("country") and not _command(e.get("place")):
+            origin = _command(src.group(1))
+            e["type"] = "arms_transfer"
+            e["transfer"] = {"kind": "delivery", "supplier": e["country"], "recipient": e["country"],
+                             "mode": "air" if _AIRCRAFT.search(e.get("summary") or "") else "unspecified",
+                             "from": {"place": origin[0], "lat": origin[1], "lon": origin[2], "region": True},
+                             "to": {"place": e.get("place"), "lat": e["lat"], "lon": e["lon"]},
+                             "via": [], "what": None, "flights": None, "value_usd": None, "money": False}
             changed += 1
         t = e.get("transfer")
         if e.get("type") == "arms_transfer" and isinstance(t, dict):

@@ -217,7 +217,13 @@ def main() -> int:
 
     # 7. Situation brief: at most one model call an hour, from the same daily budget
     # Hidden events are left out and edits applied; everything below uses this published list.
-    published = corrections.publish([merge.public_event(e) for e in events], fixes, extract.EVENT_TYPES)
+    # Single-source stories that look like old news stay on the map but are flagged "possibly an
+    # old story" (recency.held): faded, not animated, left out of alerts, until a second source joins.
+    doubtful = {e["id"] for e in events if recency.held(e)}
+    if doubtful:
+        log(f"[recency] flagged as possibly old until a second source reports it: {len(doubtful)}")
+    published = corrections.publish([{**merge.public_event(e), **({"possibly_old": True} if e["id"] in doubtful else {})}
+                                     for e in events], fixes, extract.EVENT_TYPES)
     if not args.no_llm:
         brief.update(state, published, {t["id"]: t["name"] for t in cfg.theaters}, settings, t0,
                      extract.ask_json, extract.calls_remaining(state, settings, t0))

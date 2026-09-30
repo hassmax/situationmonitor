@@ -13,7 +13,6 @@
   const PHONE = window.matchMedia("(max-width: 859px), (pointer: coarse)").matches;
   const MAX_MARKERS = PHONE ? 160 : 320;
   const MAX_ANIMATED_NOW = PHONE ? 8 : MAX_ANIMATED;
-  const SUPPLY_DAYS = 30;
   const isMobile = () => window.innerWidth < 860;
 
   // ------------------------------------------------------------------ vocabulary
@@ -66,7 +65,7 @@
     ["blast", "strike", "Explosion"], ["artillery", "ground", "Shelling"],
     ["ground", "ground", "Ground fighting"], ["territory", "ground", "Territory change"], ["naval", "naval", "Naval"],
     ["hybrid", "hybrid", "Hybrid attack"], ["incursion", "hybrid", "Incursion"], ["deploy", "deploy", "Deployment"],
-    ["diplo", "diplo", "Diplomacy, legal"], ["crate", "supply", "Arms transfer"], ["coin", "aid", "Financial aid"],
+    ["diplo", "diplo", "Diplomacy, legal"], ["crate", "supply", "Arms or forces moved"], ["coin", "aid", "Financial aid"],
     ["carrier", "fleet", "US carrier at sea"],
   ];
   const MODE = { air: "by air", sea: "by sea", land: "overland", unspecified: "" };
@@ -158,7 +157,10 @@
   const typeLabel = (e) => {
     if (e.alert) return "Drone and missile alerts";
     if (e.wave) return "Drone and missile attack wave";
-    if (e.type === "arms_transfer") return { pledge: "Pledged aid", interdiction: "Intercepted shipment" }[tkind(e)] || "Arms delivery";
+    if (e.type === "arms_transfer") {
+      if (e.transfer && e.transfer.supplier && e.transfer.supplier === e.transfer.recipient) return "Forces moved";
+      return { pledge: "Pledged aid", interdiction: "Intercepted shipment" }[tkind(e)] || "Arms delivery";
+    }
     return TYPES[e.type] || "Event";
   };
   const originsOf = (e) => (e.origins && e.origins.length ? e.origins : e.origin ? [e.origin] : []);
@@ -166,10 +168,15 @@
   const bestStatus = (list) => list.reduce((b, e) => (STATUS[e.status].rank > STATUS[b].rank ? e.status : b), "claimed");
   const metaLine = (e) => (e.wave ? `${countryName(e.attacker)} → ${countryName(e.country)}`
     : e.alert ? countryName(e.country) || e.place || ""
-    : e.type === "arms_transfer" && e.transfer ? `${countryName(e.transfer.supplier)} → ${transferTo(e.transfer)}` : e.place || "");
+    : e.type === "arms_transfer" && e.transfer ? `${transferFrom(e.transfer)} → ${transferTo(e.transfer)}` : e.place || "");
   const flowBadge = (f) => (f.money ? iconBadge("coin", "aid", STATUS[f.status].conf) : iconBadge("crate", "supply", STATUS[f.status].conf));
-  const transferTo = (t) => (t.to && t.to.region ? t.to.place : countryName(t.recipient));
-  const flowTo = (f) => f.toLabel || countryName(f.recipient);
+  // A country moving its own forces (supplier = recipient) is labeled by places, not "United States →
+  // United States": the region or base it left and the one it went to.
+  const own = (t) => t.supplier && t.supplier === t.recipient;
+  const transferFrom = (t) => (t.from && (t.from.region || own(t)) && t.from.place ? t.from.place : countryName(t.supplier));
+  const transferTo = (t) => (t.to && (t.to.region || own(t)) && t.to.place ? t.to.place : countryName(t.recipient));
+  const flowFrom = (f) => f.fromLabel || (f.own && f.from && f.from.place) || countryName(f.supplier);
+  const flowTo = (f) => f.toLabel || (f.own && f.to && f.to.place) || countryName(f.recipient);
   // A marker-style icon for lists and the legend, matching the globe.
   const iconBadge = (icon, cat, conf = "solid", extra = "") => `<span class="ico cat-${cat} conf-${conf} ${extra}" aria-hidden="true">${svgIcon(icon)}</span>`;
   const eventIcon = (e) => { const [cat, icon] = catOf(e); return iconBadge(icon, cat, STATUS[e.status].conf); };
@@ -184,7 +191,7 @@
     for (const k of Object.keys(viewed)) if (!(viewed[k] > cutoff)) delete viewed[k];
     try { localStorage.setItem("gsm_viewed", JSON.stringify(viewed)); } catch (_) { /* storage blocked */ }
   }
-  const isNew = (e) => !viewed[e.id] && (e._t > Date.now() - HOUR || (lastSeen && e._t > lastSeen && e._t > Date.now() - DAY));
+  const isNew = (e) => !viewed[e.id] && !e.possibly_old && (e._t > Date.now() - HOUR || (lastSeen && e._t > lastSeen && e._t > Date.now() - DAY));
   const isLive = (e) => !viewed[e.id] && (Date.now() - e._t < LIVE_MS || isNew(e));
 
   // ------------------------------------------------------------------ state
@@ -425,7 +432,7 @@
   function eventMarker(e, labelIt, animate) {
     const [cat, icon, fx] = catOf(e);
     const el = markerEl(`ev:${e.id}`);
-    const live = animate && !reduceMotion;
+    const live = animate && !reduceMotion && !e.possibly_old;
     const size = e.alert ? "md" : e.severity >= 3 ? "lg" : e.severity === 2 ? "md" : "sm";
     el.style.setProperty("--s", `${markerPx(e, size).toFixed(1)}px`);
     el.className = `mk cat-${cat} conf-${STATUS[e.status].conf} size-${size}${live && fx ? ` fx-${fx}` : ""}${e.id === S.selectedId ? " is-selected" : ""}${el.classList.contains("spread") ? " spread" : ""}`;
@@ -567,7 +574,7 @@
       : e.wave && e.targets && e.targets.length > 1 ? `<span>${e.targets.length} locations</span>` : "";
     return `<div class="tip"><div class="tip-meta">${eventIcon(e)}<b>${esc(typeLabel(e))}</b><span>${esc(metaLine(e))}</span></div>
       <div class="tip-sum">${esc(e.summary)}</div>
-      <div class="tip-foot"><span>${esc(STATUS[e.status].label)}</span>${extra}<span>${esc(ago(e._t))}</span></div></div>`;
+      <div class="tip-foot"><span>${esc(STATUS[e.status].label)}</span>${e.possibly_old ? "<span>Possibly an old story</span>" : ""}${extra}<span>${esc(ago(e._t))}</span></div></div>`;
   }
   function tipCarrier(c) {
     return `<div class="tip"><div class="tip-meta">${iconBadge("carrier", "fleet")}<b>${esc(c.name)}</b><span>${esc(c.hull)}</span></div>
@@ -575,7 +582,7 @@
       <div class="tip-foot"><span>${c._asOf ? `As of ${esc(fmtDay(c._asOf))}` : "No position reports yet"}</span>${c.heading_to ? `<span>heading to ${esc(c.heading_to.place || "a stated destination")}</span>` : ""}</div></div>`;
   }
   function tipFlow(f) {
-    return `<div class="tip"><div class="tip-meta">${flowBadge(f)}<b>${esc(countryName(f.supplier))} → ${esc(flowTo(f))}</b></div>
+    return `<div class="tip"><div class="tip-meta">${flowBadge(f)}<b>${esc(flowFrom(f))} → ${esc(flowTo(f))}</b></div>
       <div class="tip-sum">${f.deliveries} ${f.deliveries === 1 ? "delivery" : "deliveries"} reported in 30 days${f.cargo.length ? `: ${esc(f.cargo.slice(0, 2).join(", "))}` : ""}</div>
       <div class="tip-foot"><span>${f.active ? "Active" : "Quiet"}</span><span>last ${esc(ago(f.last))}</span></div></div>`;
   }
@@ -803,16 +810,21 @@
   // Deliveries and pledges are drawn as supply routes, not as markers.
   const onMap = (e) => e.type !== "arms_transfer" || tkind(e) === "interdiction";
   function fade(e) {
-    if (S.windowH <= 6) return 1;
+    const doubt = e.possibly_old ? 0.55 : 1; // may be an old story: shown, but quieter
+    if (S.windowH <= 6) return doubt;
     const age = Date.now() - e._t;
-    return clamp(1 - ((age - 6 * HOUR) / (S.windowH * HOUR - 6 * HOUR)) * 0.6, 0.4, 1);
+    return doubt * clamp(1 - ((age - 6 * HOUR) / (S.windowH * HOUR - 6 * HOUR)) * 0.6, 0.4, 1);
   }
 
-  // ------------------------------------------------------------------ supply routes (30 days)
+  // ------------------------------------------------------------------ supply routes (the time window)
+  // Routes follow the time filter like everything else: a route shows, and is active, when a
+  // delivery on it falls in the selected window (6 hours to 7 days).
+  const WINDOW_TEXT = { 6: "last 6 hours", 24: "last 24 hours", 72: "last 3 days", 168: "last 7 days" };
+  const windowText = () => WINDOW_TEXT[S.windowH] || `last ${S.windowH} hours`;
   function buildSupply() {
     const out = { flows: [], pledges: [] };
     if (!S.data || (S.off.has("crate") && S.off.has("coin"))) return out;
-    const since = Date.now() - SUPPLY_DAYS * DAY;
+    const since = Date.now() - S.windowH * HOUR;
     const flows = new Map(), pledges = new Map();
     for (const e of S.data.events) {
       const t = e.transfer;
@@ -823,10 +835,11 @@
       const money = isMoney(e);
       if (S.off.has(money ? "coin" : "crate")) continue;
       // forces sent to a region (a US command's area) form their own route, labeled with the region
-      const region = t.to && t.to.region ? t.to.place : null;
-      const key = `${t.supplier}>${region || t.recipient}${money ? "|aid" : ""}`;
+      // (and forces leaving one, like tankers flying home from CENTCOM bases)
+      const region = t.to && t.to.region ? t.to.place : null, fromRegion = t.from && t.from.region ? t.from.place : null;
+      const key = `${fromRegion ? `${fromRegion}>` : ""}${t.supplier}>${region || t.recipient}${money ? "|aid" : ""}`;
       const bucket = kind === "pledge" ? pledges : flows;
-      if (!bucket.has(key)) bucket.set(key, { key, supplier: t.supplier, recipient: t.recipient, toLabel: region, money, events: [] });
+      if (!bucket.has(key)) bucket.set(key, { key, supplier: t.supplier, recipient: t.recipient, toLabel: region, fromLabel: fromRegion, own: own(t), money, events: [] });
       bucket.get(key).events.push(e);
     }
     const summarize = (f) => {
@@ -847,9 +860,9 @@
       f.cargo = [...cargo.entries()].sort((a, b) => b[1] - a[1]).map(([w]) => w);
       f.status = bestStatus(ev);
       f.last = ev[0]._t;
-      f.active = Date.now() - f.last < 72 * HOUR;
-      const bins = new Array(15).fill(0);
-      ev.forEach((e) => { const i = 14 - Math.floor((Date.now() - e._t) / (2 * DAY)); if (i >= 0 && i < 15) bins[i] += Math.max(1, e.transfer.flights || 1); });
+      f.active = Date.now() - f.last < S.windowH * HOUR;
+      const bins = new Array(15).fill(0), binMs = (S.windowH * HOUR) / 15;
+      ev.forEach((e) => { const i = 14 - Math.floor((Date.now() - e._t) / binMs); if (i >= 0 && i < 15) bins[i] += Math.max(1, e.transfer.flights || 1); });
       f.bins = bins;
       return f;
     };
@@ -939,7 +952,7 @@
   function supplyArcs(flows) {
     const arcs = [];
     for (const f of flows) {
-      const named = f.from && f.to && !f.to.region; // a route to a whole region is drawn faint
+      const named = f.from && f.to && !f.to.region && !f.from.region; // a route to or from a whole region is drawn faint
       const start = f.from || countryCenter(f.supplier), end = f.to || countryCenter(f.recipient);
       if (!start || !end) continue;
       const pts = [start, ...(named ? f.via : []), end];
@@ -1133,16 +1146,18 @@
     S.supply.flows.forEach((f) => rows.push(`
       <li><button class="side-row${S.selectedFlow === f.key ? " is-selected" : ""}" type="button" data-flow="${esc(f.key)}">
         <span class="flow-dot${f.money ? " is-money" : ""}${f.active ? " is-active" : ""}${f.status === "corroborated" ? "" : " is-dashed"}" aria-hidden="true"></span>
-        <span class="side-name">${esc(countryName(f.supplier))} → ${esc(flowTo(f))}</span>
+        <span class="side-name">${esc(flowFrom(f))} → ${esc(flowTo(f))}</span>
         <span class="side-meta">${f.deliveries}${f.active ? ' <b class="live">active</b>' : ""}</span>
       </button></li>`));
     S.supply.pledges.forEach((f) => rows.push(`
       <li><button class="side-row" type="button" data-flow="${esc(f.key)}" data-pledge="1">
         <span class="flow-dot flow-dot--pledge${f.money ? " is-money" : ""}" aria-hidden="true"></span>
-        <span class="side-name">${esc(countryName(f.supplier))} → ${esc(flowTo(f))}</span>
+        <span class="side-name">${esc(flowFrom(f))} → ${esc(flowTo(f))}</span>
         <span class="side-meta">pledged</span>
       </button></li>`));
-    $("#supplyList").innerHTML = rows.join("") || '<li class="muted small">No arms transfers reported in the last 30 days.</li>';
+    $("#supplyList").innerHTML = rows.join("") || `<li class="muted small">No transfers reported in the ${windowText()}.</li>`;
+    const note = $("#supplyNote");
+    if (note) note.textContent = windowText();
   }
 
   const CROSSHAIR = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3"/></svg>`;
@@ -1270,7 +1285,7 @@
     if (e.injured != null) facts.push(`<span>Injured <b>${e.injured}</b> (reported)</span>`);
     const t = e.transfer;
     if (t) {
-      facts.push(`<span>From <b>${esc(countryName(t.supplier))}</b> to <b>${esc(transferTo(t))}</b>${MODE[t.mode] ? " " + esc(MODE[t.mode]) : ""}</span>`);
+      facts.push(`<span>From <b>${esc(transferFrom(t))}</b> to <b>${esc(transferTo(t))}</b>${MODE[t.mode] ? " " + esc(MODE[t.mode]) : ""}</span>`);
       if (t.from || t.to) facts.push(`<span>Route <b>${esc((t.from && t.from.place) || "not named")}</b> → <b>${esc((t.to && t.to.place) || "not named")}</b></span>`);
       if (t.what) facts.push(`<span>Cargo <b>${esc(t.what)}</b></span>`);
       if (t.value_usd) facts.push(`<span>Value <b>${esc(fmtMoney(t.value_usd))}</b> (reported)</span>`);
@@ -1297,6 +1312,7 @@
       ${(e.corrected || []).length ? `<div class="corrected"><span class="corrected-tag">Corrected</span><ul>${e.corrected.map((c) => `<li>${esc(c.change)}: ${esc(c.note)}</li>`).join("")}</ul></div>` : ""}
       <h3>${esc(e.summary)}</h3>
       <p class="detail-where">${where}<br>${e.alert ? "First alert" : "Happened"} ${esc(fmtTime(e._t))}${e._tu - e._t > 30 * 60e3 ? `, latest report ${esc(ago(e._tu))}` : ""}</p>
+      ${e.possibly_old ? `<div class="verdict verdict--doubt"><span class="conf-swatch conf-dashed" aria-hidden="true"></span><div><strong>Possibly an old story</strong><p>Only one outlet has this, and a news search found earlier coverage of the same topic but nothing current from other outlets. It may be an old article republished with a new date. It stays on the map, quieter, and is confirmed if another source reports it.</p></div></div>` : ""}
       <div class="verdict"><span class="conf-swatch conf-${STATUS[e.status].conf}" aria-hidden="true"></span><div><strong>${esc(STATUS[e.status].label)}</strong><p>${esc(STATUS[e.status].note(e.sources_count, e.news_nearby))}</p></div></div>
       ${facts.length ? `<div class="facts">${facts.join("")}</div>` : ""}
       ${e.legal_basis ? `<div class="legal-basis"><span>Stated legal basis</span><strong>${esc(e.legal_basis)}</strong><p>As reported by the sources below. The dashboard records claimed justifications; it does not assess them.</p></div>` : ""}
@@ -1319,9 +1335,9 @@
     const route = f.from && f.to ? `${esc(f.from.place || "origin")}${f.via.length ? ` → ${f.via.map((v) => esc(v.place || "hub")).join(" → ")}` : ""} → ${esc(f.to.place || "destination")}`
       : "Not named in reports. The line runs between the two countries and is drawn faint.";
     showDetail(`
-      <div class="detail-type">${flowBadge(f)}${f.money ? (isPledge ? "Financial aid pledged" : "Financial aid, last 30 days") : isPledge ? "Pledged aid" : "Supply route, last 30 days"}</div>
-      <h3>${esc(countryName(f.supplier))} → ${esc(flowTo(f))}</h3>
-      <p class="detail-where">${isPledge ? `${f.events.length} ${f.events.length === 1 ? "announcement" : "announcements"}` : `${f.deliveries} ${f.deliveries === 1 ? "delivery" : "deliveries"} reported`}, last ${esc(ago(f.last))}${!isPledge && f.active ? ". Active in the last 72 hours." : ""}</p>
+      <div class="detail-type">${flowBadge(f)}${f.money ? (isPledge ? "Financial aid pledged" : `Financial aid, ${windowText()}`) : isPledge ? "Pledged aid" : `Supply route, ${windowText()}`}</div>
+      <h3>${esc(flowFrom(f))} → ${esc(flowTo(f))}</h3>
+      <p class="detail-where">${isPledge ? `${f.events.length} ${f.events.length === 1 ? "announcement" : "announcements"}` : `${f.deliveries} ${f.deliveries === 1 ? "delivery" : "deliveries"} reported`}, last ${esc(ago(f.last))}</p>
       <div class="verdict"><span class="conf-swatch conf-${STATUS[f.status].conf}" aria-hidden="true"></span><div><strong>${esc(STATUS[f.status].label)}</strong><p>Best confidence among the reports below. On the map, solid lines are corroborated and dashed lines rest on single sources.</p></div></div>
       <div class="facts">
         ${f.modes.length ? `<span>Mode <b>${esc(f.modes.map((m) => MODE[m]).join(", "))}</b></span>` : ""}
@@ -1329,7 +1345,7 @@
         ${f.cargo.length ? `<span>Cargo <b>${esc(f.cargo.slice(0, 5).join(", "))}</b></span>` : ""}
       </div>
       ${isPledge ? "" : `<h2 class="reports-title">Route</h2><p class="muted">${route}</p>
-        <h2 class="reports-title">Deliveries every 2 days</h2><div class="flow-chart">${sparkSvg(f.bins, 9, 3, 34, "flow-bars")}</div>`}
+        <h2 class="reports-title">Deliveries over the ${windowText()}</h2><div class="flow-chart">${sparkSvg(f.bins, 9, 3, 34, "flow-bars")}</div>`}
       <h2 class="reports-title">${isPledge ? "Announcements" : "Reported deliveries"} (${f.events.length})</h2>
       <ul class="targets">${f.events.map((e) => `<li><button class="target" type="button" data-event="${esc(e.id)}"><span>${esc(e.summary)}</span><span class="target-meta">${esc(agoShort(e._t))}</span></button></li>`).join("")}</ul>
     `);

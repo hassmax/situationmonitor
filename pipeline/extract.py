@@ -30,11 +30,11 @@ EVENT_TYPES = {
     "air_defense": "interceptions and shoot-downs",
     "naval": "incident at sea involving ships or submarines",
     "explosion": "blast or sabotage with unclear cause",
-    "deployment": "troop or ship movements, exercises, shows of force",
+    "deployment": "troop or ship buildups, exercises, shows of force (a move between two named places, such as aircraft returning home from a region, is arms_transfer)",
     "diplomacy": "ceasefires, peace talks, signed agreements, summits, visits or meetings between leaders, alliance or defense-pact meetings and invocations, UN Security Council action, or formal escalations such as declarations of war",
     "hybrid": "sabotage, arson, undersea cable or pipeline damage, GPS jamming, cyberattacks with physical effects, or foiled plots of these",
     "incursion": "airspace violations, drone incursions, border provocations, or military buildups at a border",
-    "arms_transfer": "major arms deliveries, air or sea bridges (surges of cargo flights or ships carrying weapons), military aid deliveries, or intercepted weapons shipments",
+    "arms_transfer": "major arms deliveries, air or sea bridges (surges of cargo flights or ships carrying weapons), military aid deliveries, intercepted weapons shipments, or a country moving its own aircraft, ships or units between named places (deploying to a region, or returning home from one: supplier and recipient are both that country, with from and to)",
     "legal": "formal legal steps about a use of force or the conduct of hostilities: Article 51 letters to the UN Security Council, War Powers Resolution reports or votes, Security Council resolutions, ICJ or ICC orders, warrants, or rulings, and official statements of the legal basis for a strike",
 }
 

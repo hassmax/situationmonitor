@@ -84,3 +84,16 @@ def test_forces_sent_to_a_command_go_to_its_region_not_its_headquarters():
     assert statement["place"] == "Middle East (CENTCOM area)"
     assert other["place"] == "Rzeszow" and other["transfer"]["to"]["place"] == "Rzeszow"
     assert geo.pin_commands([jets, statement, other]) == 0  # done once
+
+
+def test_forces_returning_from_a_command_are_a_movement_out_of_its_region():
+    kc = {"id": "k", "type": "deployment", "place": "Eielson Air Force Base", "country": "US", "lat": 64.67,
+          "lon": -147.08, "summary": "Four KC-135s from the Alaska Air National Guard are returning home from CENTCOM bases."}
+    drill = {"id": "d", "type": "deployment", "place": "Eielson Air Force Base", "country": "US", "lat": 64.67,
+             "lon": -147.08, "summary": "Red Flag Alaska exercise begins with allied aircraft."}
+    assert geo.pin_commands([kc, drill]) == 1
+    t = kc["transfer"]
+    assert kc["type"] == "arms_transfer" and t["supplier"] == t["recipient"] == "US" and t["mode"] == "air"
+    assert t["from"]["place"] == "Middle East (CENTCOM area)" and t["from"]["region"]
+    assert t["to"]["place"] == "Eielson Air Force Base" and drill["type"] == "deployment"
+    assert geo.pin_commands([kc, drill]) == 0

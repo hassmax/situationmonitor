@@ -80,3 +80,20 @@ def test_drops_under_the_previous_rule_stand():
     state = {"dropped_as_old": [old], "recency_asked": NOW.strftime("%Y-%m-%dT%H:%M:%SZ")}
     assert recency.check([], set(), Session([], []), lambda *a, **k: None, state, SETTINGS, NOW) == []
     assert state["dropped_as_old"] == [old]
+
+
+def test_a_single_source_story_with_only_older_coverage_is_held_until_a_second_source():
+    e = dict(ev("h", "Yemen's Houthis launched ballistic missiles at Israel."), severity=3,
+             coverage={"current": 0, "older": 5})
+    e["reports"][0].update(group="google-news", source="Mid-Day (via Google News)")
+    assert recency.held(e)
+    assert not recency.held(dict(e, coverage={"current": 3, "older": 5}))  # covered now elsewhere
+    assert not recency.held(dict(e, coverage={"current": 0, "older": 0}))  # nothing older: new
+    assert not recency.held(dict(e, severity=1))                           # minor items aren't held
+    second = dict(e, reports=e["reports"] + [{"platform": "rss", "group": "reuters", "url": "u2"}])
+    assert not recency.held(second)                                        # a second source: shown
+
+
+def test_the_same_outlet_republishing_is_not_current_coverage():
+    assert recency._outlet("Mid-Day (via Google News)") == "mid-day"
+    assert recency._outlet_of("Yemen's Houthis launch missiles at Israel - Mid-Day") == "mid-day"
