@@ -94,3 +94,12 @@ def test_military_sites_are_checked_whatever_the_severity():
     s = Session({"https://www.cpf.navy.mil/Newsroom/Photos/igphoto/123/": "<b>Date Taken:</b> 06.12.2026"})
     state = {}
     assert datecheck.check([photo], s, state, NOW) == [] and state["dropped_as_old"][0]["match_date"] == "2026-06-12"
+
+
+def test_the_most_serious_and_longest_waiting_are_opened_first(monkeypatch):
+    monkeypatch.setattr(datecheck, "PER_RUN", 2)
+    s = Session({})
+    evs = [dict(event(f"https://example.com/{i}", hours_ago=h, severity=sev), id=str(i))
+           for i, (h, sev) in enumerate([(1, 2), (20, 2), (5, 3), (2, 2)])]
+    datecheck.check(evs, s, {}, NOW)
+    assert s.calls == ["https://example.com/2", "https://example.com/1"]  # severity 3, then the oldest
