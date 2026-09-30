@@ -1224,7 +1224,7 @@
     $("#feedCount").textContent = `${events.length}`;
     if (!events.length) {
       list.innerHTML = top + (S.data.events.length
-        ? `<li class="empty"><strong>Nothing matches these filters.</strong>Widen the time window or turn more theaters and confidence levels back on.</li>`
+        ? `<li class="empty"><strong>Nothing matches these filters.</strong>Widen the time window, or turn more kinds of events, theaters, or confidence levels back on.</li>`
         : `<li class="empty"><strong>No events in the last 7 days yet.</strong>The pipeline is running. New events appear here as sources report them.</li>`);
       return;
     }
@@ -1549,6 +1549,15 @@
   }
 
   // ------------------------------------------------------------------ controls
+  function legendChanged() {
+    const items = document.querySelectorAll("[data-legend]");
+    items.forEach((b) => b.setAttribute("aria-pressed", String(!S.off.has(b.dataset.legend))));
+    S.layers = { paths: !S.off.has("paths"), supply: !S.off.has("crate"), carriers: !S.off.has("carrier") };
+    $("#legendReset").hidden = !S.off.size;
+    $("#legendNone").hidden = S.off.size >= items.length;
+    render();
+  }
+
   function buildStaticControls() {
     const item = (key, swatch, label) => `<li><button class="legend-item" type="button" data-legend="${key}" aria-pressed="true" title="Show or hide ${esc(label.toLowerCase())}">${swatch}<span>${esc(label)}</span></button></li>`;
     $("#legend").innerHTML = LEGEND.map(([icon, cat, label]) => item(icon, iconBadge(icon, cat, "solid", "ico-sm"), label)).join("")
@@ -1591,19 +1600,15 @@
     $("#legend").addEventListener("click", (ev) => {
       const b = ev.target.closest("[data-legend]");
       if (!b) return;
-      const key = b.dataset.legend, on = S.off.has(key);
-      on ? S.off.delete(key) : S.off.add(key);
-      b.setAttribute("aria-pressed", String(on));
-      S.layers = { paths: !S.off.has("paths"), supply: !S.off.has("crate"), carriers: !S.off.has("carrier") };
-      $("#legendReset").hidden = !S.off.size;
-      render();
+      const key = b.dataset.legend;
+      S.off.has(key) ? S.off.delete(key) : S.off.add(key);
+      legendChanged();
     });
-    $("#legendReset").addEventListener("click", () => {
-      S.off.clear();
-      S.layers = { paths: true, supply: true, carriers: true };
-      document.querySelectorAll("[data-legend]").forEach((b) => b.setAttribute("aria-pressed", "true"));
-      $("#legendReset").hidden = true;
-      render();
+    // "Hide everything" then tapping one entry shows only that kind.
+    $("#legendReset").addEventListener("click", () => { S.off.clear(); legendChanged(); });
+    $("#legendNone").addEventListener("click", () => {
+      document.querySelectorAll("[data-legend]").forEach((b) => S.off.add(b.dataset.legend));
+      legendChanged();
     });
     $("#filters").addEventListener("click", (ev) => {
       const hull = ev.target.closest("[data-hull]");
