@@ -80,7 +80,7 @@
     { id: "drc_sahel", name: "Eastern DRC and Sahel", camera: { lat: 8, lng: 10, altitude: 1.6 }, highlight: [] },
     { id: "indopac", name: "Indo-Pacific", camera: { lat: 22, lng: 118, altitude: 1.5 }, highlight: [] },
     { id: "latam", name: "Latin America", camera: { lat: 14, lng: -76, altitude: 1.4 }, highlight: [] },
-    { id: "global", name: "Treaties, sanctions and relations", camera: { lat: 30, lng: 10, altitude: 2.6 }, highlight: [] },
+    { id: "global", name: "Worldwide", camera: { lat: 30, lng: 10, altitude: 2.6 }, highlight: [], listed: false },
   ];
 
   const ISO_NUM = new Map("AD020,AE784,AF004,AG028,AI660,AL008,AM051,AO024,AQ010,AR032,AS016,AT040,AU036,AW533,AX248,AZ031,BA070,BB052,BD050,BE056,BF854,BG100,BH048,BI108,BJ204,BL652,BM060,BN096,BO068,BQ535,BR076,BS044,BT064,BV074,BW072,BY112,BZ084,CA124,CC166,CD180,CF140,CG178,CH756,CI384,CK184,CL152,CM120,CN156,CO170,CR188,CU192,CV132,CW531,CX162,CY196,CZ203,DE276,DJ262,DK208,DM212,DO214,DZ012,EC218,EE233,EG818,EH732,ER232,ES724,ET231,FI246,FJ242,FK238,FM583,FO234,FR250,GA266,GB826,GD308,GE268,GF254,GG831,GH288,GI292,GL304,GM270,GN324,GP312,GQ226,GR300,GS239,GT320,GU316,GW624,GY328,HK344,HM334,HN340,HR191,HT332,HU348,ID360,IE372,IL376,IM833,IN356,IO086,IQ368,IR364,IS352,IT380,JE832,JM388,JO400,JP392,KE404,KG417,KH116,KI296,KM174,KN659,KP408,KR410,KW414,KY136,KZ398,LA418,LB422,LC662,LI438,LK144,LR430,LS426,LT440,LU442,LV428,LY434,MA504,MC492,MD498,ME499,MF663,MG450,MH584,MK807,ML466,MM104,MN496,MO446,MP580,MQ474,MR478,MS500,MT470,MU480,MV462,MW454,MX484,MY458,MZ508,NA516,NC540,NE562,NF574,NG566,NI558,NL528,NO578,NP524,NR520,NU570,NZ554,OM512,PA591,PE604,PF258,PG598,PH608,PK586,PL616,PM666,PN612,PR630,PS275,PT620,PW585,PY600,QA634,RE638,RO642,RS688,RU643,RW646,SA682,SB090,SC690,SD729,SE752,SG702,SH654,SI705,SJ744,SK703,SL694,SM674,SN686,SO706,SR740,SS728,ST678,SV222,SX534,SY760,SZ748,TC796,TD148,TF260,TG768,TH764,TJ762,TK772,TL626,TM795,TN788,TO776,TR792,TT780,TV798,TW158,TZ834,UA804,UG800,UM581,US840,UY858,UZ860,VA336,VC670,VE862,VG092,VI850,VN704,VU548,WF876,WS882,YE887,YT175,ZA710,ZM894,ZW716".split(",").map((s) => [s.slice(0, 2), s.slice(2)]));
@@ -208,6 +208,7 @@
     layers: { paths: true, supply: true, carriers: true },
     off: new Set(),  // "On the map" entries switched off
     query: "",
+    feedLimit: 250,
     selectedId: null,
     selectedHull: null,
     selectedFlow: null,
@@ -805,9 +806,11 @@
   // sabotage or hybrid attack in Germany). A trailing "s" is dropped, so plurals match too.
   const words = () => S.query.toLowerCase().split(/[^\p{L}\p{N}-]+/u).filter(Boolean).map((w) => (w.length > 3 ? w.replace(/s$/, "") : w));
   const matches = (e) => words().every((w) => e._search.includes(w));
+  const unlisted = () => new Set(S.theaters.filter((t) => t.listed === false).map((t) => t.id));
+  const theaterShown = (id) => S.theaterOn.has(id) || unlisted().has(id);
   function passes(e, ignoreTheater = false) {
     if (e._t < Date.now() - S.windowH * HOUR) return false;
-    if (!ignoreTheater && !S.theaterOn.has(e.theater)) return false;
+    if (!ignoreTheater && !theaterShown(e.theater)) return false;
     if (!S.statusOn.has(e.status)) return false;
     if (S.off.has(legendKey(e))) return false;
     if (!matches(e)) return false;
@@ -835,7 +838,7 @@
     const flows = new Map(), pledges = new Map();
     for (const e of S.data.events) {
       const t = e.transfer;
-      if (e.type !== "arms_transfer" || !t || e._t < since || !S.theaterOn.has(e.theater) || !S.statusOn.has(e.status)) continue;
+      if (e.type !== "arms_transfer" || !t || e._t < since || !theaterShown(e.theater) || !S.statusOn.has(e.status)) continue;
       if (!matches(e)) continue;
       const kind = tkind(e);
       if (kind === "interdiction") continue;
@@ -1103,11 +1106,27 @@
     return arcs;
   }
 
+  // With more events than markers (a busy week), keep the most serious and best-confirmed ones and
+  // the last few hours', not just the newest: a corroborated pipeline sabotage from two days ago
+  // dropped off the map behind a day of minor reports. Diplomacy discs rank a step lower than
+  // incidents. The feed says how many aren't drawn (mapLeftOut).
+  const CONF_RANK = { corroborated: 2, unconfirmed: 1, claimed: 0 };
+  let mapLeftOut = 0;
+  function markerPick(evs) {
+    mapLeftOut = Math.max(0, evs.length - MAX_MARKERS);
+    if (!mapLeftOut) return evs;
+    const now = Date.now();
+    const score = (e) => 2 * e.severity + CONF_RANK[e.status] + (now - e._t < 6 * HOUR ? 2 : 0) - (isDiplomacy(e) ? 1 : 0);
+    const keep = new Set([...evs].sort((a, b) => score(b) - score(a) || b._t - a._t).slice(0, MAX_MARKERS).map((e) => e.id));
+    if (S.selectedId) keep.add(S.selectedId);
+    return evs.filter((e) => keep.has(e.id));
+  }
+
   // ------------------------------------------------------------------ render
   function render() {
     if (!S.data) return;
     const events = visibleEvents();
-    const mapEvents = events.filter(onMap).slice(0, MAX_MARKERS);
+    const mapEvents = markerPick(events.filter(onMap));
     S.supply = buildSupply();
 
     // HTML markers: events (labels on the most important, and on alert groups), carriers
@@ -1217,6 +1236,7 @@
     </section></li>`;
   }
 
+  const FEED_PAGE = 250;  // the list is built in pages; a busy week has 1,000+ events
   function renderFeed(events) {
     const list = $("#feedList");
     const names = Object.fromEntries(S.theaters.map((t) => [t.id, t.name]));
@@ -1229,7 +1249,11 @@
       return;
     }
     // The brief above already sums up what matters; the list below it is simply newest first.
-    list.innerHTML = top + events.slice(0, 250).map((e) => itemHtml(e, names)).join("");
+    const shown = events.slice(0, S.feedLimit);
+    const capNote = mapLeftOut ? `<li class="map-note">The map draws the ${MAX_MARKERS} most serious and best-confirmed of these events (${mapLeftOut} left off). Search, or hide some kinds under “On the map”, to see the rest on the map.</li>` : "";
+    const more = events.length - shown.length;
+    list.innerHTML = top + capNote + shown.map((e) => itemHtml(e, names)).join("")
+      + (more > 0 ? `<li class="more"><button class="linkish" type="button" data-more>Show ${Math.min(FEED_PAGE, more)} more (${more} not shown)</button></li>` : "");
   }
 
   function sparkSvg(counts, w = 3, gap = 1.1, h = 12, cls = "") {
@@ -1274,7 +1298,9 @@
 
   const CROSSHAIR = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3"/></svg>`;
   function renderTheaters() {
-    $("#theaterList").innerHTML = S.theaters.map((t) => `
+    // A theater with listed: false (worldwide treaty and sanctions steps) has no row of its own: its
+    // events are diplomacy, shown and hidden with "Diplomacy, legal" in the map key.
+    $("#theaterList").innerHTML = S.theaters.filter((t) => t.listed !== false).map((t) => `
       <li><label class="check check--theater">
           <input type="checkbox" data-theater="${esc(t.id)}" ${S.theaterOn.has(t.id) ? "checked" : ""}>
           <span class="box" aria-hidden="true"></span><span class="label">${esc(t.name)}</span>
@@ -1303,7 +1329,7 @@
     });
     const byStatus = {};
     for (const e of S.data.events) {
-      if (!onMap(e) || e._t < now - S.windowH * HOUR || !S.theaterOn.has(e.theater)) continue;
+      if (!onMap(e) || e._t < now - S.windowH * HOUR || !theaterShown(e.theater)) continue;
       byStatus[e.status] = (byStatus[e.status] || 0) + 1;
     }
     document.querySelectorAll("[data-status-count]").forEach((el) => { el.textContent = byStatus[el.dataset.statusCount] || 0; });
@@ -1626,6 +1652,7 @@
       $("#sourcesToggle").setAttribute("aria-expanded", String(!list.hidden));
     });
     $("#feedList").addEventListener("click", (ev) => {
+      if (ev.target.closest("[data-more]")) { S.feedLimit += FEED_PAGE; render(); return; }
       const b = ev.target.closest("[data-id]");
       if (b) { S.lastFocus = b.dataset.id; select(b.dataset.id, true); }
     });

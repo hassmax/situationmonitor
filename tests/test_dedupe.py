@@ -216,3 +216,12 @@ def test_a_backlog_is_worked_every_run_otherwise_every_half_hour():
     evs = fresh() + [ev("y", "Another hybrid incident in London.", hours_ago=1)]
     dedupe.run(evs, state, SETTINGS, NOW, ask, remaining=50, skip=set())
     assert len(calls) == 1                                   # nothing was waiting: waits for 30 minutes
+
+
+def test_an_explosion_described_as_sabotage_is_compared_with_the_countrys_hybrid_events():
+    syria = [ev("h", "Syrian state reports say a gas pipeline fire between Al-Shola and Deir Al-Zour was sabotage.",
+                country="SY", theater="mideast", hours_ago=30),
+             ev("x", "Syrian officials say a gas pipeline fire near Deir Ezzor was caused by an act of sabotage.",
+                country="SY", theater="mideast", type_="explosion", hours_ago=29),
+             ev("y", "An explosion hit a market in Idlib.", country="SY", theater="mideast", type_="explosion", hours_ago=5)]
+    assert [[e["id"] for e in g] for g in dedupe.groups(syria, {}, NOW)] == [["h", "x"]]

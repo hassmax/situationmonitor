@@ -53,7 +53,7 @@ def public_cells(cells: list[dict]) -> list[dict]:
 
 def theaters_meta(theaters: list[dict]) -> list[dict]:
     meta = [{
-        "id": t["id"], "name": t["name"], "camera": t.get("camera"),
+        "id": t["id"], "name": t["name"], "camera": t.get("camera"), "listed": t.get("listed", True),
         "highlight": [geo.ISO_NUMERIC[c] for c in t.get("highlight", []) if c in geo.ISO_NUMERIC],
     } for t in theaters]
     return meta
