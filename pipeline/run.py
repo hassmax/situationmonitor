@@ -206,7 +206,7 @@ def main() -> int:
     events, folded = merge.consolidate(events, hidden)
     geo.pin_commands(events)  # events placed at a US command go to its region (not its headquarters)
     merge.own_force_visits(events)  # a navy's port call is a deployment, not a supply route
-    merge.own_procurement(events)  # a country buying from its own industry is a policy step, not a route
+    merge.own_procurement(events)  # a country buying from its own industry is arms production, not a route
     events = merge.prune(events, t0, settings["event_retention_days"], settings["max_events"])
     events = corrections.drop_reports(events, fixes)  # before scoring, so confidence is recomputed
     merge.apply_status(events, cells)

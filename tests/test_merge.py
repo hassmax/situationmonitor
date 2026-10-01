@@ -200,7 +200,7 @@ def test_a_navy_port_call_is_a_deployment_not_a_supply_route():
     assert home["type"] == "arms_transfer" and sale["type"] == "arms_transfer"
 
 
-def test_a_countrys_own_purchases_and_production_are_filed_with_diplomacy():
+def test_a_countrys_own_purchases_and_production_are_arms_production():
     import merge as m
     def own(i, summary, **t):
         return {"id": i, "type": "arms_transfer", "summary": summary, "place": "Taipei",
@@ -211,5 +211,10 @@ def test_a_countrys_own_purchases_and_production_are_filed_with_diplomacy():
                **{"from": {"place": "Aviano"}, "to": {"place": "Middle East (CENTCOM area)"}})
     withdraw = own("w", "Ethiopia plans to withdraw 3,000 troops from Somalia.", to={"place": "Ethiopia"})
     assert m.own_procurement([build, contract, move, withdraw]) == 2
-    assert build["type"] == contract["type"] == "diplomacy" and build["transfer"] is None and build["parties"] == ["TW"]
+    assert build["type"] == contract["type"] == "production" and build["transfer"] is None and build["country"] == "TW"
     assert move["type"] == withdraw["type"] == "arms_transfer"
+
+
+def test_production_reports_merge_into_one_event():
+    import merge as m
+    assert m.FAMILY["production"] == "production" and m.RADIUS_KM["production"] > 0
