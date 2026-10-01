@@ -28,13 +28,44 @@ def _outlet_src(src: dict, entry, outlets: dict) -> dict:
     host = urlparse(info.get("href") or "").netloc.lower().removeprefix("www.")
     title = clean_text(entry.get("title", ""))
     name = (info.get("title") or (title.rsplit(" - ", 1)[1] if " - " in title else "")).strip()
-    known = next((outlets[d] for d in (host, host.split(".", 1)[-1]) if d in outlets), None)
+    known = next((outlets[d] for d in (host, host.split(".", 1)[-1]) if d in outlets), None) or outlet_named(name, outlets)
     if known:
-        out = {**src, "name": f"{known['name']} (via Google News)", "group": known.get("group") or f"outlet:{known['domain']}",
-               "kind": known.get("kind", "news"), "side": known.get("side"),
-               "weight": max(3, int(src.get("weight", 1))) if known.get("tier") == 1 else int(src.get("weight", 1))}
-        return out
+        return {**src, **_known(known, int(src.get("weight", 1)))}
     return {**src, "name": f"{name} (via Google News)" if name else src.get("name")}
+
+
+def _known(known: dict, weight: int) -> dict:
+    return {"name": f"{known['name']} (via Google News)", "group": known.get("group") or f"outlet:{known['domain']}",
+            "kind": known.get("kind", "news"), "side": known.get("side"),
+            "weight": max(3, weight) if known.get("tier") == 1 else weight}
+
+
+def outlet_named(name: str, outlets: dict) -> dict | None:
+    """A listed outlet by the name Google News gives it (its `name`, or one of its `names`), for
+    results whose link doesn't give the outlet's domain."""
+    key = (name or "").strip().lower()
+    if not key:
+        return None
+    for o in outlets.values():
+        if key == str(o.get("name", "")).lower() or key in (str(n).lower() for n in (o.get("names") or [])):
+            return o
+    return None
+
+
+def relabel_by_name(reports: list[dict], outlets: dict) -> int:
+    """Stored Google News reports from an outlet that wasn't listed then (counted in the shared
+    "google-news" group) are credited to it once it is listed."""
+    n = 0
+    for r in reports:
+        src = str(r.get("source", ""))
+        if r.get("group") != "google-news" or not src.endswith(" (via Google News)"):
+            continue
+        known = outlet_named(src[: -len(" (via Google News)")], outlets)
+        if known:
+            lab = _known(known, int(r.get("weight", 1)))
+            r.update(source=lab["name"], group=lab["group"], kind=lab["kind"], side=lab["side"], weight=lab["weight"])
+            n += 1
+    return n
 
 
 LABEL_KEYS = ("source", "kind", "side", "group", "weight")
