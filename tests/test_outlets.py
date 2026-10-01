@@ -116,3 +116,17 @@ def test_status_counts_listed_outlets_separately():
         {**report("u3"), "source": "WINK News (via Google News)"}])
     merge.apply_status([e], [])
     assert e["status"] == "corroborated" and e["sources_count"] == 2
+
+
+def test_outlets_are_known_by_the_name_google_news_gives_them():
+    import config
+    from sources import rss
+    outlets = config.load().outlets
+    assert rss.outlet_named("Українські Національні Новини (УНН)", outlets)["domain"] == "unn.ua"
+    assert rss.outlet_named("Yahoo", outlets) is None                     # republishes others: not listed
+    reports = [{"source": n + " (via Google News)", "group": "google-news", "kind": "news", "side": None, "weight": 2}
+               for n in ("Colorado Politics", "denvergazette.com", "Yahoo", "Newsmax", "IntelliNews")]
+    assert rss.relabel_by_name(reports, outlets) == 4
+    assert [r["group"] for r in reports] == ["clarity-media", "clarity-media", "google-news",
+                                             "outlet:newsmax.com", "outlet:intellinews.com"]
+    assert rss.relabel_by_name(reports, outlets) == 0                     # done once

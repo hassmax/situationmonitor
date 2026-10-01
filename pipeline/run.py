@@ -119,6 +119,7 @@ def main() -> int:
         if labels:
             state["outlet_labels_version"] = 1
     relabeled = rss.relabel([r for e in events for r in e.get("reports", [])] + state["pending"], labels)
+    relabeled += rss.relabel_by_name([r for e in events for r in e.get("reports", [])] + state["pending"], cfg.outlets)
     if relabeled:
         log(f"[fetch] credited {relabeled} Google News reports to the outlet that published them")
 

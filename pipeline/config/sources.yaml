@@ -162,7 +162,12 @@ outlets:
   #   tier 2   known outlets: counted as their own source, normal weight
   #   side     state or partisan media aligned with a party to a conflict. Under the
   #            confidence rules, sources on the same side never corroborate each other.
-  #   group    share a group with the outlet's own feed above, so it is never counted twice
+  #   group    share a group with the outlet's own feed above, or with outlets of the same owner
+  #            or newsroom, so they are never counted twice
+  #   names    other names Google News shows for the outlet (matched when the link doesn't give
+  #            its domain; reports already stored under one of these names are credited to it)
+  # Aggregators and sites that mostly republish others (Yahoo, Devdiscourse, Modern Ghana) are
+  # deliberately not listed: their copies must not corroborate the original.
   # Wire services and international broadcasters
   - {domain: reuters.com, name: Reuters, tier: 1}
   - {domain: apnews.com, name: AP, tier: 1}
@@ -201,6 +206,13 @@ outlets:
   - {domain: newsweek.com, name: Newsweek, tier: 2}
   - {domain: euronews.com, name: Euronews, tier: 2}
   - {domain: lemonde.fr, name: Le Monde, tier: 1}
+  - {domain: nypost.com, name: New York Post, tier: 2}
+  - {domain: newsmax.com, name: Newsmax, tier: 2}
+  # Clarity Media: one owner, shared newsroom
+  - {domain: washingtonexaminer.com, name: Washington Examiner, tier: 2, group: clarity-media}
+  - {domain: coloradopolitics.com, name: Colorado Politics, tier: 2, group: clarity-media}
+  - {domain: denvergazette.com, name: The Denver Gazette, tier: 2, group: clarity-media, names: [denvergazette.com]}
+  - {domain: intellinews.com, name: IntelliNews, tier: 2}
   # Middle East
   - {domain: timesofisrael.com, name: The Times of Israel, tier: 1, group: timesofisrael}
   - {domain: haaretz.com, name: Haaretz, tier: 1}
@@ -211,7 +223,7 @@ outlets:
   - {domain: thenationalnews.com, name: The National (UAE state-owned), tier: 2, side: AE}
   - {domain: arabnews.com, name: Arab News (Saudi), tier: 2, side: SA}
   - {domain: alarabiya.net, name: Al Arabiya (Saudi-owned), tier: 2, side: SA}
-  - {domain: presstv.ir, name: Press TV (Iranian state), tier: 2, side: IR}
+  - {domain: presstv.ir, name: Press TV (Iranian state), tier: 2, side: IR, names: [PressTV, Press TV]}
   - {domain: irna.ir, name: IRNA (Iranian state), tier: 2, side: IR}
   - {domain: tasnimnews.com, name: Tasnim (IRGC-affiliated), tier: 2, side: IR}
   - {domain: mehrnews.com, name: Mehr (Iranian state), tier: 2, side: IR}
@@ -221,12 +233,37 @@ outlets:
   - {domain: trtworld.com, name: TRT World (Turkish state), tier: 2, side: TR}
   - {domain: dailysabah.com, name: Daily Sabah (pro-government), tier: 2, side: TR}
   - {domain: anews.com.tr, name: A News (pro-government), tier: 2, side: TR}
+  - {domain: yenisafak.com, name: Yeni Şafak (pro-government), tier: 2, side: TR, names: [Yeni Şafak English, Yeni Şafak]}
+  - {domain: turkiyetoday.com, name: Türkiye Today (pro-government), tier: 2, side: TR, names: [Türkiye Today]}
+  - {domain: aawsat.com, name: Asharq Al-Awsat (Saudi-owned), tier: 2, side: SA, names: [ASHARQ AL-AWSAT English, Asharq Al-Awsat]}
+  - {domain: gulfnews.com, name: Gulf News (UAE), tier: 2, side: AE, names: [Gulf News]}
+  - {domain: ahram.org.eg, name: Ahram Online (Egyptian state), tier: 2, side: EG, names: [Ahram Online]}
+  - {domain: sana.sy, name: SANA (Syrian state), tier: 2, side: SY, names: ["وكالة الأنباء السورية – سانا", SANA]}
+  - {domain: saba.ye, name: Saba (Houthi-run), tier: 2, side: YE, names: [saba.ye]}
+  - {domain: worldisraelnews.com, name: World Israel News (pro-Israel), tier: 2, side: IL, names: [worldisraelnews.com, World Israel News]}
+  - {domain: jfeed.com, name: JFeed (pro-Israel), tier: 2, side: IL, names: [JFeed]}
+  - {domain: shafaq.com, name: Shafaq News, tier: 2, names: ["شفق نيوز"]}
+  - {domain: royanews.tv, name: Roya News, tier: 2}
+  - {domain: newarab.com, name: The New Arab, tier: 2}
+  - {domain: naharnet.com, name: Naharnet, tier: 2}
+  - {domain: lbcgroup.tv, name: LBCI, tier: 2}
   # Russia and Ukraine
   - {domain: kyivindependent.com, name: The Kyiv Independent, tier: 1, group: kyivindependent}
   - {domain: pravda.com.ua, name: Ukrainska Pravda, tier: 2}
   - {domain: meduza.io, name: Meduza, tier: 2}
   - {domain: ukrinform.net, name: Ukrinform (Ukrainian state), tier: 2, side: UA}
   - {domain: militarnyi.com, name: Militarnyi, tier: 2, side: UA, group: militarnyi}
+  - {domain: kyivpost.com, name: Kyiv Post, tier: 2}
+  - {domain: ua.news, name: UA.NEWS, tier: 2}
+  - {domain: unn.ua, name: Ukrainian National News (UNN), tier: 2, names: ["Українські Національні Новини (УНН)", UNN]}
+  - {domain: nv.ua, name: The New Voice of Ukraine, tier: 2}
+  - {domain: mezha.media, name: Mezha, tier: 2, names: ["Межа. Новини України."]}
+  - {domain: rbc.ua, name: RBC-Ukraine, tier: 2}
+  - {domain: liga.net, name: LIGA.net, tier: 2}
+  - {domain: interfax.com.ua, name: Interfax-Ukraine, tier: 2}
+  - {domain: ukranews.com, name: Ukrainian News Agency, tier: 2, names: [ukranews.com]}
+  - {domain: censor.net, name: Censor.NET (partisan), tier: 2, side: UA, names: ["Цензор.НЕТ", Censor.NET]}
+  - {domain: united24media.com, name: UNITED24 Media (Ukrainian government), tier: 2, side: UA, names: [UNITED24 Media]}
   - {domain: tass.com, name: TASS (Russian state), tier: 2, side: RU}
   - {domain: tass.ru, name: TASS (Russian state), tier: 2, side: RU}
   - {domain: ria.ru, name: RIA Novosti (Russian state), tier: 2, side: RU}
@@ -245,11 +282,29 @@ outlets:
   - {domain: chinadaily.com.cn, name: China Daily (Chinese state), tier: 2, side: CN}
   - {domain: dawn.com, name: Dawn, tier: 2}
   - {domain: thehindu.com, name: The Hindu, tier: 2}
+  - {domain: tribune.com.pk, name: The Express Tribune, tier: 2}
+  # Times Group: one owner
+  - {domain: timesofindia.indiatimes.com, name: The Times of India, tier: 2, group: times-group, names: [timesofindia.indiatimes.com]}
+  - {domain: economictimes.indiatimes.com, name: The Economic Times, tier: 2, group: times-group}
+  - {domain: indiatoday.in, name: India Today, tier: 2}
+  - {domain: firstpost.com, name: Firstpost, tier: 2}
+  - {domain: hindustantimes.com, name: Hindustan Times, tier: 2}
+  - {domain: newindianexpress.com, name: The New Indian Express, tier: 2}
+  - {domain: sundayguardianlive.com, name: The Sunday Guardian, tier: 2}
+  - {domain: wionews.com, name: WION, tier: 2}
+  - {domain: straitstimes.com, name: The Straits Times, tier: 2}
+  - {domain: malaymail.com, name: Malay Mail, tier: 2}
+  - {domain: gmanetwork.com, name: GMA Network, tier: 2}
   # Africa and Latin America
   - {domain: sudantribune.com, name: Sudan Tribune, tier: 2, group: sudantribune}
   - {domain: addisstandard.com, name: Addis Standard, tier: 2, group: addisstandard}
   - {domain: theeastafrican.co.ke, name: The EastAfrican, tier: 2}
   - {domain: premiumtimesng.com, name: Premium Times, tier: 2}
+  - {domain: hiiraan.com, name: Hiiraan Online, tier: 2}
+  - {domain: eastleighvoice.co.ke, name: The Eastleigh Voice, tier: 2}
+  - {domain: fanabc.com, name: Fana (Ethiopian state-affiliated), tier: 2, side: ET, names: ["Fana News -", Fana News]}
+  - {domain: apa.az, name: APA (Azerbaijan), tier: 2, side: AZ, names: [Apa.az]}
+  - {domain: caliber.az, name: Caliber.Az (pro-government), tier: 2, side: AZ, names: [Caliber.Az]}
   - {domain: insightcrime.org, name: InSight Crime, tier: 2, group: insightcrime}
   - {domain: elpais.com, name: El País, tier: 1}
   - {domain: miamiherald.com, name: Miami Herald, tier: 2}
