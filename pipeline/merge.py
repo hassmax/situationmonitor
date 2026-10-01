@@ -388,6 +388,31 @@ def _fold_stored_alerts(events: list[dict]) -> list[dict]:
     return [e for e in events if id(e) not in folded]
 
 
+# A country's own ships or aircraft on a port call, a goodwill or business visit, or an exercise
+# abroad: shown where they are (a deployment), not as a supply route from home ("Russian Pacific
+# Fleet warships arrived in Indonesia for a business visit" was drawn from Vladivostok).
+VISIT_RE = re.compile(r"\b(?:visits?|visited|visiting|port calls?|calls? at|goodwill|exercises?|drills?|"
+                      r"manoeuvres|maneuvers|patrols?)\b", re.I)
+
+
+def own_force_visits(events: list[dict]) -> int:
+    """Turn own-forces movements that are visits or exercises into deployments at their destination."""
+    changed = 0
+    for e in events:
+        t = e.get("transfer") or {}
+        if e.get("type") != "arms_transfer" or not t.get("supplier") or t.get("supplier") != t.get("recipient"):
+            continue
+        if not VISIT_RE.search(f"{e.get('summary') or ''} {t.get('what') or ''}"):
+            continue
+        to = t.get("to") or {}
+        e["type"], e["transfer"] = "deployment", None
+        if to.get("lat") is not None and to.get("lon") is not None and not to.get("region"):
+            e.update(place=to.get("place") or e.get("place"), lat=to["lat"], lon=to["lon"])
+        changed += 1
+        log(f"[merge] visit or exercise, not a supply route: {e.get('summary', '')[:80]!r}")
+    return changed
+
+
 def _new_id(events: list[dict], url: str, summary: str) -> str:
     """An event's id comes from its first report's link; a second event from the same article
     (a roundup of two meetings) gets one from the link and its own summary."""
