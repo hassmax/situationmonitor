@@ -413,6 +413,32 @@ def own_force_visits(events: list[dict]) -> int:
     return changed
 
 
+# A country's purchases, contracts, approvals or production with its own industry, filed as its
+# own forces "moving" with nowhere to move between ("Taiwan announces plans to build more anti-ship
+# missiles", the Bundestag approving a missile purchase): a policy step, shown with diplomacy and
+# legal steps, not as an arms or forces movement.
+PROCURE_RE = re.compile(r"\b(?:contracts?|procur\w*|purchas\w*|buys?|buying|orders?|ordered|production|produc\w+|"
+                        r"build|builds|building|manufactur\w*|budget|approv\w*|receiv\w*)\b", re.I)
+
+
+def own_procurement(events: list[dict]) -> int:
+    """Turn a country's own purchases or production (no movement between named places) into diplomacy."""
+    changed = 0
+    for e in events:
+        t = e.get("transfer") or {}
+        if e.get("type") != "arms_transfer" or not t.get("supplier") or t.get("supplier") != t.get("recipient"):
+            continue
+        if t.get("from") and t.get("to"):
+            continue  # a movement between two named places
+        if not PROCURE_RE.search(f"{e.get('summary') or ''} {t.get('what') or ''}"):
+            continue
+        e["type"], e["transfer"] = "diplomacy", None
+        e["parties"] = e.get("parties") or [t["supplier"]]
+        changed += 1
+        log(f"[merge] own purchase or production, filed with diplomacy: {e.get('summary', '')[:80]!r}")
+    return changed
+
+
 def _new_id(events: list[dict], url: str, summary: str) -> str:
     """An event's id comes from its first report's link; a second event from the same article
     (a roundup of two meetings) gets one from the link and its own summary."""
