@@ -182,3 +182,19 @@ def test_two_events_from_one_roundup_article_get_different_ids():
     taken = {"id": m.short_hash("event", "u")}
     assert m._new_id([], "u", "another meeting") == taken["id"]
     assert m._new_id([taken], "u", "another meeting") != taken["id"]
+
+
+def test_a_navy_port_call_is_a_deployment_not_a_supply_route():
+    import merge as m
+    visit = {"id": "v", "type": "arms_transfer", "summary": "Russian Pacific Fleet warships arrived in Indonesia for a business visit.",
+             "place": "Indonesia", "lat": -0.79, "lon": 113.92,
+             "transfer": {"supplier": "RU", "recipient": "RU", "mode": "sea", "what": "Pacific Fleet warships",
+                          "from": {"place": "Vladivostok", "lat": 43.13, "lon": 131.91},
+                          "to": {"place": "Indonesia", "lat": -0.79, "lon": 113.92}}}
+    home = {"id": "k", "type": "arms_transfer", "summary": "Four KC-135s are returning home from CENTCOM bases.",
+            "transfer": {"supplier": "US", "recipient": "US", "to": {"place": "Eielson", "lat": 64.7, "lon": -147.1}}}
+    sale = {"id": "s", "type": "arms_transfer", "summary": "Russia delivers air defence systems to Indonesia during a visit.",
+            "transfer": {"supplier": "RU", "recipient": "ID"}}
+    assert m.own_force_visits([visit, home, sale]) == 1
+    assert visit["type"] == "deployment" and visit["transfer"] is None and visit["place"] == "Indonesia"
+    assert home["type"] == "arms_transfer" and sale["type"] == "arms_transfer"
