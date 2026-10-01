@@ -33,9 +33,10 @@ FAMILY = {
     "artillery": "ground", "ground": "ground", "territory": "ground",
     "naval": "naval", "deployment": "deployment", "diplomacy": "diplomacy", "ceasefire": "diplomacy",
     "hybrid": "hybrid", "incursion": "incursion", "arms_transfer": "transfer", "legal": "legal",
+    "production": "production",
 }
 RADIUS_KM = {"strike": 30, "ground": 30, "naval": 150, "deployment": 120, "diplomacy": 400,
-             "hybrid": 50, "incursion": 150, "transfer": 0, "legal": 400}
+             "hybrid": 50, "incursion": 150, "transfer": 0, "legal": 400, "production": 100}
 TRANSFER_WINDOW = timedelta(hours=72)  # repeated flights or sailings on one route become one "bridge"
 WINDOW = timedelta(hours=18)  # measured from when the event first happened, never from later reports
 BUILDUP_OVERLAP = 0.25  # share of words two deployment summaries need in common (see _same_buildup)
@@ -410,6 +411,33 @@ def own_force_visits(events: list[dict]) -> int:
             e.update(place=to.get("place") or e.get("place"), lat=to["lat"], lon=to["lon"])
         changed += 1
         log(f"[merge] visit or exercise, not a supply route: {e.get('summary', '')[:80]!r}")
+    return changed
+
+
+# A country's purchases, contracts, approvals or production with its own industry, filed as its
+# own forces "moving" with nowhere to move between ("Taiwan announces plans to build more anti-ship
+# missiles"): arms production, its own kind of event, not an arms or forces movement. (A deal
+# between two countries is diplomacy; the prompt says so, but a stored one filed as a country's
+# own forces can't be told apart here.)
+PROCURE_RE = re.compile(r"\b(?:contracts?|procur\w*|purchas\w*|buys?|buying|orders?|ordered|production|produc\w+|"
+                        r"build|builds|building|manufactur\w*|budget|approv\w*|receiv\w*)\b", re.I)
+
+
+def own_procurement(events: list[dict]) -> int:
+    """Turn a country's own purchases or production (no movement between named places) into production."""
+    changed = 0
+    for e in events:
+        t = e.get("transfer") or {}
+        if e.get("type") != "arms_transfer" or not t.get("supplier") or t.get("supplier") != t.get("recipient"):
+            continue
+        if t.get("from") and t.get("to"):
+            continue  # a movement between two named places
+        if not PROCURE_RE.search(f"{e.get('summary') or ''} {t.get('what') or ''}"):
+            continue
+        e["type"], e["transfer"] = "production", None
+        e["country"] = e.get("country") or t["supplier"]
+        changed += 1
+        log(f"[merge] own purchase or production, filed as arms production: {e.get('summary', '')[:80]!r}")
     return changed
 
 

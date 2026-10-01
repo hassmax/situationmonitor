@@ -28,6 +28,7 @@
     territory: "Territorial change", air_defense: "Air defense", naval: "Naval incident", explosion: "Explosion",
     deployment: "Deployment or exercise", diplomacy: "Diplomacy", ceasefire: "Diplomacy", hybrid: "Sabotage or hybrid attack",
     incursion: "Airspace or border incursion", arms_transfer: "Arms transfer", legal: "Legal step",
+    production: "Arms production",
   };
   // type -> [category, icon, animation]
   const CAT = {
@@ -36,6 +37,7 @@
     territory: ["ground", "territory", "pulse"], naval: ["naval", "naval", "ripple"], deployment: ["deploy", "deploy", ""],
     hybrid: ["hybrid", "hybrid", "pulse"], incursion: ["hybrid", "incursion", "pulse"], diplomacy: ["diplo", "diplo", ""],
     ceasefire: ["diplo", "diplo", ""], legal: ["diplo", "legal", ""], arms_transfer: ["supply", "crate", ""],
+    production: ["supply", "factory", ""],
   };
   const CAT_RGB = { strike: [255, 91, 58], ground: [245, 165, 36], naval: [76, 195, 255], deploy: [159, 184, 212],
     hybrid: [177, 140, 255], diplo: [233, 238, 245], supply: [63, 193, 201], aid: [96, 214, 122], fleet: [205, 228, 255] };
@@ -55,6 +57,7 @@
     legal: '<path d="M8 2v11.6M4 14.4h8M2.8 4.6h10.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M2.8 4.6 1 9h3.6zM13.2 4.6 11.4 9H15z" fill="currentColor"/>',
     coin: '<circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M10.1 5.9c-.4-.7-1.2-1.1-2.1-1.1-1.2 0-2.1.6-2.1 1.5 0 2.1 4.3 1.1 4.3 3.3 0 .9-1 1.6-2.2 1.6-1 0-1.9-.4-2.3-1.2M8 3.6v1.2M8 11.3v1.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" fill="none"/>',
     crate: '<path d="M2 5.2 8 2.3l6 2.9v5.6L8 13.7l-6-2.9z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none"/><path d="M2 5.2 8 8.1l6-2.9M8 8.1v5.6" stroke="currentColor" stroke-width="1.4" fill="none"/>',
+    factory: '<path d="M1.6 14.2V7.4l3.6 2.3V7.4l3.6 2.3V2.4h1.7v-.8h2.2v.8h1.7v11.8z" fill="currentColor"/>',
     carrier: '<path d="M.8 9.6 2.9 6h10.3l2.2 1.6v1.8l-1.6 1.6H2.6z" fill="currentColor"/><rect x="10.4" y="3.8" width="2.2" height="2.4" rx=".3" fill="currentColor"/>',
     alert: '<path d="M4.4 12.2V9a3.6 3.6 0 0 1 7.2 0v3.2z" fill="currentColor"/><rect x="2.6" y="12.7" width="10.8" height="1.9" rx=".6" fill="currentColor"/><path d="M8 1.4v2.1M2.8 3.6l1.5 1.5M13.2 3.6l-1.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
   };
@@ -65,7 +68,7 @@
     ["blast", "strike", "Explosion"], ["artillery", "ground", "Shelling"],
     ["ground", "ground", "Ground fighting"], ["territory", "ground", "Territory change"], ["naval", "naval", "Naval"],
     ["hybrid", "hybrid", "Hybrid attack"], ["incursion", "hybrid", "Incursion"], ["deploy", "deploy", "Deployment"],
-    ["diplo", "diplo", "Diplomacy, legal"], ["crate", "supply", "Arms or forces moved"], ["coin", "aid", "Financial aid"],
+    ["diplo", "diplo", "Diplomacy, legal"], ["crate", "supply", "Arms or forces moved"], ["factory", "supply", "Arms production"], ["coin", "aid", "Financial aid"],
     ["carrier", "fleet", "US carrier at sea"],
   ];
   const MODE = { air: "by air", sea: "by sea", land: "overland", unspecified: "" };

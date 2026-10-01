@@ -198,3 +198,23 @@ def test_a_navy_port_call_is_a_deployment_not_a_supply_route():
     assert m.own_force_visits([visit, home, sale]) == 1
     assert visit["type"] == "deployment" and visit["transfer"] is None and visit["place"] == "Indonesia"
     assert home["type"] == "arms_transfer" and sale["type"] == "arms_transfer"
+
+
+def test_a_countrys_own_purchases_and_production_are_arms_production():
+    import merge as m
+    def own(i, summary, **t):
+        return {"id": i, "type": "arms_transfer", "summary": summary, "place": "Taipei",
+                "transfer": {"supplier": "TW", "recipient": "TW", **t}}
+    build = own("b", "Taiwan announces plans to build more anti-ship missiles.", to={"place": "Taipei", "lat": 25.0, "lon": 121.5})
+    contract = own("c", "Finland and Sweden sign contracts to procure armored personnel carriers.")
+    move = own("m", "US transfers six F-16s from Aviano to CENTCOM operations.",
+               **{"from": {"place": "Aviano"}, "to": {"place": "Middle East (CENTCOM area)"}})
+    withdraw = own("w", "Ethiopia plans to withdraw 3,000 troops from Somalia.", to={"place": "Ethiopia"})
+    assert m.own_procurement([build, contract, move, withdraw]) == 2
+    assert build["type"] == contract["type"] == "production" and build["transfer"] is None and build["country"] == "TW"
+    assert move["type"] == withdraw["type"] == "arms_transfer"
+
+
+def test_production_reports_merge_into_one_event():
+    import merge as m
+    assert m.FAMILY["production"] == "production" and m.RADIUS_KM["production"] > 0
