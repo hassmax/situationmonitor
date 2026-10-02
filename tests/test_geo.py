@@ -141,3 +141,33 @@ def test_the_indo_pacific_reaches_the_arabian_sea_and_karachi():
     rec = dict(record("Arabian Sea", type_="naval"), theater="indopac")
     c = geo.place_record(rec, geo.Geocoder({}, ArabianSea(), budget=10), theaters)
     assert (c["lat"], c["lon"]) == (20.0, 65.0)
+
+
+def test_model_coordinates_far_outside_the_theater_are_not_used_when_the_lookup_finds_nothing():
+    # 1c1b73283412: "Caribbean Sea", country Cuba; the lookup (inside Cuba) found nothing and the
+    # model's 15, 75 (a lost minus sign: southern India) was used unchecked
+    class Nothing(Session):
+        def get(self, url, params=None, timeout=None):
+            return Resp([])
+    import config
+    theaters = config.load().theaters
+    rec = dict(record("Caribbean Sea", lat=15.0, lon=75.0, type_="naval", country="CU"), theater="latam")
+    c = geo.place_record(rec, geo.Geocoder({}, Nothing(), budget=10), theaters)
+    assert (c["lat"], c["lon"], c["approx"]) == (15.0, -75.0, True)  # the named sea's anchor
+    # a strike with no usable place at all is left off rather than pinned far away
+    rec = dict(record("Somewhere", lat=15.0, lon=75.0, country="CU"), theater="latam")
+    assert geo.place_record(rec, geo.Geocoder({}, Nothing(), budget=10), theaters) is None
+
+
+def test_an_event_in_a_named_sea_is_pinned_near_it_new_and_stored():
+    # a deployment is not held to its theater, but "Caribbean Sea" still can't be in India
+    class Nothing(Session):
+        def get(self, url, params=None, timeout=None):
+            return Resp([])
+    rec = dict(record("Caribbean Sea", lat=15.0, lon=75.0, type_="deployment", country="CU"))
+    c = geo.place_record(rec, geo.Geocoder({}, Nothing(), budget=10), MIDEAST)
+    assert (c["lat"], c["lon"]) == (15.0, -75.0)
+    stored = {"id": "c", "type": "naval", "place": "Caribbean Sea", "lat": 15.0, "lon": 75.0, "summary": "s"}
+    assert geo.pin_commands([stored]) == 1 and (stored["lat"], stored["lon"]) == (15.0, -75.0)
+    near = {"id": "h", "type": "naval", "place": "Red Sea off Hodeidah", "lat": 14.8, "lon": 42.9, "summary": "s"}
+    assert geo.pin_commands([near]) == 0  # a spot in the sea, not its anchor, stays

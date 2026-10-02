@@ -6,7 +6,9 @@ by more than 300 km, the model's estimate is kept and the event is marked approx
 unless the model's coordinates are not even in the country it named (a reverse lookup):
 the model once put Baidoa, Somalia 20 degrees east, in the Indian Ocean, while the lookup
 had found Baidoa itself. Then the lookup wins. Stored approximate events are re-checked
-the same way once per REPAIR_VERSION, a few per run.
+the same way once per REPAIR_VERSION, a few per run. For strikes, fighting and naval incidents,
+neither the lookup nor the model's coordinates are used when they are far outside the theater, and
+an event placed in a named sea is pinned near that sea (SEA_KM), stored events included.
 """
 from __future__ import annotations
 
@@ -149,6 +151,18 @@ def _sea(name: str | None):
     return next((v for k, v in SEAS.items() if k in low), None)
 
 
+# An event placed in a named sea is pinned within SEA_KM of it. The model once gave the Caribbean
+# Sea as 15, 75 instead of 15, -75 (southern India); the lookup, limited to Cuba, found nothing, so
+# its coordinates were used unchecked.
+SEA_KM = 2000
+
+
+def _off_sea(place, lat, lon):
+    """The named sea's anchor when (lat, lon) is far from the sea the place names, else None."""
+    sea = _sea(place)
+    return sea if sea and lat is not None and lon is not None and haversine_km(lat, lon, *sea) > SEA_KM else None
+
+
 # US combatant commands name a region, not a place: "six F-16s moved from Aviano to CENTCOM" was
 # pinned to CENTCOM's headquarters in Tampa and its route drawn to the middle of the US. Events
 # placed at a command, and transfers sent to one, go to the region instead, marked approximate
@@ -212,6 +226,11 @@ def pin_commands(events: list[dict]) -> int:
         r = region_anchor(e.get("place"))
         if r and (e.get("lat"), e.get("lon")) != r:
             e.update(lat=r[0], lon=r[1], approx=True)
+            changed += 1
+        sea = _off_sea(e.get("place"), e.get("lat"), e.get("lon"))
+        if sea:
+            log(f"[geo] {e['summary'][:60]!r} was pinned at {e['lat']},{e['lon']}, far from the {e['place']}; moved there")
+            e.update(lat=sea[0], lon=sea[1], approx=True)
             changed += 1
         # forces leaving a command's area ("KC-135s returning home from CENTCOM bases", stored as a
         # deployment at the home base) become a movement out of that region to where they went
@@ -282,15 +301,24 @@ def place_record(rec: dict, geocoder: Geocoder, theaters: list[dict]) -> dict | 
                 _far_logged.add(rec["place"])
                 log(f"[geo] {rec['place']}: the lookup's match {hit} is far outside the {rec['theater']} theater; not used")
             hit = None
-            if hint and far(hint):
-                hint = None
+        # The model's own coordinates get the same check, also when the lookup found nothing (a
+        # sea, searched inside the country named, finds nothing; the Caribbean came back as 15, 75).
+        if hint and far(hint):
+            if not hit and rec["place"] not in _far_logged:
+                _far_logged.add(rec["place"])
+                log(f"[geo] {rec['place']}: the model's coordinates {hint} are far outside the {rec['theater']} theater; not used")
+            hint = None
         if hit:
             lat, lon = hit
         elif hint:
             lat, lon = hint
             approx = True
-    elif hint and rec["severity"] >= 2:
+    elif hint and rec["severity"] >= 2 and not far(hint):
         lat, lon = hint
+        approx = True
+    sea = _off_sea(rec["place"], lat, lon)
+    if sea:
+        lat, lon = sea
         approx = True
     if lat is None:
         sea = _sea(rec["place"]) or _sea(rec["admin1"])
