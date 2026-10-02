@@ -218,3 +218,16 @@ def test_a_countrys_own_purchases_and_production_are_arms_production():
 def test_production_reports_merge_into_one_event():
     import merge as m
     assert m.FAMILY["production"] == "production" and m.RADIUS_KM["production"] > 0
+
+
+def test_launches_into_one_sea_are_one_wave_whatever_country_the_reports_give():
+    # North Korea's launch came in "toward the Sea of Japan" with country JP; Seoul's outlets say
+    # "East Sea", with KR or no country
+    jp = event("j", "Sea of Japan", (40.0, 135.0), "2026-10-02T21:42:00Z", "North Korea launched missiles toward the Sea of Japan.",
+               type_="missile_drone", country="JP", attacker="KP", theater="indopac")
+    kr = event("k", "East Sea", (40.0, 135.0), "2026-10-02T22:10:00Z", "North Korea fired a ballistic missile into the East Sea, JCS says.",
+               type_="missile_drone", country="KR", attacker="KP", theater="indopac")
+    none = event("n", "Sea of Japan", (40.0, 135.0), "2026-10-02T22:30:00Z", "Japan says a North Korean missile fell outside its EEZ.",
+                 type_="missile_drone", country=None, attacker="KP", theater="indopac")
+    out = merge.merge([], [cand(jp), cand(kr), cand(none)])
+    assert len(out) == 1 and out[0]["wave"] and len(out[0]["reports"]) == 3
