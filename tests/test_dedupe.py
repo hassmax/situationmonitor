@@ -235,3 +235,30 @@ def test_a_planned_assault_filed_as_fighting_is_compared_with_the_same_plan_file
             ev("f", "Clashes killed six fighters near Hodeidah.", place="Red Sea", country=None, theater="mideast",
                type_="ground", hours_ago=3)]
     assert [[e["id"] for e in g] for g in dedupe.groups(plan, {}, NOW)] == [["d", "g"]]
+
+
+def test_a_new_story_filed_under_many_kinds_and_places_is_one_group():
+    # One cockpit attack came in as a hybrid attack, an incursion, an airstrike and a naval incident
+    # in four countries; the name no earlier event used ties them together.
+    story = [ev("h", "A FlyDubai flight to Israel was targeted in a hijacking attempt.", place="Dubai", country="AE",
+                theater="mideast", hours_ago=30),
+             ev("i", "An Israel-bound FlyDubai flight diverted to Saudi Arabia after an incident onboard.", place="Tabuk",
+                country="SA", theater="mideast", type_="incursion", hours_ago=29),
+             ev("a", "Israel launched repatriation flights after an attack on a FlyDubai aircraft.", place="Tel Aviv",
+                country="IL", theater="mideast", type_="airstrike", hours_ago=5),
+             ev("n", "Israeli carriers plan flights from the UAE after the FlyDubai cockpit attack.",
+                place="United Arab Emirates", country="AE", theater="mideast", type_="naval", hours_ago=6),
+             ev("t", "Israel's foreign minister condemned the FlyDubai attack.", place="Jerusalem", country="IL",
+                theater="mideast", type_="diplomacy", parties=["IL"], hours_ago=4)]
+    groups = [sorted(e["id"] for e in g) for g in dedupe.groups(story, {}, NOW)]
+    assert ["a", "h", "i", "n"] in groups
+    assert not any("t" in g for g in groups)  # a government's reaction stays its own event
+    # a name earlier events use all the time is not a new story
+    old = [ev(f"o{k}", "Fighting near a FlyDubai office.", place="Dubai", country="AE", theater="mideast",
+              type_="ground", hours_ago=100 + k) for k in range(2)]
+    assert dedupe.story_names(story, old, NOW) == set()
+    assert dedupe.story_names(story, old[:1], NOW) == {"flydubai"}
+    # nor is a place name shared by strikes of every kind
+    taiz = [ev(f"z{k}", f"Shelling and strikes hit Taiz district {k}.", place="Taiz", country="YE",
+               theater="mideast", type_=t, hours_ago=3) for k, t in enumerate(["airstrike", "artillery", "ground", "missile_drone"])]
+    assert dedupe.story_names(taiz, [], NOW) == set()

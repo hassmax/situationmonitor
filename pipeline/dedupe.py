@@ -43,11 +43,19 @@ the earliest event.
   back (hybrid attacks, deployments, incursions, naval incidents: the closest in wording; strikes,
   fighting and talks: only with close wording and the same names): in the working set (folded as usual, so the event keeps its first date) and in the
   archive (the new event takes the archived event's date, so an old story isn't shown as new).
+- New stories across kinds and countries: one cockpit attack on a FlyDubai flight came in as about
+  15 events typed as a hybrid attack, incursion, airstrike, naval incident and missile attack, pinned
+  to Dubai, Tel Aviv, Tabuk and Amman, so no country-and-kind group held two of them. A name that
+  STORY_MIN or more recent events share and that the earlier events (working set and archive) used
+  at most STORY_BEFORE times is a new story ("flydubai"), and its events are shown as one group.
+  Common names ("navy", "ministry", "houthi") are in older events all the time, so they never form
+  one. Diplomacy and legal steps stay out: another government's reaction is its own event.
 """
 from __future__ import annotations
 
 import json
 import re
+from collections import Counter
 from datetime import timedelta
 
 from common import iso, log, parse_time
@@ -70,6 +78,8 @@ LATE_DAYS = 14       # how far back
 LATE_OVERLAP = 0.4   # strikes, fighting, talks: wording an older event needs, plus the same names
 LATE_CANDIDATES = 2  # older events compared per new event
 KEEP_DAYS = 7
+STORY_MIN = 4     # recent events naming a new story (see the docstring) before they form a group
+STORY_BEFORE = 1  # how often earlier events may use the name for it to count as new
 # Families that can describe the same incident (a drone strike reported as an explosion).
 GROUP = {"strike": "violence", "ground": "violence", "naval": "naval", "deployment": "deployment",
          "hybrid": "hybrid", "incursion": "incursion", "diplomacy": "talks", "legal": "talks"}
@@ -88,7 +98,7 @@ PLAN_RE = re.compile(r"\b(?:plans?|planned|planning|prepar\w*|poised|readies|rea
                      r"considering|weighs?)\b", re.I)
 SABOTAGE_RE = re.compile(r"\b(?:sabotage|saboteurs?|arson|pipelines?|cables?|railways?|rail line|substation|power station)\b", re.I)
 
-PROMPT = """You check a live conflict map for duplicates. Each case is a list of events from the map in the same country, or diplomatic and legal events between the same parties, each with an id, its summary, place, and time.
+PROMPT = """You check a live conflict map for duplicates. Each case is a list of events from the map in the same country, events naming the same new story (an airline, a ship), possibly filed under different kinds of event and places, or diplomatic and legal events between the same parties, each with an id, its summary, place, and time.
 
 Group the events that describe the same specific incident or statement: the same arrests, the same strike, the same seizure, the same exercise, the same announcement, the same meeting, visit or call, the same vote, filing or ruling, including follow-up coverage of it over the following days (new details, reactions, questioning of suspects, denials). Places can differ (a city, the base it is about, the capital that spoke, or the whole country) and wording can differ.
 Reports often tell one event from different angles or with different details (who gets the money, what was said first, who attended); that is still one event.
@@ -118,7 +128,7 @@ def _linked(e: dict, f: dict, group: str) -> bool:
         if a and b:
             return (a <= b or b <= a or len(a & b) >= 2) and _overlap(e, f) >= TALKS_OVERLAP
         return _overlap(e, f) >= TALKS_BARE_OVERLAP
-    return group in WHOLE or _overlap(e, f) >= VIOLENCE_OVERLAP
+    return group in WHOLE or group == "story" or _overlap(e, f) >= VIOLENCE_OVERLAP
 
 
 def _answers(v: dict | None) -> int:
@@ -136,15 +146,35 @@ def _settled(v: dict | None, now) -> bool:
     return now - (parse_time(v.get("at")) or now) < SECOND_LOOK
 
 
-def groups(events: list[dict], judged: dict, now) -> list[list[dict]]:
+def groups(events: list[dict], judged: dict, now, history: list[dict] | None = None) -> list[list[dict]]:
     """Groups worth asking about (some pair in them not settled yet), longest waiting first."""
-    return [part for _, part in sorted(_due(events, judged, now), key=lambda w: w[0])]
+    return [part for _, part in sorted(_due(events, judged, now, history), key=lambda w: w[0])]
 
 
-def _due(events: list[dict], judged: dict, now) -> list[tuple[str, list[dict]]]:
+def story_names(events: list[dict], history: list[dict], now) -> set[str]:
+    """Names of new stories (see the docstring): in STORY_MIN or more recent events other than
+    talks, and in at most STORY_BEFORE earlier ones."""
+    since = now - LOOKBACK
+    recent, before, places = Counter(), Counter(), set()
+    for e in history:
+        if (parse_time(e.get("time")) or since) <= since:
+            before.update(_names(e.get("summary")))
+    for e in events:
+        if (parse_time(e.get("time")) or since) <= since:
+            before.update(_names(e.get("summary")))
+        elif not e.get("wave") and not e.get("alert") and GROUP.get(FAMILY.get(e.get("type"))) not in (None, "talks"):
+            recent.update(_names(e.get("summary")))
+            places |= _words(e.get("place"))
+    # a place name ("Taiz") is a place, not a story: the country groups already cover it
+    return {n for n, k in recent.items()
+            if k >= STORY_MIN and before[n] <= STORY_BEFORE and len(n) >= 3 and n not in places}
+
+
+def _due(events: list[dict], judged: dict, now, history: list[dict] | None = None) -> list[tuple[str, list[dict]]]:
     """(waiting since, group) for every group with a pair not settled yet."""
     since = now - LOOKBACK
     buckets: dict[tuple, list[dict]] = {}
+    stories = story_names(events, history or [], now)
     for e in events:
         if e.get("wave") or e.get("alert") or (parse_time(e.get("time")) or since) <= since:
             continue
@@ -158,6 +188,9 @@ def _due(events: list[dict], judged: dict, now) -> list[tuple[str, list[dict]]]:
                 buckets.setdefault((where, "hybrid"), []).append(e)
             if g == "violence" and PLAN_RE.search(e.get("summary") or ""):
                 buckets.setdefault((where, "deployment"), []).append(e)
+        if g and g != "talks":
+            for n in stories & _names(e.get("summary")):
+                buckets.setdefault((n, "story"), []).append(e)
         # talks are linked by who takes part, wherever they were pinned
         if g == "talks" or (g in STATEMENT_KINDS and e.get("parties")):
             buckets.setdefault(("", "talks"), []).append(e)
@@ -317,7 +350,7 @@ def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: in
     history = [h for h in (history or []) if h.get("id") not in have and h.get("id") not in skip]
     for call in range(MAX_CALLS_PER_RUN):
         live = [e for e in events if e["id"] not in skip]
-        due = sorted(_due(live, judged, now) + late_cases(live, history, judged, now), key=lambda w: w[0])
+        due = sorted(_due(live, judged, now, history) + late_cases(live, history, judged, now), key=lambda w: w[0])
         cases, size = [], 0
         for _, comp in due:
             if size + len(comp) > MAX_EVENTS:
