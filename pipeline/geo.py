@@ -151,6 +151,14 @@ def _sea(name: str | None):
     return next((v for k, v in SEAS.items() if k in low), None)
 
 
+def sea_exact(place: str | None):
+    """The anchor when the place is just a sea or strait's name ("Sea of Japan", "the Red Sea").
+    Such names are not looked up: a lookup limited to the country named finds something on land
+    that carries the name (the Sea of Japan in Kawasaki, the Taiwan Strait in Kaohsiung)."""
+    low = re.sub(r"^the\s+", "", (place or "").strip().lower())
+    return SEAS.get(low)
+
+
 # An event placed in a named sea is pinned within SEA_KM of it. The model once gave the Caribbean
 # Sea as 15, 75 instead of 15, -75 (southern India); the lookup, limited to Cuba, found nothing, so
 # its coordinates were used unchecked.
@@ -217,13 +225,21 @@ def pin_commands(events: list[dict]) -> int:
     it. Runs every run over all events (cheap, and a no-op once done). Returns how many changed."""
     changed = 0
     for e in events:
-        if e.get("wave") or e.get("alert"):
+        if e.get("wave"):
+            # a wave takes its pin from its main target (merge._finish_wave)
+            for t in e.get("targets") or []:
+                r = region_anchor(t.get("place")) or sea_exact(t.get("place"))
+                if r and (t.get("lat"), t.get("lon")) != r:
+                    t.update(lat=r[0], lon=r[1])
+                    changed += 1
+            continue
+        if e.get("alert"):
             continue
         c = _command(e.get("place"))
         if c and (e.get("lat"), e.get("lon")) != (c[1], c[2]):
             e.update(place=c[0], lat=c[1], lon=c[2], approx=True)
             changed += 1
-        r = region_anchor(e.get("place"))
+        r = region_anchor(e.get("place")) or sea_exact(e.get("place"))
         if r and (e.get("lat"), e.get("lon")) != r:
             e.update(lat=r[0], lon=r[1], approx=True)
             changed += 1
@@ -290,7 +306,7 @@ def place_record(rec: dict, geocoder: Geocoder, theaters: list[dict]) -> dict | 
     center, reach = th.get("camera"), float(th.get("reach_km") or THEATER_KM)
     far = lambda p: bool(center and rec.get("type") in IN_THEATER_TYPES  # noqa: E731
                          and haversine_km(p[0], p[1], center["lat"], center["lng"]) > reach)
-    region = region_anchor(rec["place"])
+    region = region_anchor(rec["place"]) or sea_exact(rec["place"])
     if region:
         lat, lon = region
         approx = True
