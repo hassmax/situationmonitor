@@ -206,6 +206,16 @@ outlets:
   - {domain: newsweek.com, name: Newsweek, tier: 2}
   - {domain: euronews.com, name: Euronews, tier: 2}
   - {domain: lemonde.fr, name: Le Monde, tier: 1}
+  # Leading outlets of major countries (owner's list, 2026-10-02)
+  - {domain: spiegel.de, name: Der Spiegel, tier: 1, names: [DER SPIEGEL, Spiegel, SPIEGEL International]}
+  - {domain: corriere.it, name: Corriere della Sera, tier: 1}
+  - {domain: elpais.com, name: El País, tier: 1, names: [EL PAÍS English, El País English, EL PAÍS]}
+  - {domain: nrc.nl, name: NRC, tier: 1}
+  - {domain: nzz.ch, name: Neue Zürcher Zeitung, tier: 1, names: [NZZ, NZZ English]}
+  - {domain: cbc.ca, name: CBC News, tier: 1, names: [CBC]}
+  - {domain: abc.net.au, name: ABC News (Australia), tier: 1, names: ["ABC News & Headlines – Australian Broadcasting Corporation", ABC (Australian Broadcasting Corporation)]}
+  - {domain: globo.com, name: Grupo Globo, tier: 2, names: [g1, O Globo, G1]}
+  - {domain: reforma.com, name: Reforma, tier: 2}
   - {domain: nypost.com, name: New York Post, tier: 2}
   - {domain: newsmax.com, name: Newsmax, tier: 2}
   # Clarity Media: one owner, shared newsroom
@@ -222,14 +232,14 @@ outlets:
   - {domain: al-monitor.com, name: Al-Monitor, tier: 2}
   - {domain: thenationalnews.com, name: The National (UAE state-owned), tier: 2, side: AE}
   - {domain: arabnews.com, name: Arab News (Saudi), tier: 2, side: SA}
-  - {domain: alarabiya.net, name: Al Arabiya (Saudi-owned), tier: 2, side: SA}
+  - {domain: alarabiya.net, name: Al Arabiya (Saudi-owned), tier: 2, side: SA, names: [Al Arabiya, Al Arabiya English]}
   - {domain: presstv.ir, name: Press TV (Iranian state), tier: 2, side: IR, names: [PressTV, Press TV]}
   - {domain: irna.ir, name: IRNA (Iranian state), tier: 2, side: IR}
   - {domain: tasnimnews.com, name: Tasnim (IRGC-affiliated), tier: 2, side: IR}
   - {domain: mehrnews.com, name: Mehr (Iranian state), tier: 2, side: IR}
   - {domain: farsnews.ir, name: Fars (IRGC-affiliated), tier: 2, side: IR}
   - {domain: almanar.com.lb, name: Al-Manar (Hezbollah), tier: 2, side: LB}
-  - {domain: aa.com.tr, name: Anadolu (Turkish state), tier: 2, side: TR}
+  - {domain: aa.com.tr, name: Anadolu (Turkish state), tier: 2, side: TR, names: [Anadolu Ajansı, Anadolu Agency]}
   - {domain: trtworld.com, name: TRT World (Turkish state), tier: 2, side: TR}
   - {domain: dailysabah.com, name: Daily Sabah (pro-government), tier: 2, side: TR}
   - {domain: anews.com.tr, name: A News (pro-government), tier: 2, side: TR}
@@ -264,7 +274,7 @@ outlets:
   - {domain: ukranews.com, name: Ukrainian News Agency, tier: 2, names: [ukranews.com]}
   - {domain: censor.net, name: Censor.NET (partisan), tier: 2, side: UA, names: ["Цензор.НЕТ", Censor.NET]}
   - {domain: united24media.com, name: UNITED24 Media (Ukrainian government), tier: 2, side: UA, names: [UNITED24 Media]}
-  - {domain: tass.com, name: TASS (Russian state), tier: 2, side: RU}
+  - {domain: tass.com, name: TASS (Russian state), tier: 2, side: RU, names: [TASS]}
   - {domain: tass.ru, name: TASS (Russian state), tier: 2, side: RU}
   - {domain: ria.ru, name: RIA Novosti (Russian state), tier: 2, side: RU}
   - {domain: rt.com, name: RT (Russian state), tier: 2, side: RU}
@@ -275,12 +285,17 @@ outlets:
   - {domain: kyodonews.net, name: Kyodo, tier: 1}
   - {domain: taipeitimes.com, name: Taipei Times, tier: 2, group: taipeitimes}
   - {domain: thediplomat.com, name: The Diplomat, tier: 2, group: thediplomat}
-  - {domain: xinhuanet.com, name: Xinhua (Chinese state), tier: 2, side: CN}
+  - {domain: xinhuanet.com, name: Xinhua (Chinese state), tier: 2, side: CN, names: [Xinhua, english.news.cn]}
   - {domain: news.cn, name: Xinhua (Chinese state), tier: 2, side: CN}
   - {domain: cgtn.com, name: CGTN (Chinese state), tier: 2, side: CN}
   - {domain: globaltimes.cn, name: Global Times (Chinese state), tier: 2, side: CN}
   - {domain: chinadaily.com.cn, name: China Daily (Chinese state), tier: 2, side: CN}
   - {domain: dawn.com, name: Dawn, tier: 2}
+  - {domain: nhk.or.jp, name: NHK, tier: 1, names: [NHK WORLD, NHK WORLD-JAPAN]}
+  - {domain: yna.co.kr, name: Yonhap News Agency, tier: 1, names: [Yonhap, Yonhap News]}
+  - {domain: indianexpress.com, name: The Indian Express, tier: 1}
+  - {domain: kompas.com, name: Kompas, tier: 2, group: kompas, names: [Kompas.com, KOMPAS.com]}
+  - {domain: kompas.id, name: Kompas, tier: 2, group: kompas, names: [Kompas.id]}
   - {domain: thehindu.com, name: The Hindu, tier: 2}
   - {domain: tribune.com.pk, name: The Express Tribune, tier: 2}
   # Times Group: one owner
@@ -429,6 +444,54 @@ rss:
     kind: news
     group: google-news
     weight: 2
+  # Leading outlets of major countries, read through Google News searches of their own sites
+  # (their feeds are not all open to GitHub's servers). Searches in other languages use that
+  # language's Google News edition and keywords; the model writes the summaries in English.
+  - id: gnews-majors-en
+    name: Google News (NYT, CBC, ABC Australia, Indian Express, Yonhap, NHK)
+    url: https://news.google.com/rss/search?q=%28site%3Anytimes.com+OR+site%3Acbc.ca+OR+site%3Aabc.net.au+OR+site%3Aindianexpress.com+OR+site%3Aen.yna.co.kr+OR+site%3Awww3.nhk.or.jp%29+%28attack+OR+strike+OR+missile+OR+drone+OR+troops+OR+killed+OR+ceasefire+OR+sanctions%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+  - id: gnews-majors-europe-en
+    name: Google News (Der Spiegel, Le Monde, El País, NZZ in English)
+    url: https://news.google.com/rss/search?q=%28site%3Aspiegel.de+OR+site%3Alemonde.fr+OR+site%3Aenglish.elpais.com+OR+site%3Anzz.ch%29+%28attack+OR+strike+OR+missile+OR+drone+OR+troops+OR+killed+OR+ceasefire+OR+sanctions%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+  - id: gnews-state-wires
+    name: Google News (TASS, Xinhua, Anadolu, Al Arabiya)
+    url: https://news.google.com/rss/search?q=%28site%3Atass.com+OR+site%3Anews.cn+OR+site%3Aaa.com.tr+OR+site%3Aenglish.alarabiya.net%29+%28attack+OR+strike+OR+missile+OR+drone+OR+troops+OR+killed+OR+ceasefire+OR+sanctions%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+  - id: gnews-de
+    name: Google News (Der Spiegel, NZZ)
+    url: https://news.google.com/rss/search?q=%28site%3Aspiegel.de+OR+site%3Anzz.ch%29+%28Angriff+OR+Luftangriff+OR+Rakete+OR+Drohne+OR+Soldaten+OR+get%C3%B6tet+OR+Waffenruhe+OR+Krieg%29+when%3A12h&hl=de&gl=DE&ceid=DE%3Ade
+    kind: news
+    group: google-news
+  - id: gnews-it
+    name: Google News (Corriere della Sera)
+    url: https://news.google.com/rss/search?q=site%3Acorriere.it+%28attacco+OR+missile+OR+drone+OR+soldati+OR+uccisi+OR+tregua+OR+bombardamento+OR+guerra%29+when%3A12h&hl=it&gl=IT&ceid=IT%3Ait
+    kind: news
+    group: google-news
+  - id: gnews-nl
+    name: Google News (NRC)
+    url: https://news.google.com/rss/search?q=site%3Anrc.nl+%28aanval+OR+raket+OR+drone+OR+soldaten+OR+gedood+OR+oorlog+OR+wapenstilstand%29+when%3A12h&hl=nl&gl=NL&ceid=NL%3Anl
+    kind: news
+    group: google-news
+  - id: gnews-es
+    name: Google News (El País, Reforma)
+    url: https://news.google.com/rss/search?q=%28site%3Aelpais.com+OR+site%3Areforma.com%29+%28ataque+OR+bombardeo+OR+misil+OR+dron+OR+tropas+OR+muertos+OR+guerra+OR+%22alto+el+fuego%22%29+when%3A12h&hl=es-419&gl=MX&ceid=MX%3Aes-419
+    kind: news
+    group: google-news
+  - id: gnews-pt
+    name: Google News (Grupo Globo)
+    url: https://news.google.com/rss/search?q=%28site%3Ag1.globo.com+OR+site%3Aoglobo.globo.com%29+%28ataque+OR+bombardeio+OR+m%C3%ADssil+OR+drone+OR+tropas+OR+mortos+OR+guerra+OR+cessar-fogo%29+when%3A12h&hl=pt-BR&gl=BR&ceid=BR%3Apt-419
+    kind: news
+    group: google-news
+  - id: gnews-id
+    name: Google News (Kompas)
+    url: https://news.google.com/rss/search?q=%28site%3Akompas.com+OR+site%3Akompas.id%29+%28serangan+OR+rudal+OR+drone+OR+militer+OR+tewas+OR+perang+OR+%22gencatan+senjata%22%29+when%3A12h&hl=id&gl=ID&ceid=ID%3Aid
+    kind: news
+    group: google-news
   # Countries leaving, suspending or joining treaties and international bodies, expelling
   # diplomats or cutting relations, and new sanctions packages (the US leaving GRECO was missed).
   # Two short searches: one long query (57 terms) came back with results a week old, as if
