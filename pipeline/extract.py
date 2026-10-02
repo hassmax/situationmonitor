@@ -240,7 +240,7 @@ def used_today(state: dict, purpose: str) -> int:
 # three a run, every run, while its backlog never emptied) and extraction stopped with 358 posts
 # waiting. Each share is paced over the day: by noon, about half of it (plus SHARE_BURST).
 SHARES = {"dedupe": "dedupe_daily_max", "recency": "recency_daily_max"}
-SHARE_DEFAULTS = {"dedupe_daily_max": 90, "recency_daily_max": 48}
+SHARE_DEFAULTS = {"dedupe_daily_max": 140, "recency_daily_max": 48}
 SHARE_BURST = 4
 
 

@@ -250,3 +250,24 @@ def test_a_launch_report_becomes_the_waves_launch_area():
                    "A military source denies reports that a missile was launched from Iran toward Jordan.",
                    type_="missile_drone", country="IR", attacker="IR", theater="mideast")
     assert not merge._launch_report(denial)
+
+
+def test_talks_with_one_party_list_within_the_other_and_close_wording_merge():
+    # "Pakistan announces Mecca pact talks on the Houthis" came in with [PK] and with [PK, SA, YE]
+    a = event("a", "Islamabad", (33.69, 73.06), "2026-10-02T04:58:00Z",
+              "Pakistan announces that members of the Mecca pact will convene for emergency talks regarding the Houthis.",
+              type_="diplomacy", country="PK", theater="mideast", parties=["PK", "SA", "YE"])
+    b = event("b", "Islamabad", (33.69, 73.06), "2026-10-02T14:43:00Z",
+              "Pakistan announces that Makkah pact members will hold emergency talks on engaging the Houthis.",
+              type_="diplomacy", country="PK", theater="mideast", parties=["PK"])
+    c = event("c", "Islamabad", (33.69, 73.06), "2026-10-02T15:00:00Z",
+              "Pakistan's prime minister met Chinese investors about a new rail line.",
+              type_="diplomacy", country="PK", theater="mideast", parties=["PK"])
+    out, folded = merge.consolidate([a, b, c], set())
+    assert [e["id"] for e in folded] == ["b"] and {e["id"] for e in out} == {"a", "c"}
+    cabinet = event("k", "Riyadh", (24.71, 46.68), "2026-10-02T10:00:00Z",
+                    "Saudi Crown Prince MBS chaired a cabinet meeting in Riyadh where the cabinet stated its position.",
+                    type_="diplomacy", country="SA", theater="mideast", parties=["SA"])
+    visit = event("v", "Riyadh", (24.71, 46.68), "2026-10-02T09:00:00Z", "Saudi crown prince and UAE vice president meet in Riyadh.",
+                  type_="diplomacy", country="SA", theater="mideast", parties=["AE", "SA"])
+    assert not merge._same_talks(visit, cabinet)
