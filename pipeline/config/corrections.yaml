@@ -72,3 +72,14 @@ corrections:
   - id: 4adff6f3b249
     edit: {type: hybrid}
     note: The FlyDubai cockpit attack was an attack aboard a civilian flight, not an airspace incursion; Israel calls it terrorism and Iran is suspected of ties.
+  # The DMZ landmine blast (late September) was filed three times as a North Korean drone and
+  # missile attack. One event is kept, as an explosion; the other two are hidden.
+  - id: 51cd3621108d
+    edit: {type: explosion, summary: "South Korea says North Korean landmines most likely caused a blast in the DMZ that injured three South Korean soldiers."}
+    note: A landmine blast, not a drone or missile attack.
+  - id: 5f8206614a09
+    hide: true
+    note: The same DMZ landmine blast as 51cd3621108d, filed as a drone or missile attack.
+  - id: 50c8cd5ff3c4
+    hide: true
+    note: Seoul's demand for an apology over the DMZ landmine blast in 51cd3621108d, filed as a drone or missile attack.

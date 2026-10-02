@@ -133,14 +133,14 @@ def test_stored_events_at_a_region_name_move_to_its_anchor():
 
 
 def test_the_indo_pacific_reaches_the_arabian_sea_and_karachi():
-    class ArabianSea(Session):
+    class Karachi(Session):
         def get(self, url, params=None, timeout=None):
-            return Resp([{"lat": "20.0", "lon": "65.0"}])
+            return Resp([{"lat": "24.86", "lon": "67.0"}])
     import config
     theaters = config.load().theaters
-    rec = dict(record("Arabian Sea", type_="naval"), theater="indopac")
-    c = geo.place_record(rec, geo.Geocoder({}, ArabianSea(), budget=10), theaters)
-    assert (c["lat"], c["lon"]) == (20.0, 65.0)
+    rec = dict(record("Karachi", type_="naval"), theater="indopac")
+    c = geo.place_record(rec, geo.Geocoder({}, Karachi(), budget=10), theaters)
+    assert (c["lat"], c["lon"]) == (24.86, 67.0)
 
 
 def test_model_coordinates_far_outside_the_theater_are_not_used_when_the_lookup_finds_nothing():
@@ -171,3 +171,23 @@ def test_an_event_in_a_named_sea_is_pinned_near_it_new_and_stored():
     assert geo.pin_commands([stored]) == 1 and (stored["lat"], stored["lon"]) == (15.0, -75.0)
     near = {"id": "h", "type": "naval", "place": "Red Sea off Hodeidah", "lat": 14.8, "lon": 42.9, "summary": "s"}
     assert geo.pin_commands([near]) == 0  # a spot in the sea, not its anchor, stays
+
+
+def test_a_bare_sea_name_is_not_looked_up():
+    # "Sea of Japan" with country JP: the lookup found something in Kawasaki, and North Korea's
+    # launch was drawn as landing near Tokyo
+    class Kawasaki(Session):
+        def get(self, url, params=None, timeout=None):
+            return Resp([{"lat": "35.5636", "lon": "139.7152"}])
+    g = geo.Geocoder({}, Kawasaki(), budget=10)
+    rec = dict(record("Sea of Japan", country="JP"), theater="mideast")
+    c = geo.place_record(rec, g, MIDEAST)
+    assert (c["lat"], c["lon"], c["approx"]) == (40.0, 135.0, True) and g.session.calls == []
+    assert geo.sea_exact("the Red Sea") == geo.SEAS["red sea"] and geo.sea_exact("Red Sea off Hodeidah") is None
+    # stored events and attack-wave targets move too
+    wave = {"id": "w", "wave": True, "type": "missile_drone", "place": "Sea of Japan", "lat": 35.5636, "lon": 139.7152,
+            "targets": [{"place": "Sea of Japan", "lat": 35.5636, "lon": 139.7152}], "summary": "s"}
+    strait = {"id": "t", "type": "naval", "place": "Taiwan Strait", "lat": 22.623, "lon": 120.3383, "summary": "s"}
+    assert geo.pin_commands([wave, strait]) == 2
+    assert (wave["targets"][0]["lat"], wave["targets"][0]["lon"]) == (40.0, 135.0)
+    assert (strait["lat"], strait["lon"]) == geo.SEAS["taiwan strait"]

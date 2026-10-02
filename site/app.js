@@ -104,6 +104,8 @@
     YE: [["Sanaa", 15.37, 44.19], ["Hodeidah", 14.8, 42.95], ["Saada", 16.94, 43.76]],
     LB: [["Nabatieh", 33.38, 35.48], ["Tyre", 33.27, 35.2]],
     IL: [["southern Israel", 31.25, 34.79], ["northern Israel", 32.8, 35.1]],
+    // North Korea's usual launch areas: Sunan (Pyongyang), the Wonsan coast, Sohae, Sinpo
+    KP: [["Pyongyang", 39.2, 125.67], ["Wonsan", 39.17, 127.48], ["Sohae", 39.66, 124.71], ["Sinpo", 40.03, 128.18]],
   };
   Object.keys(ANCHORS).forEach((k) => { ANCHORS[k] = ANCHORS[k].map(([place, lat, lon]) => ({ place, lat, lon })); });
   const REP_POINT = {
@@ -935,7 +937,8 @@
     };
     for (const e of events) {
       if (arcs.length >= 180) break;
-      if (e.type !== "missile_drone" && e.type !== "air_defense" && !e.wave && !originsOf(e).length) continue;
+      // a wave is a drone and missile attack unless corrected (a landmine blast retyped as an explosion)
+      if (e.type !== "missile_drone" && e.type !== "air_defense" && !originsOf(e).length) continue;
       const origins = originsOf(e);
       if (e.wave) {
         for (const d of (e.targets.length ? e.targets.slice(0, 16) : [e])) {
