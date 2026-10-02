@@ -42,3 +42,15 @@ def test_the_same_story_check_stops_when_its_share_is_used():
     assert calls == []
     dedupe.run(fresh(), {}, SETTINGS, NOW, ask, remaining=300, skip=set(), share=1)
     assert calls == ["dedupe"]
+
+
+def test_headlines_already_judged_irrelevant_are_not_sent_again_for_a_day():
+    from datetime import datetime, timedelta, timezone
+    import extract
+    now = datetime(2026, 10, 2, 12, 0, tzinfo=timezone.utc)
+    state = {"rejected_heads": {extract.headline_key("Polícia prende suspeitos de ataque a tiros - G1"): "2026-10-02T08:00:00Z"}}
+    items = [{"platform": "rss", "text": "Polícia prende suspeitos de ataque a tiros - O Globo"},   # same headline, other outlet
+             {"platform": "rss", "text": "Russian drone strike on Kharkiv - Reuters"},
+             {"platform": "telegram", "text": "Polícia prende suspeitos de ataque a tiros"}]           # not news: never skipped
+    assert [it["text"][:7] for it in extract.skip_rejected(items, state, now)] == ["Russian", "Polícia"]
+    assert extract.skip_rejected(items[:1], state, now + timedelta(days=1)) == items[:1]           # forgotten after a day

@@ -32,9 +32,9 @@ DEFAULT_SETTINGS = {
     # The same-story check (at most one call an hour) is skipped below this.
     "dedupe_min_calls": 10,
     "seconds_between_calls": 7,
-    "batch_max_items": 25,
-    "batch_token_budget": 10000,
-    "max_output_tokens": 6000,
+    "batch_max_items": 40,      # 25 until 2026-10-02: the ~4,700-token instructions go with every call
+    "batch_token_budget": 16000,
+    "max_output_tokens": 9000,
     "max_item_age_hours": 36,
     "pending_max": 400,
     "geocode_per_run": 45,

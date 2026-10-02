@@ -161,6 +161,7 @@ def main() -> int:
     log(f"[filter] {len(fresh)} new candidates")
 
     # 3. Extract with the model (budgeted); the rest waits in the queue
+    fresh = extract.skip_rejected(fresh, state, t0)
     queue = extract.build_queue(state["pending"], fresh, t0, settings)
     records, leftover, calls, carrier_reports = extract.run(queue, state, settings, t0, disabled=args.no_llm)
     state["pending"] = leftover
