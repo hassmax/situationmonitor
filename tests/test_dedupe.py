@@ -225,3 +225,13 @@ def test_an_explosion_described_as_sabotage_is_compared_with_the_countrys_hybrid
                 country="SY", theater="mideast", type_="explosion", hours_ago=29),
              ev("y", "An explosion hit a market in Idlib.", country="SY", theater="mideast", type_="explosion", hours_ago=5)]
     assert [[e["id"] for e in g] for g in dedupe.groups(syria, {}, NOW)] == [["h", "x"]]
+
+
+def test_a_planned_assault_filed_as_fighting_is_compared_with_the_same_plan_filed_as_a_buildup():
+    plan = [ev("d", "Official sources report that Saudi Arabia plans an assault on Houthi forces to break the Red Sea chokehold.",
+               place="Red Sea", country=None, theater="mideast", type_="deployment", hours_ago=4),
+            ev("g", "Saudi-backed forces plan an assault against Houthi forces aiming to secure the Red Sea maritime routes.",
+               place="Red Sea", country=None, theater="mideast", type_="ground", hours_ago=4),
+            ev("f", "Clashes killed six fighters near Hodeidah.", place="Red Sea", country=None, theater="mideast",
+               type_="ground", hours_ago=3)]
+    assert [[e["id"] for e in g] for g in dedupe.groups(plan, {}, NOW)] == [["d", "g"]]
