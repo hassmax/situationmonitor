@@ -23,12 +23,12 @@ def test_the_same_story_check_has_a_paced_daily_share():
     import extract
     state, settings = {"llm_calls": {"date": "2026-09-30", "count": 0}}, {"daily_llm_calls": 400}
     noon = datetime(2026, 9, 30, 12, 0, tzinfo=timezone.utc)
-    assert extract.share_left(state, settings, noon, "dedupe") == 45 + extract.SHARE_BURST   # half of 90 by noon
-    for _ in range(49):
+    assert extract.share_left(state, settings, noon, "dedupe") == 70 + extract.SHARE_BURST   # half of 140 by noon
+    for _ in range(74):
         extract._spend(state, "dedupe")
     assert extract.share_left(state, settings, noon, "dedupe") == 0
     assert extract.share_left(state, settings, noon, "extract") > 1000        # extraction has no share
-    assert state["llm_calls"]["count"] == 49 and state["llm_calls"]["by"]["dedupe"] == 49
+    assert state["llm_calls"]["count"] == 74 and state["llm_calls"]["by"]["dedupe"] == 74
     next_day = datetime(2026, 10, 1, 0, 5, tzinfo=timezone.utc)
     assert extract.share_left(state, settings, next_day, "dedupe") == extract.SHARE_BURST    # a new day
 

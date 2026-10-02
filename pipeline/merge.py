@@ -58,6 +58,7 @@ STRIKE_FOLD_OVERLAP = 0.6  # stored strikes/fighting at one place fold only with
 # across the two types, and at any distance when the parties are the same and the wording close.
 TALKS = {"diplomacy", "legal"}
 TALKS_FAR_OVERLAP = 0.6
+TALKS_SUBSET_OVERLAP = 0.55  # parties one within the other ([PK] and [PK, SA, YE]): wording this close
 TALKS_FOLD_OVERLAP = 0.5  # stored talks fold only with wording this close (see consolidate)
 _SEA = re.compile(r"\b(?:sea|ocean|gulf|strait|straits|bay|channel)\b", re.IGNORECASE)
 _REGIONS = {"england", "scotland", "wales", "northern ireland", "uk", "britain", "great britain", "us", "usa",
@@ -143,9 +144,13 @@ from after over into amid near during against about says said say claims claimed
 report according officials official state states stated new following""".split())
 
 
+# Spellings of one name that outlets use interchangeably ("the Mecca pact", "the Makkah pact").
+_SPELLINGS = {"makkah": "mecca"}
+
+
 def _words(text: str) -> set[str]:
     words = (w.replace("-", "") for w in re.findall(r"[a-z][a-z'-]+", (text or "").lower()) if w not in _WORD_STOP)
-    return {w.rstrip("s") for w in words if w}
+    return {_SPELLINGS.get(w, w).rstrip("s") for w in words if w}
 
 
 def _broad(e: dict) -> bool:
@@ -220,7 +225,12 @@ def _same_talks(e: dict, cand: dict) -> bool:
     if a and b:
         if len(a & b) >= 2:
             return True
-        return a == b and _overlap(e["summary"], cand["summary"]) >= 0.4
+        # the same parties, or one list within the other with closer wording: "Pakistan announces Mecca
+        # pact talks on the Houthis" came in with [PK] from one outlet and [PK, SA, YE] from another
+        # (a Saudi cabinet meeting, [SA], and a Saudi-UAE meeting, [AE, SA], shared half their words)
+        if a == b:
+            return _overlap(e["summary"], cand["summary"]) >= 0.4
+        return (a <= b or b <= a) and _overlap(e["summary"], cand["summary"]) >= TALKS_SUBSET_OVERLAP
     return _overlap(e["summary"], cand["summary"]) >= 0.5
 
 
