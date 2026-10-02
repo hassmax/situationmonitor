@@ -148,6 +148,16 @@ telegram:
     name: War Monitors (OSINT aggregator)
     kind: osint
     group: warmonitors
+  - username: Alomhoar
+    # Al-Mehwar News (المحور نيوز): Arabic channel aligned with the Houthis and the "Axis of
+    # Resistance", often first with footage of Houthi strikes (the Aden operations room strike,
+    # 2026-10-02). Its reports alone show as one side's claim. Posts in Arabic go through the
+    # keyword filter (Arabic words included) so the channel's general news doesn't use the budget.
+    name: Al-Mehwar News (Houthi-aligned)
+    kind: partisan
+    side: YE
+    group: almehwar
+    weight: 2
     weight: 2
     prefilter: true
 
@@ -232,7 +242,9 @@ outlets:
   - {domain: al-monitor.com, name: Al-Monitor, tier: 2}
   - {domain: thenationalnews.com, name: The National (UAE state-owned), tier: 2, side: AE}
   - {domain: arabnews.com, name: Arab News (Saudi), tier: 2, side: SA}
-  - {domain: alarabiya.net, name: Al Arabiya (Saudi-owned), tier: 2, side: SA, names: [Al Arabiya, Al Arabiya English]}
+  - {domain: alarabiya.net, name: Al Arabiya (Saudi-owned), tier: 2, side: SA, names: [Al Arabiya, Al Arabiya English, العربية]}
+  - {domain: alhadath.net, name: Al Hadath (Saudi-owned), tier: 2, side: SA, names: [Al Hadath, الحدث]}
+  - {domain: spa.gov.sa, name: Saudi Press Agency (Saudi state), tier: 2, side: SA, names: [SPA, Saudi Press Agency, وكالة الأنباء السعودية]}
   - {domain: presstv.ir, name: Press TV (Iranian state), tier: 2, side: IR, names: [PressTV, Press TV]}
   - {domain: irna.ir, name: IRNA (Iranian state), tier: 2, side: IR}
   - {domain: tasnimnews.com, name: Tasnim (IRGC-affiliated), tier: 2, side: IR}
@@ -490,6 +502,14 @@ rss:
   - id: gnews-id
     name: Google News (Kompas)
     url: https://news.google.com/rss/search?q=%28site%3Akompas.com+OR+site%3Akompas.id%29+%28rudal+OR+perang+OR+%22gencatan+senjata%22+OR+Ukraina+OR+Israel+OR+Iran+OR+Gaza+OR+%22Laut+China+Selatan%22%29+-site%3Avideo.kompas.com+when%3A12h&hl=id&gl=ID&ceid=ID%3Aid
+    kind: news
+    group: google-news
+  # The Saudi-led coalition's side of the Yemen war, in Arabic: the coalition's statements are
+  # carried by the Saudi Press Agency, Al Arabiya, Al Hadath and Asharq Al-Awsat (all marked
+  # side: SA). With Al-Mehwar on the Houthi side, a strike both sides report counts as corroborated.
+  - id: gnews-yemen-coalition
+    name: Google News (Saudi-led coalition and Saudi media on Yemen, Arabic)
+    url: https://news.google.com/rss/search?q=%28site%3Aspa.gov.sa+OR+site%3Aalarabiya.net+OR+site%3Aalhadath.net+OR+site%3Aaawsat.com%29+%28%D8%A7%D9%84%D8%AD%D9%88%D8%AB%D9%8A+OR+%D8%A7%D9%84%D8%AD%D9%88%D8%AB%D9%8A%D9%8A%D9%86+OR+%D8%A7%D9%84%D9%8A%D9%85%D9%86+OR+%D8%B9%D8%AF%D9%86+OR+%D8%B5%D8%A7%D8%B1%D9%88%D8%AE+OR+%D9%85%D8%B3%D9%8A%D8%B1%D8%A9+OR+%D8%BA%D8%A7%D8%B1%D8%A9+OR+%D8%A7%D8%B9%D8%AA%D8%B1%D8%A7%D8%B6%29+when%3A12h&hl=ar&gl=SA&ceid=SA%3Aar
     kind: news
     group: google-news
   # Countries leaving, suspending or joining treaties and international bodies, expelling

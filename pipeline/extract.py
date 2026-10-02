@@ -133,6 +133,7 @@ CONFLICT_RE = re.compile(
     r"|удар|обстр|ракет|дрон|бпла|шахед|атак|вибух|взрыв|штурм|наступ|звільн|освобо|ппо|пво|загибл|погиб|"
     r"поранен|ранен|збит|сбит|знищ|уничтож|окупант|оккупан"
     r"|غارة|غارات|قصف|صاروخ|صواريخ|مسيرة|مسيّرة|اشتباك|انفجار|استهداف|قتلى|جرحى"
+    r"|هجوم|هجمات|ضربة|ضربات|باليستي|اعتراض|إسقاط|مسيرات"
     r"|ירי|טיל|רקט|יירוט|פיגוע"
     r"|演习|军演|解放军|导弹|战机|军舰|台海",
     re.IGNORECASE,
@@ -154,6 +155,7 @@ _ADDED_WORDS = {
     2: re.compile(r"\b(?:wars?|wartime|visit(?:s|ed|ing)?|trip|met|meets?|meeting|hosts?|hosted)\b", re.IGNORECASE),
     3: re.compile(rf"\b(?:{_COMMITMENTS})\b", re.IGNORECASE),  # 2026-09-30: treaties, bodies, expulsions, sanctions
     4: re.compile(rf"\b(?:{_EUROPE_ASIA})\b", re.IGNORECASE),  # 2026-10-02: German, Italian, Dutch, Spanish, Portuguese, Indonesian
+    5: re.compile(r"هجوم|هجمات|ضربة|ضربات|باليستي|اعتراض|إسقاط|مسيرات"),  # 2026-10-02: Arabic attack words
 }
 PREFILTER_VERSION = max(_ADDED_WORDS)
 
