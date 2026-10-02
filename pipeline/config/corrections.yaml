@@ -48,3 +48,6 @@ corrections:
   - id: d8ae00040876
     hide: true
     note: Old story. "Iran-backed Houthis launch ballistic missiles at Israel" (Mid-Day, listed Sept 29) matches the coverage of the Houthis' first launch at Israel on March 28, 2026; no launch on Sept 29 was found, and Mid-Day's page blocks the date check.
+  - id: 09fd032831ef
+    edit: {place: Yemen, lat: 15.37, lon: 44.19}
+    note: Reuters report of a Saudi plan to attack the Houthis to break their Red Sea chokehold. The model pinned it to the middle of the Red Sea (the route the plan aims to secure); the target is the Houthis in Yemen, so it is placed at Yemen (its capital, nothing more specific given).
