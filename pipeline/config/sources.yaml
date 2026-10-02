@@ -479,17 +479,17 @@ rss:
     group: google-news
   - id: gnews-es
     name: Google News (El País, Reforma)
-    url: https://news.google.com/rss/search?q=%28site%3Aelpais.com+OR+site%3Areforma.com%29+%28ataque+OR+bombardeo+OR+misil+OR+dron+OR+tropas+OR+muertos+OR+guerra+OR+%22alto+el+fuego%22%29+when%3A12h&hl=es-419&gl=MX&ceid=MX%3Aes-419
+    url: https://news.google.com/rss/search?q=%28site%3Aelpais.com+OR+site%3Areforma.com%29+%28bombardeo+OR+misil+OR+misiles+OR+dron+OR+%22alto+el+fuego%22+OR+Ucrania+OR+Israel+OR+Ir%C3%A1n+OR+Gaza+OR+guerra%29+when%3A12h&hl=es-419&gl=MX&ceid=MX%3Aes-419
     kind: news
     group: google-news
   - id: gnews-pt
     name: Google News (Grupo Globo)
-    url: https://news.google.com/rss/search?q=%28site%3Ag1.globo.com+OR+site%3Aoglobo.globo.com%29+%28ataque+OR+bombardeio+OR+m%C3%ADssil+OR+drone+OR+tropas+OR+mortos+OR+guerra+OR+cessar-fogo%29+when%3A12h&hl=pt-BR&gl=BR&ceid=BR%3Apt-419
+    url: https://news.google.com/rss/search?q=%28site%3Ag1.globo.com+OR+site%3Aoglobo.globo.com%29+%28guerra+OR+m%C3%ADssil+OR+m%C3%ADsseis+OR+bombardeio+OR+cessar-fogo+OR+Ucr%C3%A2nia+OR+Israel+OR+Ir%C3%A3+OR+Gaza+OR+Venezuela%29+-pol%C3%ADcia+when%3A12h&hl=pt-BR&gl=BR&ceid=BR%3Apt-419
     kind: news
     group: google-news
   - id: gnews-id
     name: Google News (Kompas)
-    url: https://news.google.com/rss/search?q=%28site%3Akompas.com+OR+site%3Akompas.id%29+%28serangan+OR+rudal+OR+drone+OR+militer+OR+tewas+OR+perang+OR+%22gencatan+senjata%22%29+when%3A12h&hl=id&gl=ID&ceid=ID%3Aid
+    url: https://news.google.com/rss/search?q=%28site%3Akompas.com+OR+site%3Akompas.id%29+%28rudal+OR+perang+OR+%22gencatan+senjata%22+OR+Ukraina+OR+Israel+OR+Iran+OR+Gaza+OR+%22Laut+China+Selatan%22%29+-site%3Avideo.kompas.com+when%3A12h&hl=id&gl=ID&ceid=ID%3Aid
     kind: news
     group: google-news
   # Countries leaving, suspending or joining treaties and international bodies, expelling

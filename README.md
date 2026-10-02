@@ -165,6 +165,7 @@ History starts from the day this merged; nothing earlier was recorded. There is 
 
 ## Limits worth knowing
 
+- **Efficient model use.** Posts are sent to the model in batches of up to 40 (the model's instructions are sent with every batch, so bigger batches mean fewer repeats), and a news headline the model already judged unrelated to any conflict is not sent again for a day.
 - **Model budget, by purpose.** Every model call is counted by what it was for (reading posts, the same-story check, the old-story check, the brief). The same-story and old-story checks each get a share of the day's calls, spread over the day (90 and 48 of 470), so reading new posts always has most of the budget: on 30 September the same-story check used most of it and new posts stopped being read for the evening.
 - **Lag.** Expect 15–30 minutes from a post to the map. GitHub starts scheduled runs late when its servers are busy, and queued posts wait for model budget.
 - **Scheduled runs pause after 60 days without repository activity.** GitHub emails you first. Re-enable the workflow from the Actions tab.

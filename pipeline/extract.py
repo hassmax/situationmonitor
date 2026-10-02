@@ -180,6 +180,27 @@ def _ts(item: dict) -> float:
     return t.timestamp() if t else 0.0
 
 
+REJECTED_MEMORY = timedelta(hours=24)
+
+
+def headline_key(text: str) -> str:
+    """A headline without its " - Outlet" ending, case or punctuation."""
+    head = (text or "").split("\n", 1)[0].rsplit(" - ", 1)[0]
+    return re.sub(r"\W+", " ", head.lower()).strip()[:160]
+
+
+def skip_rejected(items: list[dict], state: dict, now: datetime) -> list[dict]:
+    """Leave out news items whose headline the model already judged irrelevant in the last day (the
+    same headline relisted by another search or outlet): 1 in 11 rejections was a repeat."""
+    since = iso(now - REJECTED_MEMORY)
+    memo = {k: v for k, v in (state.get("rejected_heads") or {}).items() if v >= since}
+    state["rejected_heads"] = memo
+    keep = [it for it in items if it.get("platform") != "rss" or headline_key(it.get("text", "")) not in memo]
+    if len(keep) < len(items):
+        log(f"[filter] {len(items) - len(keep)} headlines already judged irrelevant today; not sent again")
+    return keep
+
+
 def build_queue(pending: list[dict], fresh: list[dict], now: datetime, settings: dict) -> list[dict]:
     by_id: dict[str, dict] = {}
     for it in pending + fresh:
@@ -655,6 +676,7 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
                     state.setdefault("model_rejected", []).append({
                         "time": batch[i]["time"], "source": batch[i]["source"], "url": batch[i]["url"],
                         "headline": batch[i]["text"].split("\n", 1)[0][:200], "at": iso(now)})
+                    state.setdefault("rejected_heads", {})[headline_key(batch[i]["text"])] = iso(now)
     state["model_rejected"] = state.get("model_rejected", [])[-400:]
     leftover = [it for it in queue if it["id"] not in done and int(it.get("attempts", 0)) < 3]
     return records, leftover[: settings["pending_max"]], used, carriers
