@@ -231,3 +231,22 @@ def test_launches_into_one_sea_are_one_wave_whatever_country_the_reports_give():
                  type_="missile_drone", country=None, attacker="KP", theater="indopac")
     out = merge.merge([], [cand(jp), cand(kr), cand(none)])
     assert len(out) == 1 and out[0]["wave"] and len(out[0]["reports"]) == 3
+
+
+def test_a_launch_report_becomes_the_waves_launch_area():
+    # "fired a ballistic missile from Wonsan" was its own event pinned at Wonsan, and the wave's line
+    # started from an assumed launch area
+    w = event("w", "Sea of Japan", (40.0, 135.0), "2026-10-02T21:42:00Z", "North Korea launched missiles toward the Sea of Japan.",
+              type_="missile_drone", country="JP", attacker="KP", theater="indopac", wave=True,
+              targets=[{"place": "Sea of Japan", "lat": 40.0, "lon": 135.0}])
+    site = event("s", "Wonsan", (39.17, 127.43), "2026-10-02T22:47:00Z", "South Korea's JCS reports North Korea fired a ballistic missile from Wonsan.",
+                 type_="missile_drone", country="KP", attacker="KP", theater="indopac")
+    test = event("t", "Pyongyang", (39.03, 125.75), "2026-10-02T22:50:00Z", "North Korea held a missile parade in Pyongyang.",
+                 type_="missile_drone", country="KP", attacker="KP", theater="indopac")
+    out, folded = merge.launch_sites([w, site, test], set())
+    assert [e["id"] for e in folded] == ["s"] and {e["id"] for e in out} == {"w", "t"}
+    assert w["origins"] == [{"place": "Wonsan", "lat": 39.17, "lon": 127.43}] and len(w["reports"]) == 2
+    denial = event("d", "Tehran", (35.69, 51.39), "2026-10-02T22:50:00Z",
+                   "A military source denies reports that a missile was launched from Iran toward Jordan.",
+                   type_="missile_drone", country="IR", attacker="IR", theater="mideast")
+    assert not merge._launch_report(denial)
