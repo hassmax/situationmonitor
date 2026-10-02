@@ -99,6 +99,14 @@ Rules:
 _COMMITMENTS = (r"withdr[ae]w(?:s|n|al|ing)?|pull(?:s|ed|ing)? out|quits?|quitting|rejoin(?:s|ed)?|"
                 r"membership|suspend(?:s|ed|ing)?|conventions?|expel(?:s|led|ling)?|expulsions?|"
                 r"ambassadors?|embass(?:y|ies)|diplomats?|diplomatic (?:ties|relations)|sanctions?")
+# German, Italian, Dutch, Spanish, Portuguese and Indonesian words (added 2026-10-02 with searches of
+# Der Spiegel, NZZ, Corriere della Sera, NRC, El País, Reforma, Grupo Globo and Kompas).
+_EUROPE_ASIA = (r"angriffe?|luftangriffe?|raketen?|drohnen?|soldaten|getötet|waffenruhe|kriege?s?|"
+                r"attacc(?:o|hi)|missili|droni|soldati|uccis[io]|tregua|bombardament[io]|guerra|"
+                r"aanval(?:len)?|raketten|gedood|oorlog|wapenstilstand|"
+                r"misil(?:es)?|dron|tropas|alto el fuego|"
+                r"bombardeios?|m[ií]ssil|m[ií]sseis|mortos|cessar-fogo|"
+                r"serangan|rudal|militer|tewas|perang|gencatan senjata")
 _EN = (r"air ?strikes?|strikes?|struck|missiles?|drones?|uavs?|shahed|shell(?:ing|ed)|artillery|rockets?|"
        r"mortars?|attack(?:s|ed)?|explosions?|blasts?|killed|dead|casualt(?:y|ies)|wounded|injur(?:ed|ies)|"
        r"clash(?:es|ed)?|fighting|offensive|advanc(?:e|es|ed)|captur(?:e|ed)|seiz(?:e|ed)|liberat(?:e|ed)|"
@@ -119,7 +127,7 @@ _EN = (r"air ?strikes?|strikes?|struck|missiles?|drones?|uavs?|shahed|shell(?:in
        r"self-defen[cs]e|warrants?|rulings?|provisional measures|legal basis|"
        r"tankers?|vessels?|ships?|shipping|cargo|freighters?|bulk carrier|container ship|merchant|mariners?|seafarers?|"
        r"crew|ukmto|ambrey|jmic|projectiles?|hormuz|bab el-mandeb|red sea|gulf of aden|hijack(?:ed|ing)?|boarded|"
-       r"mines?|limpet|sank|sinking|ablaze|adrift|hits?|" + _COMMITMENTS)
+       r"mines?|limpet|sank|sinking|ablaze|adrift|hits?|" + _COMMITMENTS + "|" + _EUROPE_ASIA)
 CONFLICT_RE = re.compile(
     rf"\b(?:{_EN})\b"
     r"|удар|обстр|ракет|дрон|бпла|шахед|атак|вибух|взрыв|штурм|наступ|звільн|освобо|ппо|пво|загибл|погиб|"
@@ -145,6 +153,7 @@ class Busy(RuntimeError):
 _ADDED_WORDS = {
     2: re.compile(r"\b(?:wars?|wartime|visit(?:s|ed|ing)?|trip|met|meets?|meeting|hosts?|hosted)\b", re.IGNORECASE),
     3: re.compile(rf"\b(?:{_COMMITMENTS})\b", re.IGNORECASE),  # 2026-09-30: treaties, bodies, expulsions, sanctions
+    4: re.compile(rf"\b(?:{_EUROPE_ASIA})\b", re.IGNORECASE),  # 2026-10-02: German, Italian, Dutch, Spanish, Portuguese, Indonesian
 }
 PREFILTER_VERSION = max(_ADDED_WORDS)
 
