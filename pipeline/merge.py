@@ -26,6 +26,7 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 from common import haversine_km, iso, log, parse_time, short_hash
+from geo import sea_exact
 from sources.gdelt import CellIndex, news_domains_near
 
 FAMILY = {
@@ -96,8 +97,19 @@ def wave_day(t: str) -> str:
 
 
 def _is_wave(c: dict) -> bool:
-    return (c["type"] in WAVE_TYPES and bool(c.get("attacker")) and bool(c.get("country"))
-            and c["attacker"] != c["country"])
+    # a launch into a named sea is a wave too, whatever country (or none) the report gives it
+    return (c["type"] in WAVE_TYPES and bool(c.get("attacker")) and bool(c.get("country") or sea_exact(c.get("place")))
+            and c["attacker"] != c.get("country"))
+
+
+def _same_target(e: dict, cand: dict) -> bool:
+    """A wave's target country, or for launches into the sea, the same sea: North Korean missiles
+    "toward the Sea of Japan" came in with country JP, and the same launch "into the East Sea"
+    from Seoul's outlets with KR or none."""
+    if e.get("country") and e.get("country") == cand.get("country"):
+        return True
+    sea = sea_exact(cand.get("place"))
+    return bool(sea) and any(sea_exact(t.get("place")) == sea for t in (e.get("targets") or []) + [e])
 
 
 def _reads_like_alert(summary: str | None) -> bool:
@@ -300,7 +312,7 @@ def _wave_for(events: list[dict], cand: dict, attacker: str | None) -> dict | No
     ct = parse_time(cand["time"])
     best, best_dt = None, WINDOW
     for e in events:
-        if (e.get("wave") and e["theater"] == cand["theater"] and e.get("country") == cand.get("country")
+        if (e.get("wave") and e["theater"] == cand["theater"] and _same_target(e, cand)
                 and (attacker is None or e.get("attacker") == attacker)):
             dt = abs(ct - parse_time(e["time"]))
             if dt <= best_dt:
@@ -321,7 +333,7 @@ def _hit_in_wave(events: list[dict], cand: dict) -> dict | None:
 
 
 def _merge_wave(events: list[dict], cand: dict, wave: dict | None = None) -> None:
-    key = "|".join([cand["theater"], cand.get("attacker") or "", cand["country"], wave_day(cand["time"])])
+    key = "|".join([cand["theater"], cand.get("attacker") or "", cand.get("country") or "", wave_day(cand["time"])])
     wave = wave or _wave_for(events, cand, cand.get("attacker"))
     rep = cand["report"]
     if wave is None:

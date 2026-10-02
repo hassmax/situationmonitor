@@ -426,6 +426,14 @@ rss:
     url: https://news.google.com/rss/search?q=%28PLA+OR+%22Chinese+navy%22+OR+%22coast+guard%22+OR+%22US+Navy%22+OR+%22Seventh+Fleet%22%29+%28Taiwan+OR+%22South+China+Sea%22+OR+Philippines+OR+Japan+OR+Korea%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
     kind: news
     group: google-news
+  # North Korean launches and Korean Peninsula incidents: the Indo-Pacific search above needs PLA,
+  # coast guard or US Navy in the story, so a North Korean missile launch reported by Yonhap, NHK
+  # and Reuters reached the map only through one Houthi-aligned Telegram post.
+  - id: gnews-korea
+    name: Google News (North Korea, Korean Peninsula)
+    url: https://news.google.com/rss/search?q=%28%22North+Korea%22+OR+Pyongyang+OR+DPRK+OR+%22N.+Korea%22%29+%28missile+OR+launch+OR+launched+OR+fired+OR+artillery+OR+drone+OR+%22East+Sea%22+OR+DMZ+OR+troops%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
   - id: gnews-hybrid
     name: Google News (Russian sabotage and hybrid attacks)
     url: https://news.google.com/rss/search?q=%28sabotage+OR+arson+OR+%22undersea+cable%22+OR+%22GPS+jamming%22+OR+%22drone+incursion%22+OR+%22airspace+violation%22+OR+%22hybrid+attack%22%29+%28Russia+OR+Russian%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen

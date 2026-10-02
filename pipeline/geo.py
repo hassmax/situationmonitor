@@ -142,7 +142,7 @@ SEAS = {
     "arabian sea": (16.0, 63.0), "black sea": (43.5, 34.0), "sea of azov": (46.0, 36.5),
     "baltic sea": (57.0, 19.0), "gulf of finland": (59.8, 25.5), "south china sea": (12.0, 114.0),
     "taiwan strait": (24.4, 119.6), "east china sea": (29.0, 125.0), "sea of japan": (40.0, 135.0),
-    "philippine sea": (20.0, 130.0), "caribbean sea": (15.0, -75.0), "eastern mediterranean": (33.5, 33.5),
+    "philippine sea": (20.0, 130.0), "east sea": (40.0, 135.0), "yellow sea": (36.0, 123.5), "west sea": (36.0, 123.5), "caribbean sea": (15.0, -75.0), "eastern mediterranean": (33.5, 33.5),
 }
 
 
