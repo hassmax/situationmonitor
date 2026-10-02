@@ -51,3 +51,24 @@ corrections:
   - id: 09fd032831ef
     edit: {place: Yemen, lat: 15.37, lon: 44.19}
     note: Reuters report of a Saudi plan to attack the Houthis to break their Red Sea chokehold. The model pinned it to the middle of the Red Sea (the route the plan aims to secure); the target is the Houthis in Yemen, so it is placed at Yemen (its capital, nothing more specific given).
+  # The FlyDubai cockpit attack (30 September) was split into about 15 events of every kind; these
+  # are follow-up news about it (repatriation flights, updates) typed as strikes or naval incidents.
+  # The remaining ones are now grouped by the same-story check (dedupe.story_names).
+  - id: d8bd5dd9942d
+    hide: true
+    note: Not an airstrike. Repatriation flights after the FlyDubai cockpit attack, which is already on the map.
+  - id: e70bdd0b1a3d
+    hide: true
+    note: Not a naval incident. Repatriation flights after the FlyDubai cockpit attack, which is already on the map.
+  - id: 137f79918e22
+    hide: true
+    note: Not a naval incident. Repatriation flights after the FlyDubai cockpit attack, which is already on the map.
+  - id: c275cfb3fc76
+    hide: true
+    note: Repatriation flights after the FlyDubai cockpit attack, which is already on the map.
+  - id: 709c200ec219
+    hide: true
+    note: Not an airstrike. A roundup of updates on the FlyDubai cockpit attack, which is already on the map.
+  - id: 4adff6f3b249
+    edit: {type: hybrid}
+    note: The FlyDubai cockpit attack was an attack aboard a civilian flight, not an airspace incursion; Israel calls it terrorism and Iran is suspected of ties.
