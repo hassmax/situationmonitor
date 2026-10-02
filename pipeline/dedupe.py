@@ -81,6 +81,11 @@ NEW, SECOND = "0|", "1|"
 # An explosion whose summary speaks of sabotage (or of what saboteurs hit) is also grouped with the
 # country's hybrid events: one Syrian pipeline fire came in as sabotage from some outlets and as an
 # explosion from Reuters, and the two were never compared.
+# A planned or prepared operation reported as fighting or a strike ("Saudi-backed forces plan an
+# assault on the Houthis") is also put with the country's deployments, where the same plan reported
+# as a buildup is filed: one Reuters story was on the map twice, once as each.
+PLAN_RE = re.compile(r"\b(?:plans?|planned|planning|prepar\w*|poised|readies|readying|aims? to|intends?|set to|"
+                     r"considering|weighs?)\b", re.I)
 SABOTAGE_RE = re.compile(r"\b(?:sabotage|saboteurs?|arson|pipelines?|cables?|railways?|rail line|substation|power station)\b", re.I)
 
 PROMPT = """You check a live conflict map for duplicates. Each case is a list of events from the map in the same country, or diplomatic and legal events between the same parties, each with an id, its summary, place, and time.
@@ -144,10 +149,15 @@ def _due(events: list[dict], judged: dict, now) -> list[tuple[str, list[dict]]]:
         if e.get("wave") or e.get("alert") or (parse_time(e.get("time")) or since) <= since:
             continue
         g = GROUP.get(FAMILY.get(e["type"]))
-        if g and g != "talks" and e.get("country"):
-            buckets.setdefault((e["country"], g), []).append(e)
+        # events with no country (pinned to a sea) are grouped by that place instead: two reports
+        # of one plan, both pinned to "Red Sea", were never compared
+        where = e.get("country") or (f"place:{e['place'].strip().lower()}" if e.get("place") else None)
+        if g and g != "talks" and where:
+            buckets.setdefault((where, g), []).append(e)
             if e["type"] == "explosion" and SABOTAGE_RE.search(e.get("summary") or ""):
-                buckets.setdefault((e["country"], "hybrid"), []).append(e)
+                buckets.setdefault((where, "hybrid"), []).append(e)
+            if g == "violence" and PLAN_RE.search(e.get("summary") or ""):
+                buckets.setdefault((where, "deployment"), []).append(e)
         # talks are linked by who takes part, wherever they were pinned
         if g == "talks" or (g in STATEMENT_KINDS and e.get("parties")):
             buckets.setdefault(("", "talks"), []).append(e)
