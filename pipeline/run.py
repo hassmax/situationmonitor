@@ -206,6 +206,8 @@ def main() -> int:
     known = {e["id"] for e in events}
     events = merge.merge(events, candidates)
     events, folded = merge.consolidate(events, hidden)
+    events, launches = merge.launch_sites(events, hidden)  # "fired from Wonsan": a launch area, not a target
+    folded += launches
     geo.pin_commands(events)  # events placed at a US command go to its region (not its headquarters)
     merge.own_force_visits(events)  # a navy's port call is a deployment, not a supply route
     merge.own_procurement(events)  # a country buying from its own industry is arms production, not a route

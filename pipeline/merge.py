@@ -579,6 +579,51 @@ def consolidate(events: list[dict], skip: set[str]) -> tuple[list[dict], list[di
     return [e for e in events if id(e) not in gone], folded
 
 
+# "North Korea fired a ballistic missile from Wonsan": the place a report gives is where the missile
+# was launched, in the attacker's own country, not where it went.
+LAUNCH_FROM_RE = re.compile(r"\b(?:fir(?:ed|es|ing)|launch(?:ed|es|ing)?|test-fir\w*)\b[^.]*\bfrom\b", re.I)
+
+
+_DENIAL_RE = re.compile(r"\b(?:den(?:y|ies|ied)|rejects?|false|fake|no missiles?)\b", re.I)
+
+
+def _launch_report(e: dict) -> bool:
+    """A launch from the place the event is pinned to ("fired ... from Wonsan", pinned at Wonsan);
+    not a denial ("a military source denies a missile was launched from Iran", pinned at Tehran)."""
+    text = e.get("summary") or ""
+    m = LAUNCH_FROM_RE.search(text)
+    place = (e.get("place") or "").split(",")[0].strip().lower()
+    return (e.get("type") == "missile_drone" and not e.get("wave") and not e.get("alert")
+            and bool(e.get("attacker")) and e.get("country") == e.get("attacker") and bool(m) and len(place) >= 3
+            and place in text[m.end():].lower() and not _DENIAL_RE.search(text))
+
+
+def launch_sites(events: list[dict], skip: set[str]) -> tuple[list[dict], list[dict]]:
+    """Fold launch reports ("fired a ballistic missile from Wonsan", pinned at Wonsan) into the
+    attacker's attack wave within WINDOW, with their place as a named launch area: the wave's line
+    is then drawn from there, not from an assumed one. Returns (events, the events folded away)."""
+    folded = []
+    for e in events:
+        if e["id"] in skip or not _launch_report(e):
+            continue
+        t = parse_time(e["time"])
+        waves = [w for w in events if w.get("wave") and w["id"] not in skip and w.get("attacker") == e["attacker"]
+                 and w["theater"] == e["theater"] and abs(parse_time(w["time"]) - t) <= WINDOW]
+        if not waves:
+            continue
+        w = min(waves, key=lambda w: abs(parse_time(w["time"]) - t))
+        urls = {r["url"] for r in w["reports"]}
+        w["reports"] += [r for r in e["reports"] if r["url"] not in urls]
+        _add_origins(w, [{"place": e.get("place"), "lat": e["lat"], "lon": e["lon"]}] + list(e.get("origins") or []))
+        w["updated"] = max(w["updated"], e["updated"])
+        w["severity"] = max(w["severity"], e["severity"])
+        folded.append(e)
+    if folded:
+        log(f"[merge] {len(folded)} launch reports folded into their attack waves as launch areas")
+    gone = {id(e) for e in folded}
+    return [e for e in events if id(e) not in gone], folded
+
+
 def _absorb(match: dict, cand: dict) -> None:
     """Take what a matching report (or event) adds to an event."""
     match["time"] = min(match["time"], cand["time"])
