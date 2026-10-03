@@ -93,6 +93,7 @@ Rules:
 - For an arms_transfer, put the event's own place and lat/lon at the named arrival point, or for an interdiction where it was seized; if none is named, use the recipient country's capital. Use the theater of the conflict the weapons are for.
 - legal_basis: only when the item states the justification the acting state gives for using force (for example "self-defense under UN Charter Article 51", "host-state consent", "2001 AUMF"). Never infer one. For legal-type events, place them where the step happened (UN headquarters, The Hague, Washington) but use the theater of the conflict concerned.
 - claim = "official_claim" when the item is a government, military, or armed-group statement about its own actions or results; otherwise "report".
+- Items from "ISW Map Room" are findings read from a map by the Institute for the Study of War (ISW): each names a place printed on the map and the date. Relevant when it reports an event in the map's own period; use its date for "happened" and its place; keep ISW's wording and attribution in the summary ("ISW assesses Russian forces advanced near Kupyansk"). A change in who controls ground or where the front line runs is territory.
 """.format(types="\n".join(f"- {k}: {v}" for k, v in EVENT_TYPES.items()))
 
 # International commitments and relations (added 2026-09-30): leaving or joining treaties and bodies,
@@ -239,9 +240,11 @@ def used_today(state: dict, purpose: str) -> int:
 # always has most of it. On 2026-09-30 the same-story check took most of the day's 400 calls (up to
 # three a run, every run, while its backlog never emptied) and extraction stopped with 358 posts
 # waiting. Each share is paced over the day: by noon, about half of it (plus SHARE_BURST).
-SHARES = {"dedupe": "dedupe_daily_max", "recency": "recency_daily_max"}
-SHARE_DEFAULTS = {"dedupe_daily_max": 140, "recency_daily_max": 48}
+SHARES = {"dedupe": "dedupe_daily_max", "recency": "recency_daily_max", "maproom": "maproom_daily_max"}
+SHARE_DEFAULTS = {"dedupe_daily_max": 140, "recency_daily_max": 48, "maproom_daily_max": 16}
 SHARE_BURST = 4
+# Not paced over the day: ISW's maps come out together, around 01:00 UTC, and are read as they come.
+UNPACED = {"maproom"}
 
 
 def share_left(state: dict, settings: dict, now: datetime, purpose: str) -> int:
@@ -251,7 +254,7 @@ def share_left(state: dict, settings: dict, now: datetime, purpose: str) -> int:
         return 10 ** 6
     cap = int(settings.get(key, SHARE_DEFAULTS[key]))
     elapsed = (now.hour * 60 + now.minute) / (24 * 60)
-    paced = min(cap, int(cap * elapsed) + SHARE_BURST)
+    paced = cap if purpose in UNPACED else min(cap, int(cap * elapsed) + SHARE_BURST)
     today = (state.get("llm_calls") or {}).get("date") == now.strftime("%Y-%m-%d")
     return paced - (used_today(state, purpose) if today else 0)
 
@@ -686,17 +689,21 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
 
 
 def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, now: datetime,
-             max_tokens: int = 4000, _retry: bool = True, purpose: str = "other") -> dict | None:
+             max_tokens: int = 4000, _retry: bool = True, purpose: str = "other",
+             images: list[str] | None = None) -> dict | None:
     """One budgeted model call outside the batch loop. Returns parsed JSON or None. If the model
     is busy, another model (a backup if need be) is tried once. `purpose` names what the call is
-    for in the day's tally (state["llm_calls"]["by"]) and is checked against its share (share_left)."""
+    for in the day's tally (state["llm_calls"]["by"]) and is checked against its share (share_left).
+    `images` (data: URLs) are shown to the model after the text."""
     token = os.environ.get("LLM_API_KEY", "").strip()
     chosen = state.get("llm_model")
     if not token or not chosen or calls_allowed(state, settings, now) <= 0 or share_left(state, settings, now, purpose) <= 0:
         return None
     body = {
         "model": chosen["model"], "temperature": 0, "max_tokens": max_tokens, "stream": False,
-        "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_text}],
+        "messages": [{"role": "system", "content": system_prompt},
+                     {"role": "user", "content": [{"type": "text", "text": user_text}]
+                      + [{"type": "image_url", "image_url": {"url": u}} for u in images] if images else user_text}],
     }
     if chosen.get("json_mode", True):
         body["response_format"] = {"type": "json_object"}
@@ -712,7 +719,8 @@ def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, no
                 except RateLimited:
                     other = None
                 if other:
-                    return ask_json(system_prompt, user_text, state, settings, now, max_tokens, _retry=False, purpose=purpose)
+                    return ask_json(system_prompt, user_text, state, settings, now, max_tokens, _retry=False,
+                                    purpose=purpose, images=images)
             return None
         if r.status_code >= 400:
             log(f"[extract] one-off call failed: {_describe(r)}")
