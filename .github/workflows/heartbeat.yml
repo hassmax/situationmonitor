@@ -1,0 +1,45 @@
+name: Heartbeat
+
+# GitHub starts scheduled runs late, or not at all, when it is busy: on 2026-10-03 the 15-minute
+# update ran once between 10:26 and 14:10 UTC. Runs started through the API (workflow_dispatch)
+# are not dropped. This job stays running and starts an update whenever the last one began 14 or
+# more minutes ago, then, before GitHub's 6-hour job limit, starts its own next run. Its schedule
+# below is only a backup that restarts the chain if it ever breaks. Minutes are free (public repo).
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "11 */3 * * *"
+
+permissions:
+  actions: write   # start the update workflow and the next heartbeat
+
+concurrency:
+  group: heartbeat
+  cancel-in-progress: false   # a second heartbeat waits for the first instead of running beside it
+
+jobs:
+  beat:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 355
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+    steps:
+      - name: Start an update every 15 minutes
+        run: |
+          end=$((SECONDS + 345 * 60))
+          while [ "$SECONDS" -lt "$end" ]; do
+            last=$(gh api "repos/$REPO/actions/workflows/update.yml/runs?per_page=1" --jq '.workflow_runs[0].created_at' || true)
+            age=999999
+            if [ -n "$last" ]; then age=$(( $(date +%s) - $(date -d "$last" +%s) )); fi
+            if [ "$age" -ge 840 ]; then
+              echo "$(date -u +%H:%M) last update started ${age}s ago; starting one"
+              gh workflow run update.yml --repo "$REPO" --ref main || echo "could not start an update; trying again in 5 minutes"
+            fi
+            sleep 300
+          done
+
+      - name: Start the next heartbeat
+        if: success() || failure()   # not when cancelled by hand: that stops the chain (the backup schedule restarts it within 3 hours; disable this workflow to stop it for good)
+        run: gh workflow run heartbeat.yml --repo "$REPO" --ref main

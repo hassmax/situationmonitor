@@ -13,7 +13,7 @@ Preview the layout with sample data before any real data exists: open `site/inde
 3. **Add a free Gemini API key.** Go to <https://aistudio.google.com>, sign in with a Google account, and click **Get API key → Create API key**. In the repo: Settings → Secrets and variables → Actions → New repository secret, named `GEMINI_API_KEY`. No credit card is needed. Google may use free-tier inputs to improve its models; everything the pipeline sends is already-public posts.
 4. **Add Telegram secrets** (optional, but most frontline reporting starts there). See the next section.
 5. **Optional:** Settings → Secrets and variables → Actions → Variables → add `NOMINATIM_EMAIL` with your email. OpenStreetMap's geocoder asks heavy users to identify themselves; with one it can contact you instead of blocking you.
-6. **Run it.** Actions tab → "Update conflict data" → Run workflow. The first run takes 3–5 minutes. Your globe is at `https://<your-username>.github.io/<repo-name>/`. After that it updates itself every 15 minutes.
+6. **Run it.** Actions tab → "Update conflict data" → Run workflow. The first run takes 3–5 minutes. Your globe is at `https://<your-username>.github.io/<repo-name>/`. Then start "Heartbeat" once the same way (Actions tab → "Heartbeat" → Run workflow): it keeps the updates coming every 15 minutes even when GitHub skips its scheduled runs, which it does when busy (on one Saturday the scheduled update ran once in nearly four hours). It restarts itself every six hours; to stop it, disable the Heartbeat workflow.
 
 If the first automatic run (triggered by your upload) failed at the deploy step, that is because Pages wasn't enabled yet. Just run it again.
 
