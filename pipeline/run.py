@@ -27,6 +27,7 @@ import datecheck  # noqa: E402
 import dedupe  # noqa: E402
 import extract  # noqa: E402
 import fleet  # noqa: E402
+import frontline  # noqa: E402
 import geo  # noqa: E402
 import control  # noqa: E402
 import hunter  # noqa: E402
@@ -169,6 +170,11 @@ def main() -> int:
         if it["id"] not in seen:
             seen[it["id"]] = int(t0.timestamp())
             fresh.append(it)
+    # Front-line scout: more reporting on settlements resting on one side's claim (no model calls)
+    for it in frontline.search(state, session, t0, cfg.outlets):
+        if it["id"] not in seen and extract.is_candidate(it):
+            seen[it["id"]] = int(t0.timestamp())
+            fresh.append(it)
     log(f"[filter] {len(fresh)} new candidates")
 
     # 3. Extract with the model (budgeted); the rest waits in the queue
@@ -255,6 +261,13 @@ def main() -> int:
         log(f"[recency] flagged as possibly old until a second source reports it: {len(doubtful)}")
     published = corrections.publish([{**merge.public_event(e), **({"possibly_old": True} if e["id"] in doubtful else {})}
                                      for e in events], fixes, extract.EVENT_TYPES)
+    # Front lines: the claims, assessor and reviewer agents (see frontline/), on this run's events
+    reserve = int(settings.get("extraction_reserve", 30))
+    frontline.update([e for e in events if e["id"] not in hidden], cfg.frontlines, state, settings, t0, extract.ask_json,
+                     geo.Geocoder(state["geocache"], session, 15),
+                     lambda purpose: min(extract.share_left(state, settings, t0, purpose),
+                                         extract.calls_allowed(state, settings, t0, reserve=reserve)),
+                     disabled=args.no_llm)
     if not args.no_llm:
         brief.update(state, published, {t["id"]: t["name"] for t in cfg.theaters}, settings, t0,
                      extract.ask_json, extract.calls_remaining(state, settings, t0))
@@ -299,6 +312,7 @@ def main() -> int:
         "brief": state.get("brief"),
         "heat": public_cells(cells),
         "control": control.public(state, control_layers, t0),
+        "frontline": frontline.public(state, cfg.frontlines, t0),
         "fleet": fleet.public(state, t0),
         "fleet_meta": {k: (state.get("fleet_meta") or {}).get(k) for k in ("tracker_time", "tracker_url")},
         "sources": [dict(id=k, **v) for k, v in sorted(state["health"].items(), key=lambda kv: kv[1]["name"].lower())],
