@@ -1,0 +1,101 @@
+# Front lines: this site's own assessment of who holds which settlement (pipeline/frontline/),
+# built from the reports already on the map, the way ISW assesses control: a side's claim alone is
+# shown as a claim; control is "assessed" only on stronger evidence (geolocated footage, a reporter
+# on the scene, both sides acknowledging it, an independent analyst, or two independent sources).
+#
+# Each conflict:
+#   id, name        stable id and display name
+#   countries       ISO codes of the countries its settlements lie in
+#   center, radius_km  a settlement name looked up more than radius_km from center is not used
+#                   (many villages share a name: "Pokrovka" exists in a dozen oblasts)
+#   area_km         how far around a settlement its holder's shading reaches (half the usual
+#                   distance between the settlements reports name there); where two sides' zones
+#                   meet, the line runs halfway between their settlements
+#   actors          the sides, each with:
+#     id, name      id used by the agents, and the name shown ("Held by Russia")
+#     color         the map colour of ground it holds
+#     sources       source `side` codes (sources.yaml) whose reports are aligned with this actor:
+#                   their claims count as the actor's own claims
+#     aka           other names the reports use, given to the claims agent
+
+conflicts:
+  - id: ukraine
+    name: Russia–Ukraine
+    countries: [UA, RU]
+    center: [48.4, 36.5]
+    radius_km: 700
+    area_km: 10
+    actors:
+      - {id: RU, name: Russia, color: "#e39b5b", sources: [RU, BY], aka: "Russian forces, Russian MoD, the 'Sever/Zapad/Tsentr/Yug/Vostok/Dnepr' groupings, Wagner, Akhmat"}
+      - {id: UA, name: Ukraine, color: "#5aa9e6", sources: [UA], aka: "Ukrainian forces, the General Staff of Ukraine, Ukrainian brigades, DeepState"}
+
+  - id: yemen
+    name: Yemen
+    countries: [YE]
+    center: [15.3, 45.0]
+    radius_km: 900
+    area_km: 10
+    actors:
+      - {id: HOUTHI, name: the Houthis, color: "#e39b5b", sources: [YE], aka: "Houthis, Ansar Allah, the Sanaa-based authorities, Houthi media (Al-Masirah, Saba)"}
+      - {id: ROYG, name: Yemeni government-aligned forces, color: "#5aa9e6", sources: [SA, AE], aka: "the internationally recognized government, PLC, Giants Brigades, STC, National Resistance, Saudi-led coalition"}
+
+  - id: sudan
+    name: Sudan
+    countries: [SD]
+    center: [14.5, 29.5]
+    radius_km: 1300
+    area_km: 25
+    actors:
+      - {id: SAF, name: the Sudanese army, color: "#5aa9e6", sources: [], aka: "Sudanese Armed Forces, SAF, the army, Port Sudan authorities, joint forces allied with the army"}
+      - {id: RSF, name: the Rapid Support Forces, color: "#e39b5b", sources: [], aka: "RSF, Rapid Support Forces, Tasis/the parallel government"}
+
+  - id: ethiopia
+    name: Ethiopia
+    countries: [ET]
+    center: [12.0, 39.5]
+    radius_km: 900
+    area_km: 20
+    actors:
+      - {id: ENDF, name: Ethiopian government forces, color: "#5aa9e6", sources: [], aka: "ENDF, the federal army, regional special forces allied with Addis Ababa"}
+      - {id: TPLF, name: Tigray forces, color: "#e39b5b", sources: [], aka: "TPLF, Tigray Defense Forces, TDF, Tigrayan fighters"}
+      - {id: FANO, name: Fano militias, color: "#c77dcc", sources: [], aka: "Fano, Amhara militias"}
+
+  - id: drc
+    name: Eastern DR Congo
+    countries: [CD]
+    center: [-1.5, 28.8]
+    radius_km: 700
+    area_km: 12
+    actors:
+      - {id: M23, name: AFC/M23, color: "#e39b5b", sources: [RW], aka: "M23, AFC, Alliance Fleuve Congo, Congo River Alliance"}
+      - {id: FARDC, name: Congolese government forces, color: "#5aa9e6", sources: [CD], aka: "FARDC, the Congolese army, Wazalendo militias allied with the army"}
+
+  - id: myanmar
+    name: Myanmar
+    countries: [MM]
+    center: [20.5, 96.0]
+    radius_km: 1100
+    area_km: 15
+    actors:
+      - {id: JUNTA, name: the military junta, color: "#e39b5b", sources: [MM], aka: "Tatmadaw, the junta, the military regime, SAC, the military government"}
+      - {id: RESIST, name: resistance forces, color: "#5aa9e6", sources: [], aka: "People's Defence Forces, PDF, NUG, Arakan Army, MNDAA, TNLA, KIA, KNU, Karenni forces, ethnic armed organizations, the Three Brotherhood Alliance"}
+
+  - id: sahel
+    name: Sahel
+    countries: [ML, BF, NE]
+    center: [15.0, 0.0]
+    radius_km: 1500
+    area_km: 30
+    actors:
+      - {id: JIHADI, name: jihadist groups, color: "#e39b5b", sources: [], aka: "JNIM, al-Qaeda's Sahel branch, Islamic State Sahel, ISGS"}
+      - {id: STATE, name: Sahel governments' forces, color: "#5aa9e6", sources: [], aka: "the Malian, Burkinabe or Nigerien army, FAMa, Africa Corps or Wagner alongside them, VDP"}
+
+  - id: somalia
+    name: Somalia
+    countries: [SO]
+    center: [3.5, 45.5]
+    radius_km: 900
+    area_km: 25
+    actors:
+      - {id: SHABAAB, name: al-Shabaab, color: "#e39b5b", sources: [], aka: "al-Shabaab, Harakat al-Shabaab al-Mujahideen"}
+      - {id: SFG, name: Somali government forces, color: "#5aa9e6", sources: [], aka: "Somali National Army, SNA, federal forces, AUSSOM, clan militias (macawisley) allied with the government, Jubaland or Puntland forces"}

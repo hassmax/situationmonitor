@@ -290,7 +290,10 @@
   // Territorial control (see controlNote): the source's shapes, painted onto the globe with the land.
   const CONTROL_FILL = { occupied: "rgba(214,174,110,0.55)", advance: "rgba(245,165,36,0.9)" };
   const CONTROL_LINE = "rgba(236,212,160,0.75)";
-  const pathColorOf = (p) => (p.control ? CONTROL_LINE : borderColor(p.fid));
+  // The site's own front-line areas (pipeline/frontline/) carry their holder's colour.
+  const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(String(h || "#999999").slice(i, i + 2), 16));
+  const AREA_ALPHA = { occupied: 0.5, claimed: 0.22 };
+  const pathColorOf = (p) => (p.control ? (p.color ? rgba(hexRgb(p.color), p.faint ? 0.45 : 0.85) : CONTROL_LINE) : borderColor(p.fid));
   const borderColor = (id) => (S.active.has(id) ? "rgba(255,166,122,0.8)" : S.hot.has(id) ? "rgba(150,195,235,0.3)" : "rgba(150,190,230,0.12)");
 
   fetch("assets/countries-110m.json")
@@ -317,7 +320,8 @@
   // separate layer floating just above it: phone graphics chips can't tell two surfaces that close
   // apart, and the ocean showed through the land in dark streaks while moving.
   let landShapes = [], landKey = "", landUrl = null, borderPaths = [], hatch = null;
-  const controlLayers = () => (S.data && S.data.control) || [];  // always shown, not a filter
+  // always shown, not a filter: published control maps, then the site's own front-line areas
+  const controlLayers = () => [...((S.data && S.data.control) || []), ...((S.data && S.data.frontline && S.data.frontline.areas) || [])];
   // Infiltration (forces present, not in control) is hatched rather than filled.
   function hatchPattern(g) {
     if (hatch) return hatch;
@@ -331,13 +335,17 @@
     return (hatch = g.createPattern(c, "repeat"));
   }
   function paintControl(g, X, Y) {
-    // one path per style, filled "nonzero", so overlapping layers of one style don't double up
+    // one path per style and colour, filled "nonzero", so overlapping layers of one kind don't double up
     const byStyle = new Map();
-    for (const L of controlLayers()) (byStyle.get(L.style) || byStyle.set(L.style, []).get(L.style)).push(L);
-    for (const style of ["occupied", "infiltration", "advance"]) {
-      const layers = byStyle.get(style);
-      if (!layers) continue;
-      g.fillStyle = style === "infiltration" ? hatchPattern(g) : CONTROL_FILL[style];
+    for (const L of controlLayers()) {
+      const k = `${L.style}|${L.style === "infiltration" ? "" : L.color || ""}`;
+      (byStyle.get(k) || byStyle.set(k, []).get(k)).push(L);
+    }
+    const order = { claimed: 0, occupied: 1, infiltration: 2, advance: 3 };
+    for (const k of [...byStyle.keys()].sort((a, b) => order[a.split("|")[0]] - order[b.split("|")[0]])) {
+      const layers = byStyle.get(k);
+      const [style, color] = k.split("|");
+      g.fillStyle = style === "infiltration" ? hatchPattern(g) : color ? rgba(hexRgb(color), AREA_ALPHA[style] || 0.5) : CONTROL_FILL[style];
       g.beginPath();
       for (const L of layers) for (const poly of L.polygons) for (const ring of poly) {
         ring.forEach(([lon, lat], i) => (i ? g.lineTo(X(lon), Y(lat)) : g.moveTo(X(lon), Y(lat))));
@@ -347,14 +355,17 @@
     }
     // crisp outlines of held ground, drawn as lines like the borders
     const outlines = [];
-    for (const L of controlLayers()) if (L.style === "occupied") for (const poly of L.polygons) for (const ring of poly) outlines.push({ control: true, approx: !!L.approx, pts: ring });
+    for (const L of controlLayers()) {
+      if (L.style !== "occupied" && !(L.assessment && L.style === "claimed")) continue;
+      for (const poly of L.polygons) for (const ring of poly) outlines.push({ control: true, approx: !!(L.approx || L.assessment), color: L.color, faint: L.style === "claimed", pts: ring });
+    }
     if (borderPaths.length) world.pathsData([...borderPaths, ...outlines]);
   }
   const landCanvas = document.createElement("canvas");
   landCanvas.width = PHONE ? 2048 : 4096;
   landCanvas.height = landCanvas.width / 2;
   function paintLand() {
-    const key = [...S.active].sort().join(",") + "|" + [...S.hot].sort().join(",") + "|" + controlLayers().map((l) => l.id + l.as_of).join(",");
+    const key = [...S.active].sort().join(",") + "|" + [...S.hot].sort().join(",") + "|" + controlLayers().map((l) => l.id + l.as_of + (l.settlements || "")).join(",");
     if (!landShapes.length || key === landKey) return;
     landKey = key;
     const W = landCanvas.width, H = landCanvas.height, g = landCanvas.getContext("2d");
@@ -397,6 +408,7 @@
   // Line widths are in globe units, so zoomed in close they would turn into wide bands: below
   // about altitude 1 they narrow with the zoom, like the dots.
   const arcStroke = (a) => (a.stroke == null ? null : a.stroke * Math.min(1, zoomK / 0.9));
+  const flDay = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone: "UTC" }) : "");
   world
     .pointLat("lat").pointLng("lon")
     .pointAltitude(0.005)
@@ -642,7 +654,7 @@
   // with the source and its date. The shapes are painted into the globe's picture, so the point
   // under the pointer is tested against them here. Advances and infiltration outrank the areas
   // they lie in; among occupied layers, the first configured (held since 2014) wins.
-  const CONTROL_RANK = { advance: 0, infiltration: 1, occupied: 2 };
+  const CONTROL_RANK = { advance: 0, infiltration: 1, occupied: 2, claimed: 3 };
   const ctlBoxes = new WeakMap();
   function polyBox(poly) {
     let b = ctlBoxes.get(poly);
@@ -673,7 +685,27 @@
     });
     return best && best.L;
   }
-  function tipControl(L) {
+  // For the site's own areas: the nearest settlement the assessment rests on, and its evidence.
+  function nearestPlace(L, lat, lng) {
+    const places = (S.data && S.data.frontline && S.data.frontline.places) || [];
+    const kx = 111.32 * Math.cos(lat * Math.PI / 180);
+    let best = null, bestD = (L.area_km || 10) * 1.5;
+    for (const p of places) {
+      if (p.conflict !== L.conflict) continue;
+      const d = Math.hypot((p.lon - lng) * kx, (p.lat - lat) * 110.57);
+      if (d < bestD) { best = p; bestD = d; }
+    }
+    return best;
+  }
+  function tipArea(L, lat, lng) {
+    const p = nearestPlace(L, lat, lng);
+    const what = p && (p.status === "contested" ? "fighting reported inside" : p.status === "claimed" ? `${esc(p.holder_name)} claims it` : `held by ${esc(p.holder_name)}`);
+    return `<div class="tip"><div class="tip-meta"><span class="control-swatch${L.style === "infiltration" ? " hatched" : ""}" style="${L.color && L.style !== "infiltration" ? `background:${esc(L.color)};opacity:${L.style === "claimed" ? 0.5 : 0.9}` : ""}" aria-hidden="true"></span><b>${esc(L.label)}</b></div>
+      ${p ? `<div class="tip-sum">Nearest named place: ${esc(p.name)}${p.region ? `, ${esc(p.region)}` : ""}: ${what}${p.since ? ` since ${esc(flDay(p.since))}` : ""}. Basis: ${esc(p.basis || "reports")}.</div>` : ""}
+      <div class="tip-foot"><span>This site's assessment, approximate area</span>${p && p.sources ? `<span>${p.sources} source${p.sources === 1 ? "" : "s"}</span>` : ""}</div></div>`;
+  }
+  function tipControl(L, lat, lng) {
+    if (L.assessment) return tipArea(L, lat, lng);
     const day = L.as_of ? new Date(L.as_of).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "";
     return `<div class="tip"><div class="tip-meta"><span class="control-swatch${L.style === "infiltration" ? " hatched" : L.style === "advance" ? " advance" : ""}" aria-hidden="true"></span><b>${esc(L.label)}</b></div>
       <div class="tip-foot"><span>${L.approx ? `Approximate: traced from the ${esc(L.source || "source")} map` : esc(L.source || "Source map")}${day ? `${L.approx ? " of" : ", as of"} ${esc(day)}` : ""}</span></div></div>`;
@@ -691,7 +723,8 @@
     if (!controlLayers().length) return null;
     const r = globeCanvas.getBoundingClientRect();
     const at = world.toGlobeCoords(x - r.left, y - r.top);
-    return at ? controlAt(at.lat, at.lng) : null;
+    const L = at && controlAt(at.lat, at.lng);
+    return L ? { L, lat: at.lat, lng: at.lng } : null;
   }
   function hideControlTip() { if (ctlTip) { ctlTip = false; hideTip(); } }
   globeCanvas.addEventListener("pointermove", (ev) => {
@@ -701,8 +734,8 @@
     if (first) requestAnimationFrame(() => {
       const e = ctlQueued;
       ctlQueued = null;
-      const L = !moving && !e.buttons ? controlUnder(e.clientX, e.clientY) : null;
-      if (L) { showTipAt(e.clientX, e.clientY, tipControl(L)); ctlTip = true; } else hideControlTip();
+      const hit = !moving && !e.buttons ? controlUnder(e.clientX, e.clientY) : null;
+      if (hit) { showTipAt(e.clientX, e.clientY, tipControl(hit.L, hit.lat, hit.lng)); ctlTip = true; } else hideControlTip();
     });
   });
   globeCanvas.addEventListener("pointerleave", hideControlTip);
@@ -712,10 +745,10 @@
     const d = ctlDown;
     ctlDown = null;
     if (!d || Math.hypot(ev.clientX - d.x, ev.clientY - d.y) > 8 || performance.now() - d.t > 500) return;
-    const L = controlUnder(ev.clientX, ev.clientY);
+    const hit = controlUnder(ev.clientX, ev.clientY);
     clearTimeout(ctlTimer);
-    if (!L) return hideControlTip();
-    showTipAt(ev.clientX, ev.clientY, tipControl(L));
+    if (!hit) return hideControlTip();
+    showTipAt(ev.clientX, ev.clientY, tipControl(hit.L, hit.lat, hit.lng));
     ctlTip = true;
     ctlTimer = setTimeout(hideControlTip, 3500);
   });
@@ -1313,10 +1346,11 @@
     const el = $("#controlNote");
     const layers = controlLayers();
     el.hidden = !layers.length;
-    if (!layers.length) return;
+    if (el.hidden) return;
+    const own = layers.filter((L) => L.assessment);
     const bySource = new Map();
-    const traced = layers.filter((L) => L.approx);
-    for (const L of layers.filter((x) => !x.approx)) {
+    const traced = layers.filter((L) => L.approx && !L.assessment);
+    for (const L of layers.filter((x) => !x.approx && !x.assessment)) {
       const s = bySource.get(L.source) || bySource.set(L.source, { link: L.link, asOf: "", labels: [] }).get(L.source);
       if (L.as_of && L.as_of > s.asOf) s.asOf = L.as_of;
       s.labels.push(L.label);
@@ -1325,7 +1359,7 @@
     let names = null;
     try { names = new Intl.DisplayNames(["en"], { type: "region" }); } catch (_) { /* older browsers: codes */ }
     const country = (c) => (c ? (names ? names.of(c) : c) : "");
-    const exact = layers.filter((L) => !L.approx);
+    const exact = layers.filter((L) => !L.approx && !L.assessment);
     const where = [...new Set(exact.map((L) => L.country).filter(Boolean))].map(country).join(", ");
     const hatched = exact.some((L) => L.style === "infiltration");
     const parts = [];
@@ -1334,6 +1368,12 @@
       + `. The shapes are theirs, simplified${hatched ? "; hatched areas have forces present but not in control" : ""}.`);
     for (const L of traced) parts.push(`${esc(L.label)}${L.country ? ` ${esc(country(L.country))}` : ""} (dashed edge) is approximate: traced by this site from the `
       + `<a href="${esc(L.link || "#")}" target="_blank" rel="noopener">${esc(L.source || "source")} map</a>${L.as_of ? ` of ${esc(day(L.as_of))}` : ""}, which is published only as a picture.`);
+    if (own.length) {
+      const conflicts = ((S.data.frontline && S.data.frontline.conflicts) || []).filter((c) => own.some((L) => L.conflict === c.id)).map((c) => c.name);
+      parts.push(`Coloured areas${conflicts.length ? ` in ${esc(conflicts.join(", "))}` : ""} (dashed edge) are this site's own assessment, approximate: `
+        + `ground around the settlements the reports name, in the holder's colour, solid where control is confirmed (geolocated footage, reporting from the scene, both sides, or two independent sources), `
+        + `light where only one side claims it, hatched where fighting is reported; where two sides meet, the line runs halfway between their settlements. A second check reviews every change before it is shown.`);
+    }
     el.innerHTML = parts.join(" ");
   }
 

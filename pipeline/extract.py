@@ -240,8 +240,10 @@ def used_today(state: dict, purpose: str) -> int:
 # always has most of it. On 2026-09-30 the same-story check took most of the day's 400 calls (up to
 # three a run, every run, while its backlog never emptied) and extraction stopped with 358 posts
 # waiting. Each share is paced over the day: by noon, about half of it (plus SHARE_BURST).
-SHARES = {"dedupe": "dedupe_daily_max", "recency": "recency_daily_max", "maproom": "maproom_daily_max"}
-SHARE_DEFAULTS = {"dedupe_daily_max": 140, "recency_daily_max": 48, "maproom_daily_max": 16}
+SHARES = {"dedupe": "dedupe_daily_max", "recency": "recency_daily_max", "maproom": "maproom_daily_max",
+          "frontline": "frontline_daily_max", "frontline_review": "frontline_review_daily_max"}
+SHARE_DEFAULTS = {"dedupe_daily_max": 140, "recency_daily_max": 48, "maproom_daily_max": 16,
+                  "frontline_daily_max": 40, "frontline_review_daily_max": 24}
 SHARE_BURST = 4
 # Not paced over the day: ISW's maps come out together, around 01:00 UTC, and are read as they come.
 UNPACED = {"maproom"}
