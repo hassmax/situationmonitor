@@ -1,0 +1,59 @@
+# Territorial control drawn on the map (pipeline/control.py).
+#
+# Only shapes a named source publishes, fetched as they are (simplified for the map), with the
+# source's own date. Nothing here is drawn or estimated by us or by the model.
+# Sources: ISW and its Critical Threats Project (the owner's choice, 2026-10-03). Labels follow the
+# terms the international community uses (UN General Assembly resolutions speak of the "temporarily
+# occupied territories of Ukraine").
+#
+# Each layer:
+#   id            stable id
+#   label         what the map calls it
+#   style         occupied (filled), advance (this period's gains, amber), infiltration (hatched:
+#                 the source says forces are present, not in control)
+#   url           an ArcGIS FeatureServer layer (".../FeatureServer/<n>"), or the service
+#                 (".../FeatureServer"), in which case its first polygon layer is used
+#   source, link  credited and linked in the map
+#   max_age_days  not drawn once the source's last edit is older than this (left out, not shown
+#                 as current); omit for layers that don't change (areas held before 2022)
+#
+# Checked 2026-10-03, and not usable yet: Critical Threats' Somalia (al-Shabaab zones, last edited
+# June 2025), Syria (ISW, February 2026) and West Africa (November 2025) layers are out of date;
+# its eastern DR Congo (September 2026) and Sahel (May 2026) maps are published only as images.
+# Neither organisation publishes control data for Yemen, Sudan, Libya, Ethiopia or Myanmar.
+
+layers:
+  - id: ua-occupied-2014
+    label: Russian-occupied since 2014
+    style: occupied
+    country: UA
+    url: https://services5.arcgis.com/SaBe5HMtmnbqSWlu/arcgis/rest/services/VIEW_Russian_controlled_Ukrainian_Territory_before_February_24_2022/FeatureServer/36
+    source: Institute for the Study of War
+    link: https://storymaps.arcgis.com/stories/36a7f6a6f5a9448496de641cf64bd375
+
+  - id: ua-occupied
+    label: Russian-occupied
+    style: occupied
+    country: UA
+    url: https://services5.arcgis.com/SaBe5HMtmnbqSWlu/arcgis/rest/services/VIEW_RussiaCoTinUkraine_V3/FeatureServer/49
+    source: Institute for the Study of War
+    link: https://storymaps.arcgis.com/stories/36a7f6a6f5a9448496de641cf64bd375
+    max_age_days: 14
+
+  - id: ua-infiltration
+    label: Russian infiltration, not control
+    style: infiltration
+    country: UA
+    url: https://services5.arcgis.com/SaBe5HMtmnbqSWlu/arcgis/rest/services/View_AssessedRussianInfiltrationAreasinUkraine_V4/FeatureServer
+    source: Institute for the Study of War
+    link: https://storymaps.arcgis.com/stories/36a7f6a6f5a9448496de641cf64bd375
+    max_age_days: 14
+
+  - id: ua-advances
+    label: Russian advances, latest assessment
+    style: advance
+    country: UA
+    url: https://services5.arcgis.com/SaBe5HMtmnbqSWlu/arcgis/rest/services/AssessedRussianAdvanceInUkraine_V2_view/FeatureServer/0
+    source: Institute for the Study of War
+    link: https://storymaps.arcgis.com/stories/36a7f6a6f5a9448496de641cf64bd375
+    max_age_days: 14

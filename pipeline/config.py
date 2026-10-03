@@ -55,6 +55,7 @@ class Config:
     removed: set[str] = field(default_factory=set)  # event ids taken off the map by hand
     outlets: dict = field(default_factory=dict)  # domain -> outlet (see "outlets" in sources.yaml)
     alerts: dict = field(default_factory=dict)  # Telegram alert rules (alerts.yaml)
+    control: list = field(default_factory=list)  # territorial-control layers (control.yaml)
 
     @property
     def theater_ids(self) -> set[str]:
@@ -74,5 +75,7 @@ def load() -> Config:
     removed_ids = {str(r["id"]) for r in ((removed or {}).get("removed") or []) if isinstance(r, dict) and r.get("id")}
     alerts_file = CONFIG_DIR / "alerts.yaml"
     alerts = (yaml.safe_load(alerts_file.read_text(encoding="utf-8")) or {}) if alerts_file.exists() else {}
+    control_file = CONFIG_DIR / "control.yaml"
+    control = ((yaml.safe_load(control_file.read_text(encoding="utf-8")) or {}).get("layers") or []) if control_file.exists() else []
     return Config(theaters=theaters, sources=sources, settings=settings, removed=removed_ids, outlets=outlets,
-                  alerts=alerts)
+                  alerts=alerts, control=control)

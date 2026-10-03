@@ -72,7 +72,7 @@
     ["carrier", "fleet", "US carrier at sea"],
   ];
   const MODE = { air: "by air", sea: "by sea", land: "overland", unspecified: "" };
-  const PLATFORM = { bluesky: "Bluesky", telegram: "Telegram", rss: "News feed", gdelt: "GDELT" };
+  const PLATFORM = { bluesky: "Bluesky", telegram: "Telegram", rss: "News feed", gdelt: "GDELT", map: "Map data" };
   const KIND = { official: "Official", partisan: "Partisan", osint: "OSINT", news: "News" };
   const WINDOWS = [["6h", 6], ["24h", 24], ["3d", 72], ["7d", 168]];
   const FALLBACK_THEATERS = [
@@ -210,7 +210,7 @@
     windowH: 24,
     theaterOn: new Set(FALLBACK_THEATERS.map((t) => t.id)),
     statusOn: new Set(Object.keys(STATUS)),
-    layers: { paths: true, supply: true, carriers: true },
+    layers: { paths: true, supply: true, carriers: true, control: true },
     off: new Set(),  // "On the map" entries switched off
     query: "",
     feedLimit: 250,
@@ -287,6 +287,10 @@
   const countryCenter = (iso2) => REP_POINT[iso2] || centers.get(ISO_NUM.get(iso2)) || null;
   const landColor = (f) => (S.active.has(f.id) ? "#3a6a98" : S.hot.has(f.id) ? "#2a4f75" : "#1e3a59");
   const OCEAN = "#0b1f36";
+  // Territorial control (see controlNote): the source's shapes, painted onto the globe with the land.
+  const CONTROL_FILL = { occupied: "rgba(214,174,110,0.55)", advance: "rgba(245,165,36,0.9)" };
+  const CONTROL_LINE = "rgba(236,212,160,0.75)";
+  const pathColorOf = (p) => (p.control ? CONTROL_LINE : borderColor(p.fid));
   const borderColor = (id) => (S.active.has(id) ? "rgba(255,166,122,0.8)" : S.hot.has(id) ? "rgba(150,195,235,0.3)" : "rgba(150,190,230,0.12)");
 
   fetch("assets/countries-110m.json")
@@ -297,11 +301,12 @@
       land.forEach((f) => { if (f.id) centers.set(f.id, centerOf(f)); });
       const borders = [];
       for (const f of land) for (const poly of f.geometry.coordinates) for (const ring of poly) borders.push({ fid: f.id, pts: ring });
+      borderPaths = borders;
       landShapes = land;
       paintLand();
       world
         .pathsData(borders).pathPoints("pts").pathPointLat((p) => p[1]).pathPointLng((p) => p[0]).pathPointAlt(0.0045)
-        .pathTransitionDuration(0).pathColor((p) => borderColor(p.fid));
+        .pathTransitionDuration(0).pathColor(pathColorOf);
       if (S.data) render();
     })
     .catch(() => {});
@@ -309,12 +314,45 @@
   // Land is painted onto the globe's own surface (an ocean-and-countries picture), not drawn as a
   // separate layer floating just above it: phone graphics chips can't tell two surfaces that close
   // apart, and the ocean showed through the land in dark streaks while moving.
-  let landShapes = [], landKey = "", landUrl = null;
+  let landShapes = [], landKey = "", landUrl = null, borderPaths = [], hatch = null;
+  const controlLayers = () => (S.layers.control && S.data && S.data.control) || [];
+  // Infiltration (forces present, not in control) is hatched rather than filled.
+  function hatchPattern(g) {
+    if (hatch) return hatch;
+    const c = document.createElement("canvas");
+    c.width = c.height = 4;
+    const h = c.getContext("2d");
+    h.fillStyle = "rgba(214,174,110,0.25)";
+    h.fillRect(0, 0, 4, 4);
+    h.fillStyle = "rgba(236,212,160,0.9)";
+    for (let i = 0; i < 4; i++) h.fillRect(i, 3 - i, 1, 1);
+    return (hatch = g.createPattern(c, "repeat"));
+  }
+  function paintControl(g, X, Y) {
+    // one path per style, filled "nonzero", so overlapping layers of one style don't double up
+    const byStyle = new Map();
+    for (const L of controlLayers()) (byStyle.get(L.style) || byStyle.set(L.style, []).get(L.style)).push(L);
+    for (const style of ["occupied", "infiltration", "advance"]) {
+      const layers = byStyle.get(style);
+      if (!layers) continue;
+      g.fillStyle = style === "infiltration" ? hatchPattern(g) : CONTROL_FILL[style];
+      g.beginPath();
+      for (const L of layers) for (const poly of L.polygons) for (const ring of poly) {
+        ring.forEach(([lon, lat], i) => (i ? g.lineTo(X(lon), Y(lat)) : g.moveTo(X(lon), Y(lat))));
+        g.closePath();
+      }
+      g.fill("nonzero");
+    }
+    // crisp outlines of held ground, drawn as lines like the borders
+    const outlines = [];
+    for (const L of controlLayers()) if (L.style === "occupied") for (const poly of L.polygons) for (const ring of poly) outlines.push({ control: true, pts: ring });
+    if (borderPaths.length) world.pathsData([...borderPaths, ...outlines]);
+  }
   const landCanvas = document.createElement("canvas");
   landCanvas.width = PHONE ? 2048 : 4096;
   landCanvas.height = landCanvas.width / 2;
   function paintLand() {
-    const key = [...S.active].sort().join(",") + "|" + [...S.hot].sort().join(",");
+    const key = [...S.active].sort().join(",") + "|" + [...S.hot].sort().join(",") + "|" + controlLayers().map((l) => l.id + l.as_of).join(",");
     if (!landShapes.length || key === landKey) return;
     landKey = key;
     const W = landCanvas.width, H = landCanvas.height, g = landCanvas.getContext("2d");
@@ -342,6 +380,7 @@
       }
       g.fill("evenodd");
     }
+    paintControl(g, X, Y);
     if (mat.map) { mat.map.image = landCanvas; mat.map.needsUpdate = true; return; }  // later repaints: no reload
     landCanvas.toBlob((blob) => {
       if (!blob) return;
@@ -1185,6 +1224,28 @@
     queueDeclutter();
   }
 
+  // Who drew the control shapes, and when: credited under the legend, with a link to the source's map.
+  function renderControlNote() {
+    const el = $("#controlNote");
+    const layers = controlLayers();
+    el.hidden = !layers.length;
+    if (!layers.length) return;
+    const bySource = new Map();
+    for (const L of layers) {
+      const s = bySource.get(L.source) || bySource.set(L.source, { link: L.link, asOf: "", labels: [] }).get(L.source);
+      if (L.as_of && L.as_of > s.asOf) s.asOf = L.as_of;
+      s.labels.push(L.label);
+    }
+    const day = (iso) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone: "UTC" });
+    let names = null;
+    try { names = new Intl.DisplayNames(["en"], { type: "region" }); } catch (_) { /* older browsers: codes */ }
+    const where = [...new Set(layers.map((L) => L.country).filter(Boolean))].map((c) => (names ? names.of(c) : c)).join(", ");
+    const hatched = layers.some((L) => L.style === "infiltration");
+    el.innerHTML = `Territorial control${where ? ` in ${esc(where)}` : ""}: ` + [...bySource].map(([source, s]) =>
+      `the <a href="${esc(s.link || "#")}" target="_blank" rel="noopener">${esc(source)}</a> assessment${s.asOf ? `, last edited ${esc(day(s.asOf))}` : ""}`).join("; ")
+      + `. The shapes are theirs, simplified${hatched ? "; hatched areas have forces present but not in control" : ""}.`;
+  }
+
   function updateActive(events) {
     const active = new Set();
     for (const e of events) {
@@ -1195,9 +1256,10 @@
     if (key !== S.activeKey) {
       S.activeKey = key;
       S.active = active;
-      world.pathColor((p) => borderColor(p.fid));
+      world.pathColor(pathColorOf);
     }
-    paintLand();  // repaints only when active or highlighted countries changed
+    paintLand();  // repaints only when active or highlighted countries changed (or the control layer)
+    renderControlNote();
   }
 
   function renderTally(events) {
@@ -1586,7 +1648,7 @@
   function legendChanged() {
     const items = document.querySelectorAll("[data-legend]");
     items.forEach((b) => b.setAttribute("aria-pressed", String(!S.off.has(b.dataset.legend))));
-    S.layers = { paths: !S.off.has("paths"), supply: !S.off.has("crate"), carriers: !S.off.has("carrier") };
+    S.layers = { paths: !S.off.has("paths"), supply: !S.off.has("crate"), carriers: !S.off.has("carrier"), control: !S.off.has("control") };
     $("#legendReset").hidden = !S.off.size;
     $("#legendNone").hidden = S.off.size >= items.length;
     render();
@@ -1595,7 +1657,8 @@
   function buildStaticControls() {
     const item = (key, swatch, label) => `<li><button class="legend-item" type="button" data-legend="${key}" aria-pressed="true" title="Show or hide ${esc(label.toLowerCase())}">${swatch}<span>${esc(label)}</span></button></li>`;
     $("#legend").innerHTML = LEGEND.map(([icon, cat, label]) => item(icon, iconBadge(icon, cat, "solid", "ico-sm"), label)).join("")
-      + item("paths", '<span class="line-swatch line-strike" aria-hidden="true"></span>', "Launch path");
+      + item("paths", '<span class="line-swatch line-strike" aria-hidden="true"></span>', "Launch path")
+      + item("control", '<span class="control-swatch" aria-hidden="true"></span>', "Territorial control");
     $("#windowSeg").innerHTML = WINDOWS.map(([label, h]) => `<button type="button" data-window="${h}" aria-pressed="${h === S.windowH}">${label}</button>`).join("");
     $("#statusList").innerHTML = Object.entries(STATUS).map(([id, s]) => `
       <li><label class="check"><input type="checkbox" data-status="${id}" checked><span class="conf-swatch conf-${s.conf}" aria-hidden="true"></span><span class="label">${esc(s.label)}</span><span class="count" data-status-count="${id}"></span></label></li>`).join("");

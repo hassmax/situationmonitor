@@ -28,6 +28,7 @@ import dedupe  # noqa: E402
 import extract  # noqa: E402
 import fleet  # noqa: E402
 import geo  # noqa: E402
+import control  # noqa: E402
 import hunter  # noqa: E402
 import merge  # noqa: E402
 import recency  # noqa: E402
@@ -179,6 +180,10 @@ def main() -> int:
     fleet.apply_home_baseline(state, t0)
     log(f"[fleet] {len(carrier_reports)} carrier reports, {moved} applied; {len(fleet.public(state, t0))} carriers shown")
 
+    # Territorial control: ISW's published control maps (no model calls; at most every 3 hours)
+    control_layers = control.validate(cfg.control)
+    control.update(state, session, control_layers, t0)
+
     # 5. GDELT: used to corroborate reports (3+ outlets reporting violence nearby)
     if settings.get("gdelt", True):
         rows = gdelt.fetch(state, session, cfg.theaters, health)
@@ -281,6 +286,7 @@ def main() -> int:
         "events": published,
         "brief": state.get("brief"),
         "heat": public_cells(cells),
+        "control": control.public(state, control_layers, t0),
         "fleet": fleet.public(state, t0),
         "fleet_meta": {k: (state.get("fleet_meta") or {}).get(k) for k in ("tracker_time", "tracker_url")},
         "sources": [dict(id=k, **v) for k, v in sorted(state["health"].items(), key=lambda kv: kv[1]["name"].lower())],

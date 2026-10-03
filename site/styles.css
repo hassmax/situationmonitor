@@ -1066,6 +1066,9 @@ h2 {
 .line-swatch { width: 16px; height: 3px; border-radius: 2px; flex: none; }
 .line-strike { background: repeating-linear-gradient(90deg, #ff5b3a 0 5px, transparent 5px 8px); }
 .line-supply { background: #3fc1c9; }
+.control-swatch { width: 18px; height: 12px; border-radius: 2px; flex: none; background: rgba(214, 174, 110, 0.75); box-shadow: inset 0 0 0 1px rgba(236, 212, 160, 0.9); }
+.control-note { margin: 10px 0 0; font-size: 12px; line-height: 1.45; color: var(--ink-3); }
+.control-note a { color: var(--ink-2); }
 
 .legend-grid {
   list-style: none;
