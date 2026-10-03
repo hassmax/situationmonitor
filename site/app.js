@@ -306,7 +306,9 @@
       paintLand();
       world
         .pathsData(borders).pathPoints("pts").pathPointLat((p) => p[1]).pathPointLng((p) => p[0]).pathPointAlt(0.0045)
-        .pathTransitionDuration(0).pathColor(pathColorOf);
+        .pathTransitionDuration(0).pathColor(pathColorOf)
+        // traced (approximate) areas get a dashed edge; dash sizes are fractions of the ring's length
+        .pathDashLength((p) => (p.approx ? 0.006 : 1)).pathDashGap((p) => (p.approx ? 0.004 : 0));
       if (S.data) render();
     })
     .catch(() => {});
@@ -345,7 +347,7 @@
     }
     // crisp outlines of held ground, drawn as lines like the borders
     const outlines = [];
-    for (const L of controlLayers()) if (L.style === "occupied") for (const poly of L.polygons) for (const ring of poly) outlines.push({ control: true, pts: ring });
+    for (const L of controlLayers()) if (L.style === "occupied") for (const poly of L.polygons) for (const ring of poly) outlines.push({ control: true, approx: !!L.approx, pts: ring });
     if (borderPaths.length) world.pathsData([...borderPaths, ...outlines]);
   }
   const landCanvas = document.createElement("canvas");
@@ -674,7 +676,7 @@
   function tipControl(L) {
     const day = L.as_of ? new Date(L.as_of).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "";
     return `<div class="tip"><div class="tip-meta"><span class="control-swatch${L.style === "infiltration" ? " hatched" : L.style === "advance" ? " advance" : ""}" aria-hidden="true"></span><b>${esc(L.label)}</b></div>
-      <div class="tip-foot"><span>${esc(L.source || "Source map")}${day ? `, as of ${esc(day)}` : ""}</span></div></div>`;
+      <div class="tip-foot"><span>${L.approx ? `Approximate: traced from the ${esc(L.source || "source")} map` : esc(L.source || "Source map")}${day ? `${L.approx ? " of" : ", as of"} ${esc(day)}` : ""}</span></div></div>`;
   }
   function showTipAt(x, y, html) {
     tipBox.innerHTML = html;
@@ -1313,7 +1315,8 @@
     el.hidden = !layers.length;
     if (!layers.length) return;
     const bySource = new Map();
-    for (const L of layers) {
+    const traced = layers.filter((L) => L.approx);
+    for (const L of layers.filter((x) => !x.approx)) {
       const s = bySource.get(L.source) || bySource.set(L.source, { link: L.link, asOf: "", labels: [] }).get(L.source);
       if (L.as_of && L.as_of > s.asOf) s.asOf = L.as_of;
       s.labels.push(L.label);
@@ -1321,11 +1324,17 @@
     const day = (iso) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone: "UTC" });
     let names = null;
     try { names = new Intl.DisplayNames(["en"], { type: "region" }); } catch (_) { /* older browsers: codes */ }
-    const where = [...new Set(layers.map((L) => L.country).filter(Boolean))].map((c) => (names ? names.of(c) : c)).join(", ");
-    const hatched = layers.some((L) => L.style === "infiltration");
-    el.innerHTML = `Territorial control${where ? ` in ${esc(where)}` : ""}: ` + [...bySource].map(([source, s]) =>
+    const country = (c) => (c ? (names ? names.of(c) : c) : "");
+    const exact = layers.filter((L) => !L.approx);
+    const where = [...new Set(exact.map((L) => L.country).filter(Boolean))].map(country).join(", ");
+    const hatched = exact.some((L) => L.style === "infiltration");
+    const parts = [];
+    if (exact.length) parts.push(`Territorial control${where ? ` in ${esc(where)}` : ""}: ` + [...bySource].map(([source, s]) =>
       `the <a href="${esc(s.link || "#")}" target="_blank" rel="noopener">${esc(source)}</a> assessment${s.asOf ? `, last edited ${esc(day(s.asOf))}` : ""}`).join("; ")
-      + `. The shapes are theirs, simplified${hatched ? "; hatched areas have forces present but not in control" : ""}.`;
+      + `. The shapes are theirs, simplified${hatched ? "; hatched areas have forces present but not in control" : ""}.`);
+    for (const L of traced) parts.push(`${esc(L.label)}${L.country ? ` ${esc(country(L.country))}` : ""} (dashed edge) is approximate: traced by this site from the `
+      + `<a href="${esc(L.link || "#")}" target="_blank" rel="noopener">${esc(L.source || "source")} map</a>${L.as_of ? ` of ${esc(day(L.as_of))}` : ""}, which is published only as a picture.`);
+    el.innerHTML = parts.join(" ");
   }
 
   function updateActive(events) {
