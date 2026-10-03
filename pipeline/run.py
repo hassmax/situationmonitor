@@ -33,7 +33,7 @@ import hunter  # noqa: E402
 import merge  # noqa: E402
 import recency  # noqa: E402
 from common import hours_since, http_session, iso, load_json, log, now, save_json  # noqa: E402
-from sources import bluesky, gdelt, rss, telegram  # noqa: E402
+from sources import bluesky, gdelt, maproom, rss, telegram  # noqa: E402
 
 
 def default_state() -> dict:
@@ -159,6 +159,16 @@ def main() -> int:
         if it["id"] not in seen and extract.is_candidate(it):
             seen[it["id"]] = int(t0.timestamp())
             fresh.append(it)
+    # ISW's Map Room: the list of maps is checked hourly (no model); new maps are read by the model,
+    # up to 3 a run under the day's "maproom" share, and what they report joins the queue (weight 4).
+    maproom.check(state, session, health, t0)
+    budget = 0 if args.no_llm else min(
+        extract.share_left(state, settings, t0, "maproom"),
+        extract.calls_allowed(state, settings, t0, reserve=int(settings.get("extraction_reserve", 30))))
+    for it in maproom.read(state, session, settings, t0, extract.ask_json, budget):
+        if it["id"] not in seen:
+            seen[it["id"]] = int(t0.timestamp())
+            fresh.append(it)
     log(f"[filter] {len(fresh)} new candidates")
 
     # 3. Extract with the model (budgeted); the rest waits in the queue
@@ -260,6 +270,8 @@ def main() -> int:
     configured |= {f"rss:{s.get('id') or s['url']}" for s in cfg.sources["rss"]}
     configured |= {f"tg:{s['username'].lstrip('@')}" for s in cfg.sources["telegram"]}
     configured.add("gdelt")
+    configured.add("maproom")
+    configured |= {f"control:{l['id']}" for l in control_layers}
     state["health"] = {k: v for k, v in health.items() if k in configured}
     state["last_run"] = {
         "at": iso(t0), "seconds": round(time.time() - started, 1), "items": len(items),
