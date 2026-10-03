@@ -122,12 +122,20 @@ def _check(c: dict, r: dict, hull: str) -> str | None:
     if port and not (c.get("lat") is not None and haversine_km(c["lat"], c["lon"], r["lat"], r["lon"]) < MOVE_KM):
         return f"{port} is another carrier's home port; the report is probably about that carrier"
     if _known(c) and _too_fast(c, r):
+        # The position it can't be squared with may itself be an unconfirmed news report (an Iranian
+        # channel put the Bush in the Strait of Hormuz; ship imagery had it entering the Malacca Strait
+        # three days later, which fits USNI's tracker position from two days before that): a report
+        # the carrier could have reached from its last tracker position replaces it.
+        lt = c.get("last_trusted")
+        if not c.get("trusted") and lt and r["time"] > lt["as_of"] and not _too_fast(lt, r):
+            return "fits_tracker"
         held = [h for h in c.get("held", []) if _days(h["time"], r["time"]) * 86400 <= HOLD.total_seconds()]
         if any(h["url"] != r.get("url") and haversine_km(h["lat"], h["lon"], r["lat"], r["lon"]) < CONFIRM_KM
                for h in held):
             c.pop("held", None)
             return None  # a second report confirms the move
-        held.append({"lat": r["lat"], "lon": r["lon"], "place": r.get("place"), "time": r["time"], "url": r.get("url")})
+        held.append({"lat": r["lat"], "lon": r["lon"], "place": r.get("place"), "time": r["time"], "url": r.get("url"),
+                     "source": r.get("source")})
         c["held"] = held[-5:]
         return "hold"
     return None
@@ -154,8 +162,13 @@ def update(state: dict, reports: list[dict]) -> int:
             log(f"[fleet] {name}: the tracker ({r.get('place')}, {r['time'][:10]}) replaces a later news report "
                 f"({c.get('place')}, {c['as_of'][:10]}) it couldn't have sailed to")
             replacing = True
+        over = None
         if not r.get("trusted"):
             why = _check(c, r, hull)
+            if why == "fits_tracker":
+                over, why = c.get("last_trusted"), None
+                log(f"[fleet] {name}: {r.get('place')} fits the last tracker position ({over.get('place')}, "
+                    f"{over['as_of'][:10]}); the unconfirmed {c.get('place')!r} report is set aside")
             if why == "hold":
                 log(f"[fleet] {name}: {r.get('place')} is too far to have sailed since {c.get('place')}; "
                     "waiting for a second report")
@@ -174,7 +187,13 @@ def update(state: dict, reports: list[dict]) -> int:
         if replacing:
             for k in ("prev", "moved_at", "held"):
                 c.pop(k, None)
-        if moved:
+        if over:
+            # the line is drawn from the tracker's position, not from the report set aside
+            c["prev"] = {k: over[k] for k in ("lat", "lon", "place", "as_of")}
+            c["moved_at"] = r["time"]
+            c.pop("held", None)
+            c["track"] = [t for t in c.get("track", []) if t["time"] <= over["as_of"]]
+        elif moved:
             c["prev"] = {"lat": c["lat"], "lon": c["lon"], "place": c.get("place"), "as_of": c.get("as_of")}
             c["moved_at"] = r["time"]
         heading = r.get("heading_to")
@@ -184,6 +203,8 @@ def update(state: dict, reports: list[dict]) -> int:
             heading = None  # arrived
         c.update(lat=r["lat"], lon=r["lon"], place=r.get("place"), status=r["status"], as_of=r["time"],
                  source=r.get("source"), url=r.get("url"), heading_to=heading, trusted=bool(r.get("trusted")))
+        if r.get("trusted") and not r["time"].startswith("1970"):  # an undated home-port start is no anchor
+            c["last_trusted"] = {"lat": r["lat"], "lon": r["lon"], "place": r.get("place"), "as_of": r["time"]}
         if r["status"] == "departed":
             c["departed_at"] = r["time"]
         track = c["track"]
@@ -527,6 +548,34 @@ def public(state: dict, now: datetime) -> list[dict]:
         row["name"], row["short"] = CARRIERS[c["hull"]]  # names always from the list above
         out.append(row)
     return sorted(out, key=lambda c: c["hull"])
+
+
+def release_held(state: dict, sources: dict[str, str] | None = None) -> int:
+    """Re-check held news reports against each carrier's last tracker position (see _check): one
+    held because it was too far from an unconfirmed position is applied once it fits the tracker.
+    Carriers stored before the tracker position was kept get it from their track (the entry dated
+    with the tracker edition). `sources` names the source of a report URL, for held reports stored
+    without one. Returns how many carriers moved."""
+    fleet = state.get("fleet") or {}
+    tracker_time = (state.get("fleet_meta") or {}).get("tracker_time")
+    due = []
+    for hull, c in fleet.items():
+        if not isinstance(c, dict) or hull not in CARRIERS:
+            continue
+        if not c.get("last_trusted") and tracker_time:
+            t = next((t for t in c.get("track", []) if t.get("time") == tracker_time), None)
+            if t:
+                c["last_trusted"] = {"lat": t["lat"], "lon": t["lon"], "place": t.get("place"), "as_of": t["time"]}
+        lt = c.get("last_trusted")
+        if c.get("trusted") or not lt or not c.get("held"):
+            continue
+        fits = [h for h in c["held"] if h["time"] > (c.get("as_of") or "") and not _too_fast(lt, h)]
+        if fits:
+            h = max(fits, key=lambda h: h["time"])
+            due.append({"hull": hull, "lat": h["lat"], "lon": h["lon"], "place": h.get("place"), "time": h["time"],
+                        "url": h.get("url"), "status": "underway",
+                        "source": h.get("source") or (sources or {}).get(h.get("url")) or "News report"})
+    return update(state, due) if due else 0
 
 
 def drop_held(state: dict, urls: set[str]) -> None:

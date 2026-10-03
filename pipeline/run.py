@@ -174,6 +174,8 @@ def main() -> int:
     fleet.mark_deployment(state, tracker)
     fleet.repair(state)
     moved = fleet.update(state, carrier_reports)
+    # held reports that fit the last tracker position
+    moved += fleet.release_held(state, {r["url"]: r["source"] for e in events for r in e.get("reports", [])})
     fleet.apply_home_baseline(state, t0)
     log(f"[fleet] {len(carrier_reports)} carrier reports, {moved} applied; {len(fleet.public(state, t0))} carriers shown")
 

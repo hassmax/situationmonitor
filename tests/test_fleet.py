@@ -184,3 +184,36 @@ def test_held_reports_from_taken_down_articles_are_forgotten():
                        "CVN-68": {"held": [{"url": "u-old-photo", "time": "2026-09-29T23:40:46Z"}]}}}
     fl.drop_held(state, {"u-old-photo"})
     assert [h["url"] for h in state["fleet"]["CVN-72"]["held"]] == ["u-other"] and "held" not in state["fleet"]["CVN-68"]
+
+
+def test_a_report_that_fits_the_tracker_replaces_an_unconfirmed_one_it_contradicts():
+    # The tracker put the Bush in the Arabian Sea on 28 Sept; an Iranian channel then put it in the
+    # Strait of Hormuz, and ship imagery had it entering the Malacca Strait on 3 Oct: too far from
+    # Hormuz, but within reach of the tracker's position, so the Hormuz report is set aside.
+    state = home_state()
+    tracker = {**news("CVN-77", "Arabian Sea", 16.0, 63.0, "2026-09-28T18:01:35Z"), "trusted": True}
+    fleet.update(state, [tracker])
+    fleet.update(state, [news("CVN-77", "Strait of Hormuz", 26.57, 56.25, "2026-09-30T21:25:00Z")])
+    assert state["fleet"]["CVN-77"]["place"] == "Strait of Hormuz"
+    fleet.update(state, [news("CVN-77", "Strait of Malacca", 2.5, 101.5, "2026-10-03T13:28:00Z")])
+    c = state["fleet"]["CVN-77"]
+    assert c["place"] == "Strait of Malacca" and c["prev"]["place"] == "Arabian Sea"   # line from the tracker
+    assert [t["place"] for t in c["track"]][-2:] == ["Arabian Sea", "Strait of Malacca"]   # Hormuz dropped
+    # a report too far even from the tracker's position is still held
+    fleet.update(state, [news("CVN-77", "Norfolk area", 37.5, -70.0, "2026-10-04T00:00:00Z")])
+    assert state["fleet"]["CVN-77"]["place"] == "Strait of Malacca"
+
+
+def test_a_held_report_is_released_when_it_fits_the_last_tracker_position():
+    # stored before the tracker position was kept: it is found in the track by the edition's date
+    state = home_state()
+    state["fleet_meta"] = {"tracker_time": "2026-09-28T18:01:35Z"}
+    state["fleet"]["CVN-77"].update(
+        lat=26.57, lon=56.25, place="Strait of Hormuz", as_of="2026-09-30T21:25:12Z", trusted=False, status="operating",
+        track=[{"lat": 16.0, "lon": 63.0, "place": "Arabian Sea", "time": "2026-09-28T18:01:35Z"},
+               {"lat": 26.57, "lon": 56.25, "place": "Strait of Hormuz", "time": "2026-09-30T21:25:12Z"}],
+        held=[{"lat": 2.5, "lon": 101.5, "place": "Strait of Malacca", "time": "2026-10-03T13:28:32Z", "url": "u-m"}])
+    assert fleet.release_held(state, {"u-m": "Flattop Fiesta (ship imagery)"}) == 1
+    c = state["fleet"]["CVN-77"]
+    assert (c["place"], c["source"], c["prev"]["place"]) == ("Strait of Malacca", "Flattop Fiesta (ship imagery)", "Arabian Sea")
+    assert "held" not in c and fleet.release_held(state) == 0
