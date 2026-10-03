@@ -192,3 +192,26 @@ def test_a_rejected_change_sets_its_claims_aside():
     round_(state, [MOD], {"items": [{"n": 0, "verdict": "reject", "reason": "fighting near it, not inside"}]}, CLAIM)
     p = state["frontline"]["places"]["ua:ulanove"]
     assert all(c.get("rejected") for c in p["claims"]) and "published" not in p
+
+
+# ----------------------------------------------------------------------------- cartographer: areas
+
+def test_areas_shade_around_settlements_and_split_halfway_between_sides():
+    import mapshapes
+    from frontline import cartographer
+    conflict = {**UA, "area_km": 6}
+    P = lambda name, lat, lon, status, holder: {"name": name, "conflict": "ukraine", "lat": lat, "lon": lon,
+                                               "status": status, "holder": holder, "last": "2026-10-03T00:00:00Z"}
+    layers = cartographer.areas([P("A", 50.0, 37.0, "assessed", "RU"), P("B", 50.0, 37.12, "assessed", "UA"),
+                                 P("C", 50.3, 37.4, "claimed", "RU"), P("D", 50.05, 37.3, "contested", None)], conflict)
+    by = {L["id"]: L for L in layers}
+    assert [L["style"] for L in layers] == ["claimed", "occupied", "occupied", "infiltration"]   # paint order
+    ru, ua = by["fl-ukraine-assessed-RU"], by["fl-ukraine-assessed-UA"]
+    assert (ru["label"], ru["color"], ru["assessment"]) == ("Held by Russia", "#e39b5b", True)
+    inside = mapshapes._inside
+    assert inside(ru["polygons"], 37.0, 50.0) and not inside(ru["polygons"], 37.12, 50.0)
+    assert inside(ua["polygons"], 37.12, 50.0)
+    assert inside(ru["polygons"], 37.055, 50.0) and inside(ua["polygons"], 37.065, 50.0)   # the line runs halfway
+    assert not inside(ru["polygons"], 37.0, 50.2)                                           # nothing far from a named place
+    assert by["fl-ukraine-claimed-RU"]["label"] == "Claimed by Russia"
+    assert by["fl-ukraine-contested-none"]["label"].startswith("Contested")
