@@ -292,20 +292,45 @@ def make_batches(queue: list[dict], settings: dict) -> list[list[dict]]:
     return batches
 
 
+def _repairs(text: str):
+    """The reply as is, then with the slips models make in JSON mended, one more at each step:
+    raw line breaks or tabs inside strings (strict=False), trailing commas, Python's None/True/False,
+    botched \\u character codes (seen 2026-10-03 in an Ethiopian place name)."""
+    yield text
+    text = re.sub(r",\s*([}\]])", r"\1", text)
+    yield text
+    text = re.sub(r"(?<=[:\[,\s])(None|True|False)(?=\s*[,}\]])", lambda m: {"None": "null", "True": "true", "False": "false"}[m.group(1)], text)
+    yield text
+    # a botched character code ("\u12" for a Ge'ez letter) breaks the whole reply: drop just it
+    yield re.sub(r"(?<!\\)\\u(?![0-9a-fA-F]{4})[0-9a-fA-F]{0,3}", "", text)
+
+
+def json_error(content: str) -> str:
+    """Where a reply stops being JSON, for the log."""
+    try:
+        json.loads(content, strict=False)
+        return "parses"
+    except ValueError as exc:
+        pos = getattr(exc, "pos", 0) or 0
+        return f"{exc.args[0] if exc.args else exc} near {content[max(0, pos - 60):pos + 40]!r}"
+
+
 def _parse_json_object(content: str) -> dict | None:
-    """Parse the model's reply, tolerating code fences or stray text around the JSON."""
+    """Parse the model's reply, tolerating code fences or stray text around the JSON, and the
+    usual slips (see _repairs)."""
     text = re.sub(r"^```(?:json)?\s*|\s*```$", "", (content or "").strip()).strip()
     for candidate in (text, text[text.find("{"): text.rfind("}") + 1] if "{" in text else ""):
         if not candidate:
             continue
-        try:
-            value = json.loads(candidate)
-        except ValueError:
-            continue
-        if isinstance(value, dict):
-            return value
-        if isinstance(value, list):
-            return {"events": value}
+        for attempt in _repairs(candidate):
+            try:
+                value = json.loads(attempt, strict=False)
+            except ValueError:
+                continue
+            if isinstance(value, dict):
+                return value
+            if isinstance(value, list):
+                return {"events": value}
     return None
 
 
@@ -724,14 +749,22 @@ def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, no
                     return ask_json(system_prompt, user_text, state, settings, now, max_tokens, _retry=False,
                                     purpose=purpose, images=images)
             return None
-        if r.status_code >= 400:
-            log(f"[extract] one-off call failed: {_describe(r)}")
+        if r.status_code == 429:
+            _spend(state, purpose, -1)  # refused for the rate limit: nothing was done, not counted
+            log(f"[extract] one-off call ({purpose}) refused for the rate limit (not counted): {_describe(r)[:120]}")
             return None
-        return _parse_json_object(_content_from_response(r))
+        if r.status_code >= 400:
+            log(f"[extract] one-off call ({purpose}) failed: {_describe(r)}")
+            return None
+        content = _content_from_response(r)
+        parsed = _parse_json_object(content)
+        if parsed is None:
+            log(f"[extract] one-off call ({purpose}): the reply was not JSON ({len(content)} characters): {json_error(content)}")
+        return parsed
     except requests.RequestException as exc:
         _spend(state, purpose, -1)  # never reached the model
         log(f"[extract] one-off call failed (not counted): {exc}")
         return None
     except Exception as exc:  # noqa: BLE001
-        log(f"[extract] one-off call failed: {exc}")
+        log(f"[extract] one-off call ({purpose}) failed: {exc}")
         return None
