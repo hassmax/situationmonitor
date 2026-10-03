@@ -56,6 +56,7 @@ class Config:
     outlets: dict = field(default_factory=dict)  # domain -> outlet (see "outlets" in sources.yaml)
     alerts: dict = field(default_factory=dict)  # Telegram alert rules (alerts.yaml)
     control: list = field(default_factory=list)  # territorial-control layers (control.yaml)
+    frontlines: list = field(default_factory=list)  # conflicts the front-line agents assess (frontlines.yaml)
 
     @property
     def theater_ids(self) -> set[str]:
@@ -77,5 +78,7 @@ def load() -> Config:
     alerts = (yaml.safe_load(alerts_file.read_text(encoding="utf-8")) or {}) if alerts_file.exists() else {}
     control_file = CONFIG_DIR / "control.yaml"
     control = ((yaml.safe_load(control_file.read_text(encoding="utf-8")) or {}).get("layers") or []) if control_file.exists() else []
+    front_file = CONFIG_DIR / "frontlines.yaml"
+    frontlines = ((yaml.safe_load(front_file.read_text(encoding="utf-8")) or {}).get("conflicts") or []) if front_file.exists() else []
     return Config(theaters=theaters, sources=sources, settings=settings, removed=removed_ids, outlets=outlets,
-                  alerts=alerts, control=control)
+                  alerts=alerts, control=control, frontlines=frontlines)

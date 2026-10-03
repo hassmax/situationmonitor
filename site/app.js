@@ -397,15 +397,32 @@
   // Line widths are in globe units, so zoomed in close they would turn into wide bands: below
   // about altitude 1 they narrow with the zoom, like the dots.
   const arcStroke = (a) => (a.stroke == null ? null : a.stroke * Math.min(1, zoomK / 0.9));
+  // Front-line settlements (this site's own assessment, see pipeline/frontline/) share the dot layer:
+  // coloured by holder, solid when assessed, faint when only claimed, amber when fought over.
+  const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(String(h || "#999999").slice(i, i + 2), 16));
+  const FL_ALPHA = { assessed: 0.95, claimed: 0.4 };
+  const dotRadius = (d) => (d.fl ? (d.fl.changed ? 0.1 : 0.075) : d.alert ? 0.09 : 0.13) * zoomK;
+  const dotColor = (d) => (d.fl ? (d.fl.status === "contested" ? rgba([245, 165, 36], 0.9) : rgba(hexRgb(d.fl.color), FL_ALPHA[d.fl.status] || 0.6))
+    : rgba(CAT_RGB.strike, d.alert ? 0.5 : STATUS[d.ref.status].alpha));
+  const flDay = (iso) => (iso ? new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone: "UTC" }) : "");
+  function tipFront(p) {
+    const what = p.status === "contested" ? `Fighting reported inside${p.holder_name ? ` (last held by ${p.holder_name})` : ""}`
+      : p.status === "claimed" ? `Claimed by ${p.holder_name}${p.previous_name ? ` (was held by ${p.previous_name})` : ""}`
+        : `Held by ${p.holder_name}`;
+    const label = p.status === "assessed" ? "Assessed" : p.status === "claimed" ? "Unconfirmed claim" : "Contested";
+    return `<div class="tip"><div class="tip-meta"><span class="fl-dot fl-${esc(p.status)}" style="--c:${esc(p.color || "#999")}" aria-hidden="true"></span><b>${esc(p.name)}</b><span>${esc(p.region || "")}</span></div>
+      <div class="tip-sum">${esc(what)}${p.since ? `, since ${esc(flDay(p.since))}` : ""}. Basis: ${esc(p.basis || "reports")}.</div>
+      <div class="tip-foot"><span>${esc(label)}</span><span>This site's assessment${p.sources ? ` from ${p.sources} source${p.sources === 1 ? "" : "s"}` : ""}</span><span>last report ${esc(flDay(p.last))}</span></div></div>`;
+  }
   world
     .pointLat("lat").pointLng("lon")
     .pointAltitude(0.005)
-    .pointRadius((d) => (d.alert ? 0.09 : 0.13) * zoomK)
-    .pointColor((d) => rgba(CAT_RGB.strike, d.alert ? 0.5 : STATUS[d.ref.status].alpha))
+    .pointRadius(dotRadius)
+    .pointColor(dotColor)
     .pointResolution(8)
-    .pointLabel((d) => `<div class="tip"><div class="tip-meta"><b>${esc(d.place || "Location")}</b><span>${d.alert ? "named in an alert" : "part of an attack wave"}</span></div><div class="tip-sum">${esc(d.ref.summary)}</div></div>`)
-    .onPointHover((d) => { globeEl.style.cursor = d ? "pointer" : ""; })
-    .onPointClick((d) => select(d.ref.id, true));
+    .pointLabel((d) => (d.fl ? tipFront(d.fl) : `<div class="tip"><div class="tip-meta"><b>${esc(d.place || "Location")}</b><span>${d.alert ? "named in an alert" : "part of an attack wave"}</span></div><div class="tip-sum">${esc(d.ref.summary)}</div></div>`))
+    .onPointHover((d) => { globeEl.style.cursor = d && (!d.fl || d.fl.event) ? "pointer" : ""; })
+    .onPointClick((d) => (d.fl ? d.fl.event && select(d.fl.event, true) : select(d.ref.id, true)));
   world
     .ringLat("lat").ringLng("lon")
     .ringColor((r) => (t) => rgba(r.rgb, Math.max(0, 1 - t) * r.alpha))
@@ -439,7 +456,7 @@
     const k = clamp(world.pointOfView().altitude, 0.12, 2.6) / 1.1;
     if (Math.abs(k - zoomK) / zoomK > 0.12) {
       zoomK = k;
-      world.pointRadius((d) => (d.alert ? 0.09 : 0.13) * zoomK);
+      world.pointRadius(dotRadius);
       world.ringMaxRadius((r) => r.max * zoomK);
       world.arcStroke(arcStroke);
     }
@@ -1279,6 +1296,9 @@
         dots.push({ lat: t.lat, lon: t.lon, place: t.place, ref: e, alert });
       });
     }
+    // front-line settlements, newest evidence first, capped
+    const front = (S.data && S.data.frontline && S.data.frontline.places) || [];
+    front.slice(0, PHONE ? 250 : 600).forEach((p) => dots.push({ lat: p.lat, lon: p.lon, fl: p }));
     world.pointsData(dots);
 
     // rings: impacts at recent wave targets, the selected item
@@ -1312,8 +1332,9 @@
   function renderControlNote() {
     const el = $("#controlNote");
     const layers = controlLayers();
-    el.hidden = !layers.length;
-    if (!layers.length) return;
+    const front = (S.data && S.data.frontline && S.data.frontline.places) || [];
+    el.hidden = !layers.length && !front.length;
+    if (el.hidden) return;
     const bySource = new Map();
     const traced = layers.filter((L) => L.approx);
     for (const L of layers.filter((x) => !x.approx)) {
@@ -1334,6 +1355,9 @@
       + `. The shapes are theirs, simplified${hatched ? "; hatched areas have forces present but not in control" : ""}.`);
     for (const L of traced) parts.push(`${esc(L.label)}${L.country ? ` ${esc(country(L.country))}` : ""} (dashed edge) is approximate: traced by this site from the `
       + `<a href="${esc(L.link || "#")}" target="_blank" rel="noopener">${esc(L.source || "source")} map</a>${L.as_of ? ` of ${esc(day(L.as_of))}` : ""}, which is published only as a picture.`);
+    if (front.length) parts.push(`Dots on ${front.length} front-line settlement${front.length === 1 ? "" : "s"} are this site's own assessment, built from the reports on the map: `
+      + `solid where control is confirmed (geolocated footage, reporting from the scene, both sides, or two independent sources), faint where only one side claims it, amber where fighting is reported inside. `
+      + `A second check reviews every change before it is shown.`);
     el.innerHTML = parts.join(" ");
   }
 
