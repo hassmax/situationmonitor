@@ -8,6 +8,7 @@
 #
 # Each layer:
 #   id            stable id
+#   kind          arcgis (default: the source's own shapes) or isw_map (traced from a picture, below)
 #   label         what the map calls it
 #   style         occupied (filled), advance (this period's gains, amber), infiltration (hatched:
 #                 the source says forces are present, not in control)
@@ -21,6 +22,19 @@
 # June 2025), Syria (ISW, February 2026) and West Africa (November 2025) layers are out of date;
 # its eastern DR Congo (September 2026) and Sahel (May 2026) maps are published only as images.
 # Neither organisation publishes control data for Yemen, Sudan, Libya, Ethiopia or Myanmar.
+#
+# Traced layers (kind: isw_map). ISW publishes Yemen's control only as a picture; the owner asked
+# for its shapes anyway (2026-10-03), so the newest matching map in the Map Room is traced by colour
+# (pipeline/mapshapes.py) and published as approximate, linked to the map it came from:
+#   search, title  Map Room search words, and a pattern the map's title must match
+#   trace.class    which fill to trace (mapshapes.CLASSES)
+#   trace.points   control points: [pixel x, pixel y (1638-wide rendition), lon, lat], one per town
+#                  dot ISW prints; fitted once, then each map is shifted by what 3+ of its dots agree
+#   trace.bbox     [west, south, east, north]: traced pieces outside it are dropped (logo, legend)
+#   trace.inside / outside  places the source certainly shows in / out of the traced area; a map
+#                  where that fails (a different layout) is not used and the last copy stays
+# LiveUAmap (asked for other countries) refuses GitHub's servers outright (HTTP 403 on every page,
+# robots.txt included, 2026-10-03), and sells its data; it is not used.
 
 layers:
   - id: ua-occupied-2014
@@ -57,3 +71,35 @@ layers:
     source: Institute for the Study of War
     link: https://storymaps.arcgis.com/stories/36a7f6a6f5a9448496de641cf64bd375
     max_age_days: 14
+
+  # Houthi-held Yemen, traced from ISW and Critical Threats' "Houthi Attacks in Saudi Arabia" maps
+  # (same layout since September 2026: Red Sea to Oman; Sanaa, Hudaydah, Jeddah, Yanbu and Madinah
+  # dots). Fitted 2026-10-03 to under 1 px (about 1.5 km).
+  - id: ye-houthi
+    kind: isw_map
+    label: Houthi-controlled
+    style: occupied
+    country: YE
+    url: https://understandingwar.org/analysis/map-room/
+    search: Houthi Attacks in Saudi Arabia
+    title: Houthi Attacks in Saudi Arabia
+    source: Institute for the Study of War
+    link: https://understandingwar.org/analysis/map-room/
+    max_age_days: 21
+    trace:
+      class: isw_houthi
+      points:
+        - [745, 1004, 44.2064, 15.3547]   # Sanaa
+        - [661, 1041, 42.9545, 14.7978]   # Hudaydah
+        - [411, 573, 39.1925, 21.4858]    # Jeddah
+        - [338, 388, 38.0618, 24.0890]    # Yanbu
+        - [440, 361, 39.6142, 24.4686]    # Madinah
+      bbox: [41.5, 12.0, 54.6, 19.2]
+      inside:
+        - [44.2064, 15.3547]   # Sanaa
+        - [43.76, 16.94]       # Saada
+        - [43.42, 14.36]       # Zabid
+      outside:
+        - [45.03, 12.80]       # Aden
+        - [45.32, 15.46]       # Marib city
+        - [49.12, 14.54]       # Mukalla
