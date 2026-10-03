@@ -210,7 +210,7 @@
     windowH: 24,
     theaterOn: new Set(FALLBACK_THEATERS.map((t) => t.id)),
     statusOn: new Set(Object.keys(STATUS)),
-    layers: { paths: true, supply: true, carriers: true, control: true },
+    layers: { paths: true, supply: true, carriers: true },
     off: new Set(),  // "On the map" entries switched off
     query: "",
     feedLimit: 250,
@@ -315,7 +315,7 @@
   // separate layer floating just above it: phone graphics chips can't tell two surfaces that close
   // apart, and the ocean showed through the land in dark streaks while moving.
   let landShapes = [], landKey = "", landUrl = null, borderPaths = [], hatch = null;
-  const controlLayers = () => (S.layers.control && S.data && S.data.control) || [];
+  const controlLayers = () => (S.data && S.data.control) || [];  // always shown, not a filter
   // Infiltration (forces present, not in control) is hatched rather than filled.
   function hatchPattern(g) {
     if (hatch) return hatch;
@@ -635,6 +635,88 @@
       <div class="tip-sum">${f.deliveries} ${f.deliveries === 1 ? "delivery" : "deliveries"} reported in 30 days${f.cargo.length ? `: ${esc(f.cargo.slice(0, 2).join(", "))}` : ""}</div>
       <div class="tip-foot"><span>${f.active ? "Active" : "Quiet"}</span><span>last ${esc(ago(f.last))}</span></div></div>`;
   }
+
+  // Territorial control: pointing at held ground (tapping it on phones) names it ("Russian-occupied"),
+  // with the source and its date. The shapes are painted into the globe's picture, so the point
+  // under the pointer is tested against them here. Advances and infiltration outrank the areas
+  // they lie in; among occupied layers, the first configured (held since 2014) wins.
+  const CONTROL_RANK = { advance: 0, infiltration: 1, occupied: 2 };
+  const ctlBoxes = new WeakMap();
+  function polyBox(poly) {
+    let b = ctlBoxes.get(poly);
+    if (!b) {
+      b = [180, 90, -180, -90];
+      for (const [x, y] of poly[0]) { b[0] = Math.min(b[0], x); b[1] = Math.min(b[1], y); b[2] = Math.max(b[2], x); b[3] = Math.max(b[3], y); }
+      ctlBoxes.set(poly, b);
+    }
+    return b;
+  }
+  function inPoly(poly, x, y) {
+    let inside = false;  // even-odd over all rings, so holes count as outside
+    for (const ring of poly) for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const [xi, yi] = ring[i], [xj, yj] = ring[j];
+      if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) inside = !inside;
+    }
+    return inside;
+  }
+  function controlAt(lat, lng) {
+    let best = null;
+    controlLayers().forEach((L, i) => {
+      const rank = (CONTROL_RANK[L.style] ?? 3) * 100 + i;
+      if (best && best.rank <= rank) return;
+      for (const poly of L.polygons) {
+        const b = polyBox(poly);
+        if (lng >= b[0] && lng <= b[2] && lat >= b[1] && lat <= b[3] && inPoly(poly, lng, lat)) { best = { L, rank }; break; }
+      }
+    });
+    return best && best.L;
+  }
+  function tipControl(L) {
+    const day = L.as_of ? new Date(L.as_of).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "";
+    return `<div class="tip"><div class="tip-meta"><span class="control-swatch${L.style === "infiltration" ? " hatched" : L.style === "advance" ? " advance" : ""}" aria-hidden="true"></span><b>${esc(L.label)}</b></div>
+      <div class="tip-foot"><span>${esc(L.source || "Source map")}${day ? `, as of ${esc(day)}` : ""}</span></div></div>`;
+  }
+  function showTipAt(x, y, html) {
+    tipBox.innerHTML = html;
+    tipBox.hidden = false;
+    const w = tipBox.offsetWidth;
+    tipBox.style.left = `${clamp(x - w / 2, 8, window.innerWidth - w - 8)}px`;
+    tipBox.style.top = `${Math.max(8, y - tipBox.offsetHeight - 14)}px`;
+  }
+  const globeCanvas = world.renderer().domElement;
+  let ctlTip = false, ctlQueued = null, ctlTimer = null, ctlDown = null;
+  function controlUnder(x, y) {
+    if (!controlLayers().length) return null;
+    const r = globeCanvas.getBoundingClientRect();
+    const at = world.toGlobeCoords(x - r.left, y - r.top);
+    return at ? controlAt(at.lat, at.lng) : null;
+  }
+  function hideControlTip() { if (ctlTip) { ctlTip = false; hideTip(); } }
+  globeCanvas.addEventListener("pointermove", (ev) => {
+    if (ev.pointerType !== "mouse") return;
+    const first = !ctlQueued;
+    ctlQueued = ev;
+    if (first) requestAnimationFrame(() => {
+      const e = ctlQueued;
+      ctlQueued = null;
+      const L = !moving && !e.buttons ? controlUnder(e.clientX, e.clientY) : null;
+      if (L) { showTipAt(e.clientX, e.clientY, tipControl(L)); ctlTip = true; } else hideControlTip();
+    });
+  });
+  globeCanvas.addEventListener("pointerleave", hideControlTip);
+  // a tap (not a drag) on held ground shows its name for a few seconds
+  globeCanvas.addEventListener("pointerdown", (ev) => { if (ev.pointerType !== "mouse") ctlDown = { x: ev.clientX, y: ev.clientY, t: performance.now() }; });
+  globeCanvas.addEventListener("pointerup", (ev) => {
+    const d = ctlDown;
+    ctlDown = null;
+    if (!d || Math.hypot(ev.clientX - d.x, ev.clientY - d.y) > 8 || performance.now() - d.t > 500) return;
+    const L = controlUnder(ev.clientX, ev.clientY);
+    clearTimeout(ctlTimer);
+    if (!L) return hideControlTip();
+    showTipAt(ev.clientX, ev.clientY, tipControl(L));
+    ctlTip = true;
+    ctlTimer = setTimeout(hideControlTip, 3500);
+  });
 
   function layout() {
     world.width(window.innerWidth).height(window.innerHeight);
@@ -1648,7 +1730,7 @@
   function legendChanged() {
     const items = document.querySelectorAll("[data-legend]");
     items.forEach((b) => b.setAttribute("aria-pressed", String(!S.off.has(b.dataset.legend))));
-    S.layers = { paths: !S.off.has("paths"), supply: !S.off.has("crate"), carriers: !S.off.has("carrier"), control: !S.off.has("control") };
+    S.layers = { paths: !S.off.has("paths"), supply: !S.off.has("crate"), carriers: !S.off.has("carrier") };
     $("#legendReset").hidden = !S.off.size;
     $("#legendNone").hidden = S.off.size >= items.length;
     render();
@@ -1657,8 +1739,7 @@
   function buildStaticControls() {
     const item = (key, swatch, label) => `<li><button class="legend-item" type="button" data-legend="${key}" aria-pressed="true" title="Show or hide ${esc(label.toLowerCase())}">${swatch}<span>${esc(label)}</span></button></li>`;
     $("#legend").innerHTML = LEGEND.map(([icon, cat, label]) => item(icon, iconBadge(icon, cat, "solid", "ico-sm"), label)).join("")
-      + item("paths", '<span class="line-swatch line-strike" aria-hidden="true"></span>', "Launch path")
-      + item("control", '<span class="control-swatch" aria-hidden="true"></span>', "Territorial control");
+      + item("paths", '<span class="line-swatch line-strike" aria-hidden="true"></span>', "Launch path");
     $("#windowSeg").innerHTML = WINDOWS.map(([label, h]) => `<button type="button" data-window="${h}" aria-pressed="${h === S.windowH}">${label}</button>`).join("");
     $("#statusList").innerHTML = Object.entries(STATUS).map(([id, s]) => `
       <li><label class="check"><input type="checkbox" data-status="${id}" checked><span class="conf-swatch conf-${s.conf}" aria-hidden="true"></span><span class="label">${esc(s.label)}</span><span class="count" data-status-count="${id}"></span></label></li>`).join("");

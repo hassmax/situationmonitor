@@ -1067,6 +1067,8 @@ h2 {
 .line-strike { background: repeating-linear-gradient(90deg, #ff5b3a 0 5px, transparent 5px 8px); }
 .line-supply { background: #3fc1c9; }
 .control-swatch { width: 18px; height: 12px; border-radius: 2px; flex: none; background: rgba(214, 174, 110, 0.75); box-shadow: inset 0 0 0 1px rgba(236, 212, 160, 0.9); }
+.control-swatch.advance { background: rgba(245, 165, 36, 0.9); }
+.control-swatch.hatched { background: repeating-linear-gradient(135deg, rgba(236, 212, 160, 0.9) 0 1.5px, rgba(214, 174, 110, 0.25) 1.5px 4px); }
 .control-note { margin: 10px 0 0; font-size: 12px; line-height: 1.45; color: var(--ink-3); }
 .control-note a { color: var(--ink-2); }
 

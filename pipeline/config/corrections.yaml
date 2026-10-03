@@ -83,3 +83,7 @@ corrections:
   - id: 50c8cd5ff3c4
     hide: true
     note: Seoul's demand for an apology over the DMZ landmine blast in 51cd3621108d, filed as a drone or missile attack.
+  # From ISW's Taiz and Lahij map of 2 October (the first Map Room read).
+  - id: 660fbcc1c1dd
+    edit: {type: airstrike}
+    note: The Yemeni government's claim of at least 75 airstrikes on Houthi fighters and infrastructure in Taiz is an airstrike, not a drone or missile attack.
