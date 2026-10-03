@@ -36,7 +36,16 @@
 # LiveUAmap (asked for other countries) refuses GitHub's servers outright (HTTP 403 on every page,
 # robots.txt included, 2026-10-03), and sells its data; it is not used.
 
-layers:
+# Removed 2026-10-03 at the owner's request: ISW's geodata licence ("You may not use this geodata
+# without the written consent of ISW") and its Fair Use and Attribution Policy (no incorporating
+# its materials into other mapping platforms, no copying its datasets, no modifying them, without
+# written permission) don't allow these layers, the shapes traced from its Yemen map included.
+# The site's own front-line areas (pipeline/frontline/) replace them. The entries are kept below,
+# under a key the pipeline does not read, in case ISW gives written permission: move them back
+# under `layers` then.
+layers: []
+
+removed_pending_permission:
   - id: ua-occupied-2014
     label: Russian-occupied since 2014
     style: occupied
