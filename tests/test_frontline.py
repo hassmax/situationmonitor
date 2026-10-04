@@ -251,6 +251,8 @@ def test_outlets_describing_a_town_as_held_are_found_and_nothing_else_is():
     assert found("Fighting near Melitopol") == []
     assert found("A woman from the occupied town of Tokmak") == []                       # not listed: unknown
     assert found("Blasts in Russian-held port city of Berdiansk") == [("Berdiansk", "RU")]
+    assert found("Strikes on Russian-held Berdiansk port city") == [("Berdiansk", "RU")]
+    assert found("Strikes on Russian-held Berdiansk port") == []                         # the port, not the town
     assert found("Russian-held areas near Melitopol") == []
     assert found("Ukraine strikes the Russian stronghold of Melitopol") == [("Melitopol", "RU")]
     crimea = standing.find("Blasts in Russian-occupied Crimea", UA_STANDING, towns)
