@@ -283,7 +283,8 @@ def update(state: dict, events: list[dict], theaters: list[dict], carriers: list
             flash = (settings.get("llm_fallback_models") or [None])[0] if step == "gemini-flash" else None
             if step == "gemini-flash" and not flash:
                 continue
-            reply = ask(PROMPT, text, state, settings, now, max_tokens=3000, purpose="analysis", **({"model": flash} if flash else {}))
+            # thinking models (regular Flash) spend part of max_tokens before answering: 3,000 cut a reply short
+            reply = ask(PROMPT, text, state, settings, now, max_tokens=8000, purpose="analysis", **({"model": flash} if flash else {}))
             share -= 1
             model, label = flash or (state.get("llm_model") or {}).get("model"), "Gemini"
         else:
