@@ -238,11 +238,11 @@
     .backgroundColor("rgba(0,0,0,0)")
     .showGraticules(false)
     .showAtmosphere(true)
-    .atmosphereColor("#3d6f99")
+    .atmosphereColor("#2f8fe0")
     .atmosphereAltitude(0.16)
     .pointOfView({ lat: 18, lng: 10, altitude: 3.1 });
   const mat = world.globeMaterial();
-  mat.color.set("#08111c");
+  mat.color.set("#05090f");
   if (mat.emissive) mat.emissive.set("#04080d");
   mat.shininess = 5;
   const controls = world.controls();
@@ -287,8 +287,8 @@
     return { lat: (Math.atan2(z, Math.hypot(x, y)) * 180) / Math.PI, lon: (Math.atan2(y, x) * 180) / Math.PI };
   }
   const countryCenter = (iso2) => REP_POINT[iso2] || centers.get(ISO_NUM.get(iso2)) || null;
-  const landColor = (f) => (S.active.has(f.id) ? "#2d4a66" : S.hot.has(f.id) ? "#1d3047" : "#141f2c");
-  const OCEAN = "#08111c";
+  const landColor = (f) => (S.active.has(f.id) ? "#1f3448" : S.hot.has(f.id) ? "#152536" : "#0e1620");
+  const OCEAN = "#05090f";
   // Territorial control (see controlNote): the source's shapes, painted onto the globe with the land.
   const CONTROL_FILL = { occupied: "rgba(214,174,110,0.55)", advance: "rgba(245,165,36,0.9)" };
   const CONTROL_LINE = "rgba(236,212,160,0.75)";
@@ -296,7 +296,7 @@
   const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(String(h || "#999999").slice(i, i + 2), 16));
   const AREA_ALPHA = { occupied: 0.5, claimed: 0.22 };
   const pathColorOf = (p) => (p.control ? (p.color ? rgba(hexRgb(p.color), p.faint ? 0.45 : 0.85) : CONTROL_LINE) : borderColor(p.fid));
-  const borderColor = (id) => (S.active.has(id) ? "rgba(255,166,122,0.8)" : S.hot.has(id) ? "rgba(150,195,235,0.3)" : "rgba(150,190,230,0.12)");
+  const borderColor = (id) => (S.active.has(id) ? "rgba(255,120,82,0.9)" : S.hot.has(id) ? "rgba(120,190,245,0.45)" : "rgba(120,180,235,0.22)");
 
   fetch("assets/countries-110m.json")
     .then((r) => r.json())
@@ -376,6 +376,13 @@
     const X = (lon) => ((lon + 180) / 360) * W, Y = (lat) => ((90 - lat) / 180) * H;
     g.fillStyle = OCEAN;
     g.fillRect(0, 0, W, H);
+    // a fine 10° grid on the ocean, painted into the same picture (no extra layer)
+    g.strokeStyle = "rgba(70, 130, 190, 0.16)";
+    g.lineWidth = W / 4096;
+    g.beginPath();
+    for (let lon = -180; lon <= 180; lon += 10) { g.moveTo(X(lon), 0); g.lineTo(X(lon), H); }
+    for (let lat = -80; lat <= 80; lat += 10) { g.moveTo(0, Y(lat)); g.lineTo(W, Y(lat)); }
+    g.stroke();
     for (const f of landShapes) {
       g.fillStyle = landColor(f);
       g.beginPath();
