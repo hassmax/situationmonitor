@@ -130,6 +130,13 @@ _EN = (r"air ?strikes?|strikes?|struck|missiles?|drones?|uavs?|shahed|shell(?:in
        r"tankers?|vessels?|ships?|shipping|cargo|freighters?|bulk carrier|container ship|merchant|mariners?|seafarers?|"
        r"crew|ukmto|ambrey|jmic|projectiles?|hormuz|bab el-mandeb|red sea|gulf of aden|hijack(?:ed|ing)?|boarded|"
        r"mines?|limpet|sank|sinking|ablaze|adrift|hits?|" + _COMMITMENTS + "|" + _EUROPE_ASIA)
+# Military aircraft and their bases, as OSINT accounts post force movements ("At least 10 of the
+# B-1s have departed RAF Fairford", OSINTtechnical, 2026-10-04): added 2026-10-04 (prefilter version 7).
+_AIR = (r"bombers?|fighter jets?|warplanes?|combat aircraft|military aircraft|military planes?|squadrons?|"
+        r"air ?bases?|airbase|airfields?|raf|usaf|redeploy(?:s|ed|ing|ment|ments)?|"
+        r"b-?1b?s?|b-?2s?|b-?21s?|b-?52h?s?|f-?(?:15|16|18|22|35)[a-z]?s?|a-?10s?|kc-?(?:10|46|135)s?|"
+        r"e-?(?:3|7|8|11)[a-z]?s?|p-?8[a-z]?s?|rc-?135[a-z]?s?|mq-?9[a-z]?s?|rq-?4[a-z]?s?|c-?(?:5|130)[a-z]?s?|"
+        r"tu-?(?:22m?3?|95|160)s?|su-?(?:24|25|27|30|34|35|57)s?|mig-?(?:29|31)s?")
 # Ground changing hands, as regional outlets headline it ("Sudan Army Captures Mazroub", "resistance
 # forces take control of"), and French for the Sahel and eastern DRC (Radio Okapi, actualite.cd,
 # lefaso.net, RFI Afrique): added 2026-10-04 with those feeds (prefilter version 6).
@@ -141,6 +148,7 @@ _FRENCH = (r"attaques?|frappes?|combats?|affrontements?|tu[ée]s|tu[ée]es|morts
 CONFLICT_RE = re.compile(
     rf"\b(?:{_EN})\b"
     rf"|\b(?:{_CAPTURE}|{_FRENCH})\b"
+    rf"|\b(?:{_AIR})\b"
     r"|удар|обстр|ракет|дрон|бпла|шахед|атак|вибух|взрыв|штурм|наступ|звільн|освобо|ппо|пво|загибл|погиб|"
     r"поранен|ранен|збит|сбит|знищ|уничтож|окупант|оккупан"
     r"|غارة|غارات|قصف|صاروخ|صواريخ|مسيرة|مسيّرة|اشتباك|انفجار|استهداف|قتلى|جرحى"
@@ -191,6 +199,7 @@ _ADDED_WORDS = {
     4: re.compile(rf"\b(?:{_EUROPE_ASIA})\b", re.IGNORECASE),  # 2026-10-02: German, Italian, Dutch, Spanish, Portuguese, Indonesian
     5: re.compile(r"هجوم|هجمات|ضربة|ضربات|باليستي|اعتراض|إسقاط|مسيرات"),  # 2026-10-02: Arabic attack words
     6: re.compile(rf"\b(?:{_CAPTURE}|{_FRENCH})\b", re.IGNORECASE),  # 2026-10-04: captures, and French
+    7: re.compile(rf"\b(?:{_AIR})\b", re.IGNORECASE),  # 2026-10-04: military aircraft and air bases
 }
 PREFILTER_VERSION = max(_ADDED_WORDS)
 

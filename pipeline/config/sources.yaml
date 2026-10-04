@@ -99,6 +99,16 @@ bluesky:
     kind: osint
     group: shipwreck
 
+# Patrol: Bluesky's keyword search, for posts by accounts not listed above (sources/bluesky.py,
+# `search`). Only authors with at least min_followers are kept, and every post goes through the
+# keyword filter; accounts found this way share one source group and never corroborate each other.
+# Aimed at force movements: bombers, tankers and fighters moving between bases, which OSINT
+# accounts post hours before the news.
+bluesky_search:
+  min_followers: 2000
+  queries: [bombers, B-52, B-1B, B-2 bombers, F-35s deploy, KC-135, tankers airlift, RAF Fairford, RAF Lakenheath,
+            Diego Garcia, Al Udeid, Prince Sultan Air Base, Incirlik, Akrotiri, carrier strike group, warships deploy]
+
 telegram:
   # Needs the TG_API_ID, TG_API_HASH and TG_SESSION secrets (see README).
   # This starter list is Ukraine-heavy on purpose: Middle East and Africa Telegram
@@ -158,8 +168,40 @@ telegram:
     side: YE
     group: almehwar
     weight: 2
-    weight: 2
     prefilter: true
+  # OSINT aggregators that post force movements, aircraft and breaking news first, mostly from X
+  # (the owner, 2026-10-04: OSINTtechnical's "At least 10 of the B-1s have departed RAF Fairford" was
+  # missed; OSINTtechnical's own Telegram stopped in 2022 and its Bluesky in February 2026, and X
+  # can't be read for free). All checked live from GitHub's servers that day. OSINTdefender, Clash
+  # Report and CIG repost one another and the same X accounts, so together they count as one
+  # source (group osint-aggregators): two of them never corroborate each other.
+  - username: OSINTdefender
+    name: OSINTdefender (OSINT aggregator)
+    kind: osint
+    group: osint-aggregators
+    weight: 2
+  - username: ClashReport
+    name: Clash Report (OSINT aggregator)
+    kind: osint
+    group: osint-aggregators
+  - username: CIG_telegram
+    name: CIG (Counter Intelligence Global, OSINT aggregator)
+    kind: osint
+    group: osint-aggregators
+  - username: Itamilradar
+    # Itamilradar: military aircraft tracked over the Mediterranean (transponder data), the same
+    # kind of evidence behind posts like the B-1 departures. Unaligned.
+    name: Itamilradar (military flight tracking)
+    kind: osint
+    group: itamilradar
+    weight: 2
+  - username: manniefabian
+    # Mannie's War Room: Emanuel Fabian, The Times of Israel's military correspondent (shares the
+    # outlet's group). Often first with IDF statements, which he attributes.
+    name: Mannie's War Room (Times of Israel)
+    kind: news
+    group: timesofisrael
+    weight: 2
 
 outlets:
   # Google News results come from many outlets. The outlet that published each result is
@@ -208,6 +250,13 @@ outlets:
   - {domain: ukmto.org, name: UKMTO, tier: 1, group: ukmto}
   - {domain: defensenews.com, name: Defense News, tier: 2, group: defensenews}
   - {domain: longwarjournal.org, name: Long War Journal, tier: 2, group: longwarjournal}
+  - {domain: twz.com, name: The War Zone, tier: 2, group: twz, names: [The War Zone, TWZ]}
+  - {domain: ukdefencejournal.org.uk, name: UK Defence Journal, tier: 2, group: ukdefencejournal}
+  - {domain: theaviationist.com, name: The Aviationist, tier: 2, group: theaviationist}
+  - {domain: airandspaceforces.com, name: Air & Space Forces Magazine, tier: 2, group: airandspaceforces}
+  - {domain: breakingdefense.com, name: Breaking Defense, tier: 2}
+  - {domain: militarytimes.com, name: Military Times, tier: 2}
+  - {domain: forcesnews.com, name: Forces News, tier: 2, names: [Forces News, Forces News – BFBS]}
   - {domain: independent.co.uk, name: The Independent, tier: 2}
   - {domain: telegraph.co.uk, name: The Telegraph, tier: 2}
   - {domain: news.sky.com, name: Sky News, tier: 2}
@@ -389,6 +438,28 @@ rss:
     kind: news
     group: usni
     weight: 2
+  # Defense press that covers force movements and aircraft (2026-10-04, checked from GitHub's servers).
+  - id: twz
+    name: The War Zone
+    url: https://www.twz.com/feed
+    kind: news
+    group: twz
+    weight: 2
+  - id: ukdefencejournal
+    name: UK Defence Journal
+    url: https://ukdefencejournal.org.uk/feed/
+    kind: news
+    group: ukdefencejournal
+  - id: theaviationist
+    name: The Aviationist
+    url: https://theaviationist.com/feed/
+    kind: news
+    group: theaviationist
+  - id: airandspaceforces
+    name: Air & Space Forces Magazine
+    url: https://www.airandspaceforces.com/feed/
+    kind: news
+    group: airandspaceforces
   - id: defensenews
     name: Defense News
     url: https://www.defensenews.com/arc/outboundfeeds/rss/?outputType=xml
@@ -638,6 +709,19 @@ rss:
     kind: news
     group: google-news
     weight: 2
+  # Military aircraft moving between bases (bombers, fighters, tankers), and the bases they move
+  # through (added 2026-10-04 with the Bluesky patrol, after the missed B-1 departures from Fairford).
+  - id: gnews-airpower
+    name: Google News (bombers, fighters and tankers on the move)
+    url: https://news.google.com/rss/search?q=%28bombers+OR+%22B-52s%22+OR+%22B-1s%22+OR+%22B-2s%22+OR+%22fighter+jets%22+OR+%22F-35s%22+OR+%22F-22s%22+OR+%22F-15s%22+OR+%22F-16s%22+OR+tankers+OR+%22KC-135%22%29+%28deploy+OR+deployed+OR+deploying+OR+arrive+OR+arrived+OR+depart+OR+departed+OR+%22headed+home%22+OR+%22return+home%22+OR+redeploy+OR+withdraw+OR+surge%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+    weight: 2
+  - id: gnews-airbases
+    name: Google News (forward air bases)
+    url: https://news.google.com/rss/search?q=%28%22RAF+Fairford%22+OR+%22RAF+Lakenheath%22+OR+%22RAF+Mildenhall%22+OR+%22Diego+Garcia%22+OR+%22Al+Udeid%22+OR+%22Prince+Sultan+Air+Base%22+OR+%22Muwaffaq+Salti%22+OR+%22Incirlik%22+OR+%22Akrotiri%22+OR+%22Souda+Bay%22+OR+%22Andersen+Air+Force+Base%22+OR+%22Kadena%22%29+when%3A1d&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
   - id: gnews-transfers
     name: Google News (arms transfers and air bridges)
     url: https://news.google.com/rss/search?q=%28%22air+bridge%22+OR+airlift+OR+%22arms+shipment%22+OR+%22weapons+shipment%22+OR+%22military+aid%22+OR+%22ammunition+delivery%22+OR+%22arms+transfer%22+OR+%22weapons+delivery%22%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen

@@ -744,10 +744,11 @@ def apply_status(events: list[dict], cells: list[dict]) -> None:
         if len(news) >= 3:
             neutral.add("gdelt")
         groups = neutral | sided
-        # Google News results from outlets not listed in sources.yaml share one group. Much of it
-        # is syndicated copy (local sites republishing Reuters), so it only counts when no listed
-        # outlet has reported the event.
-        counted = groups - WEAK_GROUPS if groups - WEAK_GROUPS else groups
+        # Google News results from outlets not listed in sources.yaml share one group, as do posts
+        # the Bluesky patrol finds from accounts not listed. Much of it is syndicated copy (local
+        # sites republishing Reuters, accounts reposting each other), so it only counts when no
+        # listed source has reported the event, and together the weak groups count once.
+        counted = groups - WEAK_GROUPS if groups - WEAK_GROUPS else set(sorted(groups)[:1])
         if len(counted) >= 2 and ((neutral & counted) or len(sides) >= 2):
             e["status"] = "corroborated"
         elif neutral:
@@ -761,7 +762,7 @@ def apply_status(events: list[dict], cells: list[dict]) -> None:
             e["summary"] = e.get("headline") or _headline(e)["summary"]
 
 
-WEAK_GROUPS = {"google-news"}
+WEAK_GROUPS = {"google-news", "bluesky-search"}
 
 SUPPLY_RETENTION_DAYS = 30  # arms transfers are shown as 30-day flows
 

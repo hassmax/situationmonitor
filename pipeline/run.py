@@ -111,6 +111,7 @@ def main() -> int:
     # 1. Fetch
     items = []
     items += bluesky.fetch(cfg.sources["bluesky"], session, health)
+    items += bluesky.search(cfg.sources.get("bluesky_search"), cfg.sources["bluesky"], session, health, t0)
     items += rss.fetch(cfg.sources["rss"], session, health, lookback_h // 24, cfg.outlets)
     items += telegram.fetch(cfg.sources["telegram"], state, health)
     log(f"[fetch] {len(items)} items")
@@ -286,6 +287,7 @@ def main() -> int:
     configured |= {f"rss:{s.get('id') or s['url']}" for s in cfg.sources["rss"]}
     configured |= {f"tg:{s['username'].lstrip('@')}" for s in cfg.sources["telegram"]}
     configured.add("gdelt")
+    configured.add(bluesky.SEARCH_ID)
     configured.add("maproom")
     configured |= {f"control:{l['id']}" for l in control_layers}
     state["health"] = {k: v for k, v in health.items() if k in configured}
