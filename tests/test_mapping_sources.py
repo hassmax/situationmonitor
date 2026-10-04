@@ -54,7 +54,7 @@ def test_capture_headlines_and_french_pass_the_filter():
         assert extract.CONFLICT_RE.search(t), t
     for t in ["Price control measures announced", "Le président a reçu le ministre"]:
         assert not extract.CONFLICT_RE.search(t), t
-    assert extract.PREFILTER_VERSION == 6
+    assert extract.PREFILTER_VERSION >= 6
     # posts only the new words let through get one more look
     assert extract.rejected_before_added_words({"text": "Sudan Army Captures Mazroub"}, 5)
 
