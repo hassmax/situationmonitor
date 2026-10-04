@@ -73,14 +73,24 @@ def _item(n: int, p: dict, conflict: dict, proposed: dict, places: dict) -> dict
 
 
 def run(pending: list[tuple], conflicts: list[dict], fl: dict, state: dict, settings: dict, now, ask, budget: int) -> dict:
-    """pending: [(key, proposed)]. Applies verdicts to the ledger; returns counts by verdict."""
+    """pending: [(key, proposed)]. Applies verdicts to the ledger; returns counts by verdict. One
+    call a run, two while more than PER_CALL changes wait (a first pass of town searches)."""
     counts = {"confirm": 0, "downgrade": 0, "reject": 0, "waiting": len(pending)}
     if not pending or budget <= 0:
         return counts
     rank = {"assessed": 0, "contested": 1, "claimed": 2}
     pending = sorted(pending, key=lambda kp: kp[1].get("last") or "", reverse=True)
     pending.sort(key=lambda kp: rank.get(kp[1]["status"], 3))
-    batch = pending[:PER_CALL]
+    calls = min(budget, 2 if len(pending) > PER_CALL else 1)
+    for n in range(calls):
+        batch = pending[n * PER_CALL:(n + 1) * PER_CALL]
+        if not batch or not _review(batch, conflicts, fl, state, settings, now, ask, counts):
+            break
+    return counts
+
+
+def _review(batch: list[tuple], conflicts: list[dict], fl: dict, state: dict, settings: dict, now, ask, counts: dict) -> bool:
+    """One reviewer call on up to PER_CALL changes; False when the model gave no answer."""
     items = []
     for n, (k, proposed) in enumerate(batch):
         p = fl["places"][k]
@@ -89,7 +99,7 @@ def run(pending: list[tuple], conflicts: list[dict], fl: dict, state: dict, sett
               max_tokens=3000, purpose="frontline_review")
     if got is None:
         log("[frontline] review: no answer; changes wait")
-        return counts
+        return False
     verdicts = {v.get("n"): v for v in got.get("items") or [] if isinstance(v, dict)}
     for n, (k, proposed) in enumerate(batch):
         p = fl["places"][k]
@@ -115,4 +125,4 @@ def run(pending: list[tuple], conflicts: list[dict], fl: dict, state: dict, sett
         counts[verdict] += 1
         counts["waiting"] -= 1
         log(f"[frontline] review {verdict}: {p['name']} -> {proposed['status']} {proposed.get('holder')}: {reason}")
-    return counts
+    return True

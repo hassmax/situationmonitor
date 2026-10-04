@@ -266,7 +266,7 @@ def main() -> int:
     # Front lines: the claims, assessor and reviewer agents (see frontline/), on this run's events
     reserve = int(settings.get("extraction_reserve", 30))
     frontline.update([e for e in events if e["id"] not in hidden], cfg.frontlines, state, settings, t0, extract.ask_json,
-                     geo.Geocoder(state["geocache"], session, 15),
+                     geo.Geocoder(state["geocache"], session, 30),
                      lambda purpose: min(extract.share_left(state, settings, t0, purpose),
                                          extract.calls_allowed(state, settings, t0, reserve=reserve)),
                      disabled=args.no_llm, session=session)

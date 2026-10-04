@@ -409,10 +409,28 @@ def test_the_first_pass_searches_more_whole_regions_first_and_long_lists_get_mor
     small = {**UA, "id": "yemen", "countries": ["YE"], "standing": [{"region": "north", "places": ["Sanaa", "Ibb"]}]}
     fl = {"standing": {}}
     got = standing.due([UA_STANDING, small], fl, NOW)
-    assert len(got) == standing.FIRST_PASS
+    assert len(got) == min(standing.FIRST_PASS, 8)                      # all 8 listed entries at once
     assert got[0][1]["name"] == "Crimea"                                   # covers every Crimean town
     names = [t["name"] for c, t in got]
     assert "Sanaa" in names and sum(c["id"] == "ukraine" for c, _ in got) > sum(c["id"] == "yemen" for c, _ in got)
     for c, t in got:
         fl["standing"][t["search_key"]] = "2026-10-03T12:00:00Z"
     assert len(standing.due([UA_STANDING, small], fl, NOW)) <= standing.PER_RUN   # first pass done: back to PER_RUN
+
+
+def test_the_reviewer_makes_a_second_call_while_many_changes_wait():
+    from frontline import review
+    places = {f"ua:v{i}": {**place(claim("RU", "took", basis="footage")), "name": f"V{i}"} for i in range(review.PER_CALL + 5)}
+    fl = {"places": places}
+    pending = [(k, {"holder": "RU", "status": "assessed", "since": "2026-10-03T10:00:00Z", "basis": "geolocated footage",
+                    "last": "2026-10-03T10:00:00Z"}) for k in places]
+    asked = []
+
+    def ask(system, user, *a, **k):
+        items = json.loads(user)["items"]
+        asked.append(len(items))
+        return {"items": [{"n": it["n"], "verdict": "confirm", "reason": "footage"} for it in items]}
+    counts = review.run(pending, [UA], fl, {}, {}, NOW, ask, budget=5)
+    assert asked == [review.PER_CALL, 5] and counts["confirm"] == review.PER_CALL + 5 and counts["waiting"] == 0
+    assert review.run(pending[:3], [UA], {"places": places}, {}, {}, NOW, ask, budget=5)["confirm"] == 3
+    assert asked[-1] == 3 and len(asked) == 3                                          # few waiting: one call

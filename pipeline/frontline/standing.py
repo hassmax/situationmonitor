@@ -22,6 +22,7 @@ Melitopol", "Houthi-held Hodeidah", "the al-Shabaab stronghold of Jilib".
 from __future__ import annotations
 
 import re
+import time
 from datetime import timedelta
 from urllib.parse import quote_plus
 
@@ -33,7 +34,8 @@ from sources.rss import _entry_time, _outlet_src
 from . import ledger
 
 PER_RUN = 4
-FIRST_PASS = 8      # searches a run while some listed towns have never been searched
+PAUSE = 0.5         # seconds between searches
+FIRST_PASS = 18     # searches a run while some listed towns have never been searched (all done within ~8 hours)
 EVERY = timedelta(days=5)
 WHEN = "60d"
 RESULTS = 60
@@ -224,6 +226,7 @@ def run(conflicts: list[dict], state: dict, session, now, items: list[dict], out
             break
         fl["standing"][t["search_key"]] = iso(now)
         searched += 1
+        time.sleep(PAUSE)   # spread the first pass's searches out a little
         for entry in feed.entries[:RESULTS]:
             published, link = _entry_time(entry), entry.get("link") or ""
             if not published or not link:
