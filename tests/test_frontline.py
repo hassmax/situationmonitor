@@ -264,7 +264,7 @@ def test_outlets_describing_a_town_as_held_are_found_and_nothing_else_is():
     assert sorted(c["name"] for c in claims_) == ["Kerch", "Simferopol"]                   # the whole region
     c = claims_[0]["claim"]
     assert (c["change"], c["actor"], c["basis"], c["aligned"]) == ("holds", "RU", "described", None)
-    assert c["summary"] == 'Reuters writes "Russian-occupied Crimea"'
+    assert c["summary"].startswith('Reuters writes "Russian-occupied Crimea", which covers all of Crimea')
 
 
 def test_two_outlets_describing_a_town_as_held_make_it_assessed():
@@ -388,3 +388,17 @@ def test_isw_reports_are_read_for_control_claims_credited_to_isw_without_its_tex
     # read once: the next run asks nothing more about it, and the sitemap waits an hour
     seen.clear()
     assert isw.run(conflicts, state, {}, sess, NOW + timedelta(minutes=15), ask, budget=5) == [] and not seen
+
+
+def test_descriptions_of_a_whole_region_set_aside_by_the_old_review_rule_come_back(monkeypatch):
+    c = claim("RU", "holds", basis="described", group="reuters")
+    c.update(summary='Reuters writes "occupied Crimea"', rejected="mentions Crimea generally")
+    other = claim("RU", "took", group="tass")
+    other["rejected"] = "fighting near it"
+    state = {"frontline": {"places": {"ua:saky": {**place(c, other), "name": "Saky", "asked": 2}}, "read": {}, "scout": {}}}
+    frontline.update([], [UA], state, {}, NOW, lambda *a, **k: None, None, lambda purpose: 0, disabled=True)
+    p = state["frontline"]["places"]["ua:saky"]
+    got = [x for x in p["claims"] if x["basis"] == "described"][0]
+    assert "rejected" not in got and got["summary"].endswith("which covers all of that region, Saky included")
+    assert [x for x in p["claims"] if x["basis"] != "described"][0]["rejected"] == "fighting near it"   # others stay
+    assert "asked" not in p and state["frontline"]["review_version"] == frontline.REVIEW_VERSION
