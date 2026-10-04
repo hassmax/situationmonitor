@@ -284,9 +284,10 @@ def used_today(state: dict, purpose: str) -> int:
 # waiting. Each share is paced over the day: by noon, about half of it (plus SHARE_BURST).
 SHARES = {"dedupe": "dedupe_daily_max", "recency": "recency_daily_max", "maproom": "maproom_daily_max",
           "frontline": "frontline_daily_max", "frontline_review": "frontline_review_daily_max",
-          "frontline_isw": "frontline_isw_daily_max"}
+          "frontline_isw": "frontline_isw_daily_max", "analysis": "analysis_daily_max"}
 SHARE_DEFAULTS = {"dedupe_daily_max": 140, "recency_daily_max": 48, "maproom_daily_max": 16,
-                  "frontline_daily_max": 40, "frontline_review_daily_max": 60, "frontline_isw_daily_max": 60}
+                  "frontline_daily_max": 40, "frontline_review_daily_max": 60, "frontline_isw_daily_max": 60,
+                  "analysis_daily_max": 24}
 SHARE_BURST = 4
 # Not paced over the day: ISW's maps come out together, around 01:00 UTC, and are read as they come;
 # ISW's written reports are read up front (two weeks' backlog first), then as they come.
@@ -307,7 +308,7 @@ def share_left(state: dict, settings: dict, now: datetime, purpose: str) -> int:
 
 def calls_allowed(state: dict, settings: dict, now: datetime, reserve: int = 0) -> int:
     """Calls this run may make, spreading what is left over the day's remaining runs.
-    `reserve` calls are held back (extraction leaves room for the situation brief)."""
+    `reserve` calls are held back (extraction leaves room for the regional analysis)."""
     remaining = calls_remaining(state, settings, now) - reserve
     if remaining <= 0:
         return 0

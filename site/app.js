@@ -1257,7 +1257,7 @@
     const shift = Date.now() - Date.parse(data.generated_at);
     const move = (s) => (s ? new Date(Date.parse(s) + shift).toISOString() : s);
     data.generated_at = move(data.generated_at);
-    if (data.brief) data.brief.generated_at = move(data.brief.generated_at);
+    if (data.analysis) data.analysis.generated_at = move(data.analysis.generated_at);
     (data.events || []).forEach((e) => {
       e.time = move(e.time); e.updated = move(e.updated);
       (e.reports || []).forEach((r) => { r.time = move(r.time); });
@@ -1960,10 +1960,13 @@
       </span></button></li>`;
   }
 
-  // Situation brief: machine-written from the pipeline's own events, independent of the filters.
+  // Regional analysis (pipeline/analyst.py): what is changing in each region, machine-written from
+  // the map's own events, independent of the filters. Confidence comes from the cited events.
+  const TREND = { escalating: ["▲", "Escalating"], "de-escalating": ["▼", "De-escalating"], shifting: ["◆", "Shifting"], steady: ["●", "Steady"] };
+  const CONF_WORDS = { higher: "Higher confidence", moderate: "Moderate confidence", low: "Low confidence" };
   function briefHtml() {
-    const b = S.data && S.data.brief;
-    if (!b || !(b.bullets || []).length) return "";
+    const a = S.data && S.data.analysis;
+    if (!a || !a.generated_at) return "";
     const byId = new Map(S.data.events.map((e) => [e.id, e]));
     const cites = (ids) => {
       const found = (ids || []).filter((i) => byId.has(i));
@@ -1973,11 +1976,27 @@
         return `<button class="cite" type="button" data-id="${esc(i)}" title="Open: ${esc(e.summary)}">${esc(label)}</button>`;
       }).join("")}</span>` : "";
     };
-    return `<li class="brief"><section aria-labelledby="briefTitle">
-      <div class="brief-head"><h3 id="briefTitle">What changed in the last ${esc(b.window_hours || 6)} hours</h3>
-        <time datetime="${esc(b.generated_at)}">Written ${esc(ago(Date.parse(b.generated_at)))}</time></div>
-      <ul class="brief-list">${(b.bullets || []).map((x) => `<li>${esc(x.text)}${cites(x.ids)}</li>`).join("")}</ul>
-      <p class="brief-note">Machine-written from corroborated events only. Open the cited events before relying on it.</p>
+    const basis = (t) => [t.corroborated && `${t.corroborated} corroborated`, t.single_source && `${t.single_source} single-source`,
+      t.claimed && `${t.claimed} one-sided ${t.claimed === 1 ? "claim" : "claims"}`].filter(Boolean).join(", ");
+    const regions = a.regions || [];
+    const body = regions.length ? regions.map((r) => `
+      <div class="an-region">
+        <button class="an-name" type="button" data-fly="${esc(r.theater)}" title="Fly to ${esc(r.name)}">${esc(r.name)}</button>
+        ${r.judgments.map((j) => {
+          const [mark, word] = TREND[j.trend] || TREND.steady;
+          return `<div class="an-item trend-${esc(j.trend)}">
+            <p class="an-head"><span class="an-trend" title="${esc(word)}"><span aria-hidden="true">${mark}</span> ${esc(word)}</span><b>${esc(j.headline)}</b></p>
+            ${j.text ? `<p class="an-text">${esc(j.text)}</p>` : ""}
+            <p class="an-foot"><span class="an-conf conf-${esc(j.confidence)}">${esc(CONF_WORDS[j.confidence] || "Low confidence")}</span><span>Based on ${esc(basis(j.tally || {}))}</span>${cites(j.ids)}</p>
+          </div>`;
+        }).join("")}
+      </div>`).join("") : `<p class="an-empty">No clear change in any region in the last ${esc(a.window_hours || 6)} hours.</p>`;
+    return `<li class="brief analysis"><section aria-labelledby="briefTitle">
+      <div class="brief-head"><h3 id="briefTitle">What's changing, by region</h3>
+        <time datetime="${esc(a.generated_at)}">Written ${esc(ago(Date.parse(a.generated_at)))}</time></div>
+      <p class="an-sub">The last ${esc(a.window_hours || 6)} hours against the ${esc(a.context_days || 3)} days before</p>
+      ${body}
+      <p class="brief-note">Machine-written analysis of this map's own events. Confidence comes from the events each line cites (corroborated, single-source, or one side's claim); open them before relying on it.</p>
     </section></li>`;
   }
 
@@ -2502,7 +2521,10 @@
     $("#feedList").addEventListener("click", (ev) => {
       if (ev.target.closest("[data-more]")) { S.feedLimit += FEED_PAGE; render(); return; }
       const b = ev.target.closest("[data-id]");
-      if (b) { S.lastFocus = b.dataset.id; select(b.dataset.id, true); }
+      if (b) { S.lastFocus = b.dataset.id; select(b.dataset.id, true); return; }
+      const fly = ev.target.closest("[data-fly]");
+      const t = fly && S.theaters.find((x) => x.id === fly.dataset.fly);
+      if (t && t.camera) world.pointOfView(t.camera, reduceMotion ? 0 : flyMs(t.camera.lat, t.camera.lng, t.camera.altitude));
     });
     let searchTimer;
     $("#search").addEventListener("input", (ev) => {

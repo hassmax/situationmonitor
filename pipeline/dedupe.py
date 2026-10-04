@@ -12,7 +12,7 @@ the earliest event.
 
 - Every run while groups are still waiting; otherwise at most every MIN_INTERVAL, and RETRY after
   a failed call. From the shared daily budget, skipped when fewer than dedupe_min_calls calls
-  are left (the brief keeps priority).
+  are left (the regional analysis keeps priority).
 - Events from the last LOOKBACK hours, not attack waves or alert groups (they have their own
   grouping) and not arms transfers.
 - Hybrid attacks, deployments, incursions and naval incidents in one country are shown as one
