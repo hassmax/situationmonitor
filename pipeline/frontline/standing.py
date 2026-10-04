@@ -33,6 +33,7 @@ from sources.rss import _entry_time, _outlet_src
 from . import ledger
 
 PER_RUN = 4
+FIRST_PASS = 8      # searches a run while some listed towns have never been searched
 EVERY = timedelta(days=5)
 WHEN = "60d"
 RESULTS = 60
@@ -168,9 +169,10 @@ def _known(conflict: dict, fl: dict) -> list[dict]:
 
 
 def due(conflicts: list[dict], fl: dict, now) -> list[tuple[dict, dict]]:
-    """Listed towns (and whole regions) whose search is due: never searched first, then oldest,
-    taking the conflicts in turn (`standing_turn`) so a long list (Ukraine's) can't hold the
-    others back."""
+    """Listed towns (and whole regions) whose search is due: never searched first, then oldest.
+    Each conflict gets a share of the run's searches in proportion to how many of its towns are
+    due (Ukraine's long list gets more, but every conflict gets some); FIRST_PASS a run while
+    towns have never been searched, PER_RUN after that."""
     last = fl.setdefault("standing", {})
     queues = []
     for c in conflicts:
@@ -181,20 +183,19 @@ def due(conflicts: list[dict], fl: dict, now) -> list[tuple[dict, dict]]:
             if when and now - when < EVERY:
                 continue
             q.append((last.get(k) or "", k, c, t))
-        q.sort(key=lambda x: x[0])
+        q.sort(key=lambda x: (x[0], not x[3].get("whole")))   # a whole region (Crimea) first: it covers many towns
         if q:
             queues.append(q)
-    turn = fl.get("standing_turn", 0)   # which conflict goes first, moving on each run
+    fresh = any(x[0] == "" for q in queues for x in q)
+    limit = FIRST_PASS if fresh else PER_RUN
+    taken = [0] * len(queues)
     out = []
-    while queues and len(out) < PER_RUN:
-        q = queues[turn % len(queues)]
-        _, k, c, t = q.pop(0)
+    while len(out) < limit and any(queues):
+        # the conflict with the most towns due per search it got this run
+        i = max((j for j, q in enumerate(queues) if q), key=lambda j: (len(queues[j]) / (taken[j] + 1), -j))
+        _, k, c, t = queues[i].pop(0)
+        taken[i] += 1
         out.append((c, {**t, "search_key": k}))
-        if not q:
-            queues.remove(q)
-        else:
-            turn += 1
-    fl["standing_turn"] = turn % 64
     return out
 
 

@@ -72,6 +72,8 @@ conflicts:
         places: [Kurakhove, Selydove, Pokrovsk, Myrnohrad, Toretsk, Kostiantynivka/Konstantinovka, Druzhkivka, Kramatorsk, Sloviansk/Slavyansk,
                  Lyman, Siversk, Chasiv Yar, Dobropillia, Velyka Novosilka]
       - region: Luhansk Oblast
+        whole: true           # Russia holds essentially all of it ("Russian-controlled Luhansk region")
+        aka: [Luhansk region, Luhansk oblast, Luhansk Oblast, Luhansk province]
         places: [Luhansk, Alchevsk, Sievierodonetsk/Severodonetsk, Lysychansk, Rubizhne, Starobilsk, Rovenky, Antratsyt, Khrustalnyi/Krasnyi Luch,
                  Dovzhansk/Sverdlovsk, Bilovodsk, Novoaidar, Kadiivka/Stakhanov, Shchastia, Popasna, Brianka, Perevalsk, Lutuhyne, Milove]
       - region: Luhansk Oblast

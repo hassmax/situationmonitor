@@ -402,3 +402,17 @@ def test_descriptions_of_a_whole_region_set_aside_by_the_old_review_rule_come_ba
     assert "rejected" not in got and got["summary"].endswith("which covers all of that region, Saky included")
     assert [x for x in p["claims"] if x["basis"] != "described"][0]["rejected"] == "fighting near it"   # others stay
     assert "asked" not in p and state["frontline"]["review_version"] == frontline.REVIEW_VERSION
+
+
+def test_the_first_pass_searches_more_whole_regions_first_and_long_lists_get_more_turns():
+    from frontline import standing
+    small = {**UA, "id": "yemen", "countries": ["YE"], "standing": [{"region": "north", "places": ["Sanaa", "Ibb"]}]}
+    fl = {"standing": {}}
+    got = standing.due([UA_STANDING, small], fl, NOW)
+    assert len(got) == standing.FIRST_PASS
+    assert got[0][1]["name"] == "Crimea"                                   # covers every Crimean town
+    names = [t["name"] for c, t in got]
+    assert "Sanaa" in names and sum(c["id"] == "ukraine" for c, _ in got) > sum(c["id"] == "yemen" for c, _ in got)
+    for c, t in got:
+        fl["standing"][t["search_key"]] = "2026-10-03T12:00:00Z"
+    assert len(standing.due([UA_STANDING, small], fl, NOW)) <= standing.PER_RUN   # first pass done: back to PER_RUN
