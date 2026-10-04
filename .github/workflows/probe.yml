@@ -15,4 +15,4 @@ jobs:
       - run: git fetch -q --depth 1 origin data && git show origin/data:events.json > /tmp/events.json
       - run: python probe.py
         env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LLM_API_KEY: ${{ secrets.GEMINI_API_KEY }}
