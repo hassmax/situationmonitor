@@ -1,0 +1,44 @@
+# Watched bases for the flight agent (pipeline/flights.py): when several military aircraft of one
+# kind take off from or land at one of these (within 40 km, below 12,000 ft) within 3 hours, the
+# agent reports it. Positions are the airfields' published coordinates. Add bases freely.
+bases:
+  # United Kingdom and Europe
+  - {name: RAF Fairford, country: GB, country_name: United Kingdom, lat: 51.682, lon: -1.790}
+  - {name: RAF Lakenheath, country: GB, country_name: United Kingdom, lat: 52.409, lon: 0.561}
+  - {name: RAF Mildenhall, country: GB, country_name: United Kingdom, lat: 52.362, lon: 0.486}
+  - {name: RAF Brize Norton, country: GB, country_name: United Kingdom, lat: 51.750, lon: -1.584}
+  - {name: Ramstein Air Base, country: DE, country_name: Germany, lat: 49.437, lon: 7.600}
+  - {name: Spangdahlem Air Base, country: DE, country_name: Germany, lat: 49.973, lon: 6.692}
+  - {name: Geilenkirchen (NATO AWACS), country: DE, country_name: Germany, lat: 50.961, lon: 6.042}
+  - {name: Aviano Air Base, country: IT, country_name: Italy, lat: 46.032, lon: 12.597}
+  - {name: Sigonella, country: IT, country_name: Italy, lat: 37.402, lon: 14.922}
+  - {name: Morón Air Base, country: ES, country_name: Spain, lat: 37.175, lon: -5.616}
+  - {name: Rota, country: ES, country_name: Spain, lat: 36.645, lon: -6.349}
+  - {name: Souda Bay, country: GR, country_name: Greece, lat: 35.533, lon: 24.150}
+  - {name: Rzeszów-Jasionka, country: PL, country_name: Poland, lat: 50.110, lon: 22.019}
+  - {name: Mihail Kogălniceanu, country: RO, country_name: Romania, lat: 44.362, lon: 28.488}
+  - {name: Ørland, country: NO, country_name: Norway, lat: 63.699, lon: 9.604}
+  # Eastern Mediterranean and Middle East
+  - {name: Incirlik Air Base, country: TR, country_name: Türkiye, lat: 37.002, lon: 35.426}
+  - {name: RAF Akrotiri, country: CY, country_name: Cyprus, lat: 34.590, lon: 32.988}
+  - {name: Nevatim Air Base, country: IL, country_name: Israel, lat: 31.208, lon: 35.012}
+  - {name: Muwaffaq Salti Air Base, country: JO, country_name: Jordan, lat: 31.827, lon: 36.782}
+  - {name: Prince Sultan Air Base, country: SA, country_name: Saudi Arabia, lat: 24.063, lon: 47.580}
+  - {name: Al Udeid Air Base, country: QA, country_name: Qatar, lat: 25.117, lon: 51.315}
+  - {name: Al Dhafra Air Base, country: AE, country_name: United Arab Emirates, lat: 24.248, lon: 54.548}
+  - {name: Ali Al Salem Air Base, country: KW, country_name: Kuwait, lat: 29.347, lon: 47.521}
+  - {name: Camp Lemonnier, country: DJ, country_name: Djibouti, lat: 11.547, lon: 43.159}
+  # Indian Ocean and Indo-Pacific
+  - {name: Diego Garcia, country: IO, country_name: British Indian Ocean Territory, lat: -7.313, lon: 72.411}
+  - {name: Andersen Air Force Base, country: GU, country_name: Guam, lat: 13.584, lon: 144.930}
+  - {name: Kadena Air Base, country: JP, country_name: Japan, lat: 26.356, lon: 127.768}
+  - {name: Misawa Air Base, country: JP, country_name: Japan, lat: 40.703, lon: 141.368}
+  - {name: Yokota Air Base, country: JP, country_name: Japan, lat: 35.749, lon: 139.348}
+  - {name: Osan Air Base, country: KR, country_name: South Korea, lat: 37.090, lon: 127.030}
+  - {name: RAAF Base Tindal, country: AU, country_name: Australia, lat: -14.521, lon: 132.378}
+  - {name: RAAF Base Amberley, country: AU, country_name: Australia, lat: -27.640, lon: 152.712}
+  # Americas outside the contiguous US
+  - {name: Joint Base Pearl Harbor-Hickam, country: US, country_name: United States (Hawaii), lat: 21.319, lon: -157.922}
+  - {name: Eielson Air Force Base, country: US, country_name: United States (Alaska), lat: 64.666, lon: -147.101}
+  - {name: Roosevelt Roads, country: PR, country_name: Puerto Rico, lat: 18.255, lon: -65.641}
+  - {name: Soto Cano Air Base, country: HN, country_name: Honduras, lat: 14.382, lon: -87.621}
