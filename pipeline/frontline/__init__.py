@@ -3,6 +3,9 @@ its assessments, by a team of separate agents, each with one job (config/frontli
 the conflicts and their sides):
 
   scout.py         searches the news for more on settlements resting on one side's claim (no model)
+  standing.py      finds the towns news outlets describe as held as settled fact ("Russian-occupied
+                   Melitopol", "Houthi-held Hodeidah"): long-held ground the reports of fighting
+                   never mention (no model)
   claims.py        reads the map's ground-fighting and territory reports and lists every control
                    claim: who took, holds, lost or fights inside which settlement, on whose word,
                    on what evidence (model, purpose "frontline")
@@ -10,10 +13,11 @@ the conflicts and their sides):
                    rules: assessed / claimed / contested (no model)
   review.py        checks every change against its evidence and the nearby front before it is
                    published (model, purpose "frontline_review")
-  cartographer.py  what the map draws: settlement points, coloured by holder (no model)
+  cartographer.py  what the map draws: shaded areas of control around the assessed settlements (no model)
 
-The scout runs before extraction (its results join the queue); the rest after the events of the
-run are merged. The ledger lives in state["frontline"] (see ledger.py).
+The scout and the standing-control agent run before extraction (the scout's results join the
+queue; the standing agent's descriptions go straight into the ledger); the rest after the events
+of the run are merged. The ledger lives in state["frontline"] (see ledger.py).
 """
 from __future__ import annotations
 
@@ -21,13 +25,18 @@ from datetime import timedelta
 
 from common import iso, log
 
-from . import assess, cartographer, claims, ledger, review, scout
+from . import assess, cartographer, claims, ledger, review, scout, standing
 
 __all__ = ["search", "update", "public"]
 
 
-def search(state: dict, session, now, outlets: dict | None = None) -> list[dict]:
-    """The scout's search results, as extraction items."""
+def search(state: dict, session, now, outlets: dict | None = None, conflicts: list[dict] | None = None,
+           items: list[dict] | None = None) -> list[dict]:
+    """The scout's search results, as extraction items. The standing-control agent's findings (from
+    its own searches and this run's fetched `items`) are filed in the ledger directly."""
+    if conflicts:
+        found = standing.run(conflicts, state, session, now, items or [], outlets)
+        assess.add(ledger.state_of(state), found, now)
     return scout.run(state, session, now, outlets)
 
 

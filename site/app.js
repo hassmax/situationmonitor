@@ -1372,6 +1372,7 @@
       const conflicts = ((S.data.frontline && S.data.frontline.conflicts) || []).filter((c) => own.some((L) => L.conflict === c.id)).map((c) => c.name);
       parts.push(`Coloured areas${conflicts.length ? ` in ${esc(conflicts.join(", "))}` : ""} (dashed edge) are this site's own assessment, approximate: `
         + `ground around the settlements the reports name, in the holder's colour, solid where control is confirmed (geolocated footage, reporting from the scene, both sides, or two independent sources), `
+        + `reaching further around established towns that independent outlets describe as held ("Russian-occupied Melitopol"), never over the sea or across a border; `
         + `light where only one side claims it, hatched where fighting is reported; where two sides meet, the line runs halfway between their settlements. A second check reviews every change before it is shown.`);
     }
     el.innerHTML = parts.join(" ");

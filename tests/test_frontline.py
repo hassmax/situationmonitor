@@ -215,3 +215,80 @@ def test_areas_shade_around_settlements_and_split_halfway_between_sides():
     assert not inside(ru["polygons"], 37.0, 50.2)                                           # nothing far from a named place
     assert by["fl-ukraine-claimed-RU"]["label"] == "Claimed by Russia"
     assert by["fl-ukraine-contested-none"]["label"].startswith("Contested")
+
+
+# ----------------------------------------------------------------------------- standing control
+
+UA_STANDING = {**UA, "area_km": 10, "reach_km": 35,
+               "actors": [{**UA["actors"][0], "held_as": ["Russian", "Russia"], "plain_occupied": True, "home": ["RU"]},
+                          {**UA["actors"][1], "held_as": ["Ukrainian"]}],
+               "standing": [{"region": "Crimea", "whole": True, "places": ["Simferopol", "Kerch"]},
+                            {"region": "Zaporizhzhia Oblast", "places": ["Melitopol", "Berdiansk/Berdyansk",
+                                                                        {"name": "Zaporizhzhia", "city_only": True}]}]}
+
+
+def test_outlets_describing_a_town_as_held_are_found_and_nothing_else_is():
+    from frontline import standing
+    towns = standing.towns(UA_STANDING)
+
+    def found(text):
+        return [(p["name"], a) for p, a, _ in standing.find(text, UA_STANDING, towns)]
+    assert found("Explosions rock Russian-occupied Melitopol") == [("Melitopol", "RU")]
+    assert found("Partisans in occupied Berdyansk") == [("Berdiansk", "RU")]               # other spelling, bare "occupied"
+    assert found("Shelling of Ukrainian-held Zaporizhzhia city") == [("Zaporizhzhia", "UA")]
+    assert found("Russian-occupied Zaporizhzhia nuclear plant") == []                      # a facility
+    assert found("Shelling of Russian-occupied Zaporizhzhia") == []                        # also the oblast's name
+    assert found("Drones hit Russian-held Melitopol district") == []                       # not the town
+    assert found("Life in formerly occupied Melitopol") == []
+    assert found("Fighting near Melitopol") == []
+    assert found("A woman from the occupied town of Tokmak") == []                       # not listed: unknown
+    assert found("Blasts in Russian-held port city of Berdiansk") == [("Berdiansk", "RU")]
+    assert found("Russian-held areas near Melitopol") == []
+    assert found("Ukraine strikes the Russian stronghold of Melitopol") == [("Melitopol", "RU")]
+    crimea = standing.find("Blasts in Russian-occupied Crimea", UA_STANDING, towns)
+    assert [p["name"] for p, _, _ in crimea] == ["Crimea"]
+    claims_ = standing._claims({"text": "Blasts in Russian-occupied Crimea", "time": "2026-10-02T00:00:00Z",
+                                "url": "https://x/1", "source": "Reuters", "group": "reuters", "side": None},
+                               UA_STANDING, towns, NOW)
+    assert sorted(c["name"] for c in claims_) == ["Kerch", "Simferopol"]                   # the whole region
+    c = claims_[0]["claim"]
+    assert (c["change"], c["actor"], c["basis"], c["aligned"]) == ("holds", "RU", "described", None)
+    assert c["summary"] == 'Reuters writes "Russian-occupied Crimea"'
+
+
+def test_two_outlets_describing_a_town_as_held_make_it_assessed():
+    def described(group, days_ago, aligned=None):
+        c = claim("RU", "holds", basis="described", aligned=aligned, group=group, hours_ago=24 * days_ago)
+        return c
+    one = place(described("reuters", 1))
+    assert assess.assess(one, UA_STANDING, NOW)["status"] == "claimed"                    # one outlet: unconfirmed
+    two = place(described("reuters", 1), described("bbc", 30))
+    got = assess.assess(two, UA_STANDING, NOW)
+    assert (got["status"], got["holder"], got["basis"]) == ("assessed", "RU", "independent outlets describe it as held")
+    far = place(described("reuters", 1), described("bbc", 59))
+    assert assess.assess(far, UA_STANDING, NOW)["status"] == "claimed"                    # too far apart
+    other_side = place(described("kyiv-independent", 1, aligned="UA"))
+    assert assess.assess(other_side, UA_STANDING, NOW)["basis"] == "the other side's own media describe it as held"
+
+
+def test_standing_towns_reach_further_stay_on_land_and_home_ground_is_not_shaded():
+    import mapshapes
+    from frontline import cartographer
+    P = lambda name, lat, lon, status, holder, country="UA", standing=False: {
+        "name": name, "conflict": "ukraine", "country": country, "lat": lat, "lon": lon, "status": status,
+        "holder": holder, "standing": standing, "last": "2026-10-03T00:00:00Z"}
+    inside = mapshapes._inside
+    # Melitopol, assessed and listed: shades 35 km; a claimed village: 10 km
+    layers = cartographer.areas([P("Melitopol", 46.85, 35.37, "assessed", "RU", standing=True),
+                                 P("Village", 47.6, 36.6, "claimed", "RU")], UA_STANDING)
+    held = next(L for L in layers if L["style"] == "occupied")
+    assert inside(held["polygons"], 35.37, 47.10)                 # ~28 km north of Melitopol
+    assert not inside(held["polygons"], 35.37, 47.25)             # beyond reach
+    assert not inside(held["polygons"], 35.6, 46.55)              # the Sea of Azov is not shaded
+    claimed = next(L for L in layers if L["style"] == "claimed")
+    assert not inside(claimed["polygons"], 36.6, 47.75)           # a claim only reaches area_km
+    # Russian-held villages in Russia are Russia's own ground: nothing to shade
+    assert cartographer.areas([P("Tetkino", 51.27, 34.27, "assessed", "RU", country="RU")], UA_STANDING) == []
+    # Ukrainian-held Sumy's zone stops at the border
+    sumy = cartographer.areas([P("Sumy", 50.91, 34.80, "assessed", "UA", standing=True)], {**UA_STANDING, "reach_km": 45})[0]
+    assert inside(sumy["polygons"], 34.80, 50.95) and not inside(sumy["polygons"], 35.1, 51.18)   # Russia, ~36 km

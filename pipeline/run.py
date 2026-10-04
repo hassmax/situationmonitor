@@ -170,8 +170,10 @@ def main() -> int:
         if it["id"] not in seen:
             seen[it["id"]] = int(t0.timestamp())
             fresh.append(it)
-    # Front-line scout: more reporting on settlements resting on one side's claim (no model calls)
-    for it in frontline.search(state, session, t0, cfg.outlets):
+    # Front-line scout: more reporting on settlements resting on one side's claim; and the
+    # standing-control agent: towns outlets describe as held ("Russian-occupied Melitopol"), from
+    # this run's items and its own searches, filed in the front-line ledger (no model calls)
+    for it in frontline.search(state, session, t0, cfg.outlets, cfg.frontlines, items):
         if it["id"] not in seen and extract.is_candidate(it):
             seen[it["id"]] = int(t0.timestamp())
             fresh.append(it)

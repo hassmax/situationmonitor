@@ -8,6 +8,8 @@ separates "assessed" control from a side's claim:
   acknowledgement, or an independent analyst (ISW); when the side that lost it says so itself;
   when the opposing side's sources say the same; or when 2+ independent source groups, one of them
   not aligned with either side, report it within CORROBORATE of each other (as for events).
+  Outlets describing the town as held as settled fact (standing.py, basis "described") count the
+  same way over DESCRIBED_WINDOW, or at once when it is the other side's own media.
   Otherwise it is one side's word (or unattributed): a CLAIM.
 - assessed: the holder named by the latest strong evidence ("since" = its first strong evidence
   after the last strong evidence for anyone else).
@@ -24,16 +26,19 @@ from common import haversine_km, iso, log, parse_time
 from . import ledger
 
 CORROBORATE = timedelta(days=3)
+DESCRIBED_WINDOW = timedelta(days=45)  # outlets describing a town as held agree if this close together
 HINT_KM = 60        # a lookup this close to the event's own pin is the place meant
 REGION_KM = 200     # ... else it must lie this close to the region the report names
 SAME_KM = 60        # candidates this close together are one answer
 MERGE_KM = 3        # two spellings placed this close together are one settlement
 CONTESTED_FOR = timedelta(days=5)
 LOOKUP_TRIES = 3
-STRENGTH = ["footage", "on_scene", "both_sides", "admitted", "analyst", "corroborated"]
+STRENGTH = ["footage", "on_scene", "both_sides", "admitted", "analyst", "corroborated", "conceded", "described"]
 BASIS_TEXT = {"footage": "geolocated footage", "on_scene": "reporting from the scene",
               "both_sides": "both sides acknowledge it", "analyst": "independent analysts' assessment",
-              "admitted": "the side that lost it says so"}
+              "admitted": "the side that lost it says so",
+              "conceded": "the other side's own media describe it as held",
+              "described": "independent outlets describe it as held"}
 
 
 def add(fl: dict, found: list[dict], now) -> int:
@@ -156,14 +161,18 @@ def _strength(c: dict, h: str | None, claims: list[dict], conflict: dict) -> str
         return c["basis"]
     if c["change"] == "lost" and c.get("aligned") == c["actor"]:
         return "admitted"
+    described = c["basis"] == ledger.DESCRIBED
+    if described and c.get("aligned") and c["aligned"] != h:
+        return "conceded"     # the other side's own media call it held by h ("occupied Melitopol")
     t = parse_time(c["time"])
+    window = DESCRIBED_WINDOW if described else CORROBORATE
     same = [x for x in claims if x is not c and holder_of(x, conflict) == h
-            and abs(parse_time(x["time"]) - t) <= CORROBORATE]
+            and abs(parse_time(x["time"]) - t) <= window]
     if c.get("aligned") and any(x.get("aligned") and x["aligned"] != c["aligned"] for x in same):
         return "both_sides"   # opposing sides' sources agree
     groups = {x["group"] for x in same + [c]}
     if len(groups) >= 2 and any(not x.get("aligned") for x in same + [c]):
-        return "corroborated"
+        return "described" if described and all(x["basis"] == ledger.DESCRIBED for x in same) else "corroborated"
     return None
 
 
