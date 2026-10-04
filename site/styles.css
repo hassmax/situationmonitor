@@ -1,11 +1,15 @@
 :root {
-  --sea-edge: #061120;
-  --sea: #0b2038;
-  --sea-glow: #123456;
-  --panel: rgba(8, 22, 39, 0.8);
-  --panel-solid: #0a1c31;
-  --line: rgba(150, 188, 224, 0.15);
-  --line-strong: rgba(150, 188, 224, 0.3);
+  --sea-edge: #03060a;
+  --sea: #060b12;
+  --sea-glow: #0b1826;
+  --panel: rgba(11, 15, 21, 0.74);
+  --panel-solid: #0b0f15;
+  --line: rgba(140, 170, 200, 0.14);
+  --line-strong: rgba(140, 170, 200, 0.3);
+  --accent: #ff5a36;                 /* live, new and selected */
+  --accent-rgb: 255, 90, 54;
+  --spring: cubic-bezier(0.3, 1.35, 0.4, 1);
+  --ease-out: cubic-bezier(0.2, 0.8, 0.2, 1);
   --ink: #eaf0f6;
   --ink-2: #a8bbcf;
   --ink-3: #7489a0;
@@ -1224,3 +1228,103 @@ h2 {
 /* "possibly an old story": a single-source event with only older coverage */
 .verdict--doubt { border-color: rgba(243, 193, 75, 0.45); margin-bottom: 8px; }
 .verdict--doubt strong { color: var(--warn); }
+
+
+/* ================================================================== live look (Oct 2026)
+   Darker palette, depth and motion; layout, type and the map's icons are unchanged.
+   Phones keep solid panels (frosted glass made them stutter). Motion stops for reduced motion. */
+
+.panel {
+  backdrop-filter: blur(16px) saturate(1.4);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.03);
+}
+/* panels rise into place when the page opens */
+.brand { animation: rise-in 0.7s var(--ease-out) both; }
+.filters { animation: rise-in 0.7s var(--ease-out) 0.08s both; }
+.feed { animation: rise-in 0.7s var(--ease-out) 0.16s both; }
+@keyframes rise-in { from { opacity: 0; transform: translateY(14px) scale(0.985); } to { opacity: 1; transform: none; } }
+
+/* the "updated" light breathes while data is fresh */
+.beacon.ok { animation: beacon-breathe 2.2s ease-in-out infinite; }
+@keyframes beacon-breathe { 50% { box-shadow: 0 0 0 6px rgba(111, 212, 154, 0); } }
+
+/* time window: the highlight slides between choices */
+.seg { position: relative; }
+.seg::before {
+  content: "";
+  position: absolute;
+  top: 3px; bottom: 3px;
+  left: calc(3px + var(--seg-i, 1) * (100% - 6px + 3px) / 4);
+  width: calc((100% - 6px - 9px) / 4);
+  border-radius: 6px;
+  background: var(--ink);
+  transition: left 0.45s var(--spring);
+}
+.seg button { position: relative; z-index: 1; transition: color 0.3s ease; }
+.seg button[aria-pressed="true"] { background: transparent; }
+
+/* buttons and chips respond to the pointer */
+.legend-item, .chip, .icon-btn, .linkish, .side-row, .filters-toggle {
+  transition: background-color 0.25s ease, border-color 0.25s ease, color 0.25s ease, opacity 0.3s ease, transform 0.2s var(--ease-out);
+}
+.legend-item:hover, .chip:hover { transform: translateY(-1px); }
+
+/* feed: items glide on hover; the selected one takes the accent */
+.item { transition: background-color 0.25s ease, transform 0.25s var(--ease-out); }
+.item:hover { transform: translateX(3px); }
+.item[aria-current="true"] { background: rgba(var(--accent-rgb), 0.11); box-shadow: inset 0 0 0 1px rgba(var(--accent-rgb), 0.28); }
+/* events that just arrived slide in with a brief glow */
+.item.arrive { animation: arrive 1s var(--ease-out) both; }
+@keyframes arrive {
+  0% { opacity: 0; transform: translateY(-14px); background: rgba(var(--accent-rgb), 0.24); }
+  55% { opacity: 1; transform: none; background: rgba(var(--accent-rgb), 0.14); }
+  100% { background: transparent; }
+}
+
+/* the detail view eases open */
+.detail:not([hidden]) { animation: detail-in 0.45s var(--ease-out) both; }
+@keyframes detail-in { from { opacity: 0; transform: translateX(16px); } to { opacity: 1; transform: none; } }
+.feed-list { animation: list-in 0.35s ease both; }
+@keyframes list-in { from { opacity: 0.4; } to { opacity: 1; } }
+
+/* the selected marker sends out rings (its icon is unchanged) */
+.mk.is-selected .mk-in {
+  box-shadow: 0 0 0 2px var(--accent), 0 0 0 0 rgba(var(--accent-rgb), 0.55);
+  animation: selected-ripple 1.8s var(--ease-out) infinite;
+}
+@keyframes selected-ripple {
+  0% { box-shadow: 0 0 0 2px var(--accent), 0 0 0 0 rgba(var(--accent-rgb), 0.55); }
+  100% { box-shadow: 0 0 0 2px var(--accent), 0 0 0 16px rgba(var(--accent-rgb), 0); }
+}
+
+/* new-events note: drops in on a spring with a live dot */
+.live-note {
+  display: inline-flex; align-items: center; gap: 9px;
+  border-color: rgba(var(--accent-rgb), 0.5);
+  background: rgba(16, 11, 10, 0.94);
+  transition: transform 0.6s var(--spring);
+}
+.live-note::before {
+  content: "";
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--accent);
+  animation: live-dot 1.6s ease-in-out infinite;
+}
+@keyframes live-dot { 50% { box-shadow: 0 0 0 6px rgba(var(--accent-rgb), 0); } 0%, 100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.55); } }
+.focus-toast { background: rgba(11, 15, 21, 0.92); }
+
+@media (max-width: 859px) {
+  /* phones: solid panels, same colors and motion */
+  .panel, .focus-toast { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(11, 15, 21, 0.97); }
+  .panel { box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4); }
+  .feed { transition: height 0.45s var(--spring); }
+  .item:hover { transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .brand, .filters, .feed, .feed-list, .detail:not([hidden]), .item.arrive, .beacon.ok, .live-note::before { animation: none; }
+  .mk.is-selected .mk-in { animation: none; box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px rgba(var(--accent-rgb), 0.25); }
+  .seg::before, .seg button, .item, .legend-item, .chip, .icon-btn, .linkish, .side-row, .filters-toggle { transition: none; }
+  .item:hover, .legend-item:hover, .chip:hover { transform: none; }
+}

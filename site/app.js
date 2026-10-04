@@ -75,6 +75,7 @@
   const PLATFORM = { bluesky: "Bluesky", telegram: "Telegram", rss: "News feed", gdelt: "GDELT", map: "Map data", maproom: "ISW map" };
   const KIND = { official: "Official", partisan: "Partisan", osint: "OSINT", news: "News", analysis: "Analysis" };
   const WINDOWS = [["6h", 6], ["24h", 24], ["3d", 72], ["7d", 168]];
+  const ACCENT = [255, 90, 54];  // live, new and selected (styles.css --accent)
   const FALLBACK_THEATERS = [
     { id: "ukraine", name: "Russia–Ukraine", camera: { lat: 48.5, lng: 34, altitude: 0.85 }, highlight: ["804"] },
     { id: "nato_east", name: "NATO flank and hybrid", camera: { lat: 56, lng: 22, altitude: 1.1 }, highlight: ["233", "428", "440", "246", "616"] },
@@ -215,6 +216,7 @@
     query: "",
     feedLimit: 250,
     selectedId: null,
+    arrived: null,      // ids of events that just arrived (they slide into the feed once)
     selectedHull: null,
     selectedFlow: null,
     hot: new Set(),
@@ -236,12 +238,12 @@
     .backgroundColor("rgba(0,0,0,0)")
     .showGraticules(false)
     .showAtmosphere(true)
-    .atmosphereColor("#5aaee6")
+    .atmosphereColor("#3d6f99")
     .atmosphereAltitude(0.16)
     .pointOfView({ lat: 18, lng: 10, altitude: 3.1 });
   const mat = world.globeMaterial();
-  mat.color.set("#0b1f36");
-  if (mat.emissive) mat.emissive.set("#06121f");
+  mat.color.set("#08111c");
+  if (mat.emissive) mat.emissive.set("#04080d");
   mat.shininess = 5;
   const controls = world.controls();
   controls.autoRotate = false;
@@ -285,8 +287,8 @@
     return { lat: (Math.atan2(z, Math.hypot(x, y)) * 180) / Math.PI, lon: (Math.atan2(y, x) * 180) / Math.PI };
   }
   const countryCenter = (iso2) => REP_POINT[iso2] || centers.get(ISO_NUM.get(iso2)) || null;
-  const landColor = (f) => (S.active.has(f.id) ? "#3a6a98" : S.hot.has(f.id) ? "#2a4f75" : "#1e3a59");
-  const OCEAN = "#0b1f36";
+  const landColor = (f) => (S.active.has(f.id) ? "#2d4a66" : S.hot.has(f.id) ? "#1d3047" : "#141f2c");
+  const OCEAN = "#08111c";
   // Territorial control (see controlNote): the source's shapes, painted onto the globe with the land.
   const CONTROL_FILL = { occupied: "rgba(214,174,110,0.55)", advance: "rgba(245,165,36,0.9)" };
   const CONTROL_LINE = "rgba(236,212,160,0.75)";
@@ -311,7 +313,9 @@
         .pathsData(borders).pathPoints("pts").pathPointLat((p) => p[1]).pathPointLng((p) => p[0]).pathPointAlt(0.0045)
         .pathTransitionDuration(0).pathColor(pathColorOf)
         // traced (approximate) areas get a dashed edge; dash sizes are fractions of the ring's length
-        .pathDashLength((p) => (p.approx ? 0.006 : 1)).pathDashGap((p) => (p.approx ? 0.004 : 0));
+        .pathDashLength((p) => (p.approx ? 0.006 : 1)).pathDashGap((p) => (p.approx ? 0.004 : 0))
+        // front lines (the dashed edges of held ground) flow slowly along their length
+        .pathDashAnimateTime((p) => (p.control && p.approx && !reduceMotion ? 90000 : 0));
       if (S.data) render();
     })
     .catch(() => {});
@@ -886,7 +890,12 @@
     S.data = data;
     if (before) {
       const fresh = data.events.filter((e) => !before.has(e.id) && onMap(e) && passes(e));
-      if (fresh.length) announce(`${fresh.length} new ${fresh.length === 1 ? "event" : "events"} added`);
+      if (fresh.length) {
+        announce(`${fresh.length} new ${fresh.length === 1 ? "event" : "events"} added`);
+        // they slide into the feed; only on this render, so later redraws don't replay it
+        S.arrived = new Set(fresh.map((e) => e.id));
+        setTimeout(() => { S.arrived = null; }, 1500);
+      }
     }
 
     renderTheaters();
@@ -1323,9 +1332,9 @@
       }
     }
     const sel = S.selectedId && events.find((e) => e.id === S.selectedId);
-    if (sel) rings.push({ lat: sel.lat, lon: sel.lon, rgb: [234, 240, 246], alpha: 0.85, max: 4, speed: reduceMotion ? 0 : 2.2, period: 1200 });
+    if (sel) rings.push({ lat: sel.lat, lon: sel.lon, rgb: ACCENT, alpha: 0.9, max: 4, speed: reduceMotion ? 0 : 2.2, period: 1200 });
     const selC = S.selectedHull && S.fleet.find((c) => c.hull === S.selectedHull);
-    if (selC) rings.push({ lat: selC._lat, lon: selC._lon, rgb: [234, 240, 246], alpha: 0.85, max: 4, speed: reduceMotion ? 0 : 2.2, period: 1200 });
+    if (selC) rings.push({ lat: selC._lat, lon: selC._lon, rgb: ACCENT, alpha: 0.9, max: 4, speed: reduceMotion ? 0 : 2.2, period: 1200 });
     world.ringsData(rings);
 
     const routeArcs = [...supplyArcs(S.supply.flows), ...(S.layers.carriers ? fleetArcs() : [])];
@@ -1396,7 +1405,7 @@
     if ((e.wave || e.alert) && e.targets.length) extra.push(`${e.targets.length} ${e.targets.length === 1 ? "location" : "locations"}`);
     if (e.wave && e.launched) extra.push(`${e.launched} launched`);
     if (e.legal_basis) extra.push("Legal basis stated");
-    return `<li><button class="item sev-${e.severity}${isNew(e) ? " is-new" : ""}" type="button" data-id="${esc(e.id)}" ${e.id === S.selectedId ? 'aria-current="true"' : ""}>
+    return `<li><button class="item sev-${e.severity}${isNew(e) ? " is-new" : ""}${S.arrived && S.arrived.has(e.id) ? " arrive" : ""}" type="button" data-id="${esc(e.id)}" ${e.id === S.selectedId ? 'aria-current="true"' : ""}>
       ${eventIcon(e)}
       <span>
         <span class="item-meta"><span class="item-type">${esc(typeLabel(e))}</span><span class="item-place">${esc(metaLine(e))}</span><time datetime="${esc(e.time)}">${esc(agoShort(e._t))}</time></span>
@@ -1780,6 +1789,7 @@
     $("#legend").innerHTML = LEGEND.map(([icon, cat, label]) => item(icon, iconBadge(icon, cat, "solid", "ico-sm"), label)).join("")
       + item("paths", '<span class="line-swatch line-strike" aria-hidden="true"></span>', "Launch path");
     $("#windowSeg").innerHTML = WINDOWS.map(([label, h]) => `<button type="button" data-window="${h}" aria-pressed="${h === S.windowH}">${label}</button>`).join("");
+    $("#windowSeg").style.setProperty("--seg-i", String(Math.max(0, WINDOWS.findIndex(([, x]) => x === S.windowH))));
     $("#statusList").innerHTML = Object.entries(STATUS).map(([id, s]) => `
       <li><label class="check"><input type="checkbox" data-status="${id}" checked><span class="conf-swatch conf-${s.conf}" aria-hidden="true"></span><span class="label">${esc(s.label)}</span><span class="count" data-status-count="${id}"></span></label></li>`).join("");
   }
@@ -1787,6 +1797,7 @@
   function setWindow(h) {
     S.windowH = h;
     document.querySelectorAll("[data-window]").forEach((x) => x.setAttribute("aria-pressed", String(Number(x.dataset.window) === h)));
+    $("#windowSeg").style.setProperty("--seg-i", String(Math.max(0, WINDOWS.findIndex(([, x]) => x === h))));  // the sliding highlight
   }
 
   function setPanelsHidden(hidden) {
