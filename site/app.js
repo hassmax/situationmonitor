@@ -269,6 +269,32 @@
     }, 350);
   });
 
+  // Map icons sway a little and settle with a soft bounce when the globe turns: they trail the
+  // surface's motion (a spring toward an offset against its velocity), so when the globe stops
+  // they overshoot and settle. One offset on the globe (--jx/--jy); each icon follows by its --jk.
+  if (!reduceMotion) {
+    let jx = 0, jy = 0, vx = 0, vy = 0, last = null, raf = 0, still = 0;
+    const step = () => {
+      raf = 0;
+      let ux = 0, uy = 0;
+      if (last) {
+        const p = world.getScreenCoords(last.lat, last.lng, 0);  // where last frame's center point is now
+        if (p && isFinite(p.x)) { ux = p.x - last.x; uy = p.y - last.y; }
+      }
+      const pov = world.pointOfView(), here = world.getScreenCoords(pov.lat, pov.lng, 0);
+      last = here && isFinite(here.x) ? { lat: pov.lat, lng: pov.lng, x: here.x, y: here.y } : null;
+      const tx = clamp(-ux * 0.55, -9, 9), ty = clamp(-uy * 0.55, -9, 9);   // trail behind the motion
+      vx = (vx + (tx - jx) * 0.14) * 0.8; vy = (vy + (ty - jy) * 0.14) * 0.8;  // underdamped: a soft bounce
+      jx += vx; jy += vy;
+      globeEl.style.setProperty("--jx", `${jx.toFixed(2)}px`);
+      globeEl.style.setProperty("--jy", `${jy.toFixed(2)}px`);
+      still = Math.abs(ux) + Math.abs(uy) < 0.05 && Math.abs(jx) + Math.abs(jy) + Math.abs(vx) + Math.abs(vy) < 0.05 ? still + 1 : 0;
+      if (still < 3) raf = requestAnimationFrame(step);
+      else { last = null; globeEl.style.setProperty("--jx", "0px"); globeEl.style.setProperty("--jy", "0px"); }
+    };
+    controls.addEventListener("change", () => { still = 0; if (!raf) raf = requestAnimationFrame(step); });
+  }
+
   // ------------------------------------------------------------------ land, borders, country centers
   const centers = new Map();
   function sanitize(f) {
@@ -491,6 +517,7 @@
       el = document.createElement("div");
       el.className = "mk";
       el.innerHTML = '<button type="button" class="mk-in"></button>';
+      el.firstChild.style.setProperty("--jk", (0.55 + Math.random() * 0.8).toFixed(2));  // how much it sways
       el.firstChild.addEventListener("pointerdown", (ev) => ev.stopPropagation());
       elCache.set(key, el);
     }
@@ -1399,10 +1426,33 @@
     renderControlNote();
   }
 
+  // The running UTC clock in the header.
+  function tickClock() {
+    const d = new Date(), p = (n) => String(n).padStart(2, "0");
+    const el = document.getElementById("utcClock");
+    if (el) el.textContent = `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())} UTC`;
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  let tallyWas = null;
   function renderTally(events) {
     const span = { 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[S.windowH];
     const fighting = events.filter(onMap);
-    $("#tally").innerHTML = `<strong>${fighting.length}</strong> events in the last ${span}, <strong>${fighting.filter((e) => e.status === "corroborated").length}</strong> corroborated`;
+    const now = [fighting.length, fighting.filter((e) => e.status === "corroborated").length];
+    $("#tally").innerHTML = `<strong>${now[0]}</strong> events in the last ${span}, <strong>${now[1]}</strong> corroborated`;
+    // counts tick up or down to their new values
+    if (tallyWas && !reduceMotion && (tallyWas[0] !== now[0] || tallyWas[1] !== now[1])) {
+      const els = [...$("#tally").querySelectorAll("strong")], from = tallyWas.slice(), t0 = performance.now();
+      els.forEach((el) => el.classList.add("ticked"));
+      const run = (t) => {
+        const k = Math.min(1, (t - t0) / 650), e = 1 - Math.pow(1 - k, 3);
+        els.forEach((el, i) => { el.textContent = String(Math.round(from[i] + (now[i] - from[i]) * e)); });
+        if (k < 1) requestAnimationFrame(run); else setTimeout(() => els.forEach((el) => el.classList.remove("ticked")), 300);
+      };
+      requestAnimationFrame(run);
+    }
+    tallyWas = now;
   }
 
   // ------------------------------------------------------------------ feed and side lists
@@ -1556,8 +1606,10 @@
 
   function updateFreshness() {
     if (!S.data) return;
+    $("#liveTag").hidden = true;
     if (DEMO) { $("#beacon").className = "beacon stale"; $("#freshText").textContent = "Demo data. None of these events are real."; return; }
     const t = Date.parse(S.data.generated_at), age = Date.now() - t;
+    $("#liveTag").hidden = age >= 45 * 60e3;   // "Live" only while the data is fresh
     $("#beacon").className = "beacon " + (age < 45 * 60e3 ? "ok" : age < 3 * HOUR ? "stale" : "dead");
     $("#freshText").textContent = age < 3 * HOUR ? `Updated ${ago(t)}` : `Updated ${ago(t)}. The update job may be paused.`;
   }
@@ -1822,19 +1874,6 @@
   }
 
   function wire() {
-    // a soft glare follows the pointer across the glass panels (desktop, a fine pointer, motion allowed)
-    if (!PHONE && !reduceMotion && window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
-      document.querySelectorAll(".panel").forEach((p) => {
-        let frame = 0, x = 0, y = 0;
-        p.classList.add("glare");
-        p.addEventListener("pointermove", (ev) => {
-          const r = p.getBoundingClientRect();
-          x = ev.clientX - r.left; y = ev.clientY - r.top;
-          if (!frame) frame = requestAnimationFrame(() => { frame = 0; p.style.setProperty("--mx", `${x}px`); p.style.setProperty("--my", `${y}px`); });
-        });
-        p.addEventListener("pointerleave", () => { p.style.setProperty("--mx", "-999px"); p.style.setProperty("--my", "-999px"); });
-      });
-    }
     $("#windowSeg").addEventListener("click", (ev) => {
       const b = ev.target.closest("[data-window]");
       if (b) { setWindow(Number(b.dataset.window)); render(); }
@@ -1848,7 +1887,6 @@
     $("#legend").addEventListener("click", (ev) => {
       const b = ev.target.closest("[data-legend]");
       if (!b) return;
-      b.classList.remove("bump"); void b.offsetWidth; b.classList.add("bump");  // the icon bounces
       const key = b.dataset.legend;
       S.off.has(key) ? S.off.delete(key) : S.off.add(key);
       legendChanged();

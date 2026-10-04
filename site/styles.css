@@ -1322,33 +1322,19 @@ body::after {
 @keyframes live-dot { 50% { box-shadow: 0 0 0 6px rgba(var(--accent-rgb), 0); } 0%, 100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.55); } }
 .focus-toast { background: rgba(11, 15, 21, 0.92); }
 
-/* glass: icons are glossy beads (same shape and color, a light catches the top) */
-.mk-in, .ico {
-  background-image: radial-gradient(circle at 32% 26%, rgba(255, 255, 255, 0.5), rgba(255, 255, 255, 0.08) 38%, rgba(255, 255, 255, 0) 60%),
-                    linear-gradient(180deg, rgba(255, 255, 255, 0) 55%, rgba(0, 0, 0, 0.16));
-}
-/* map icons pop in on a spring when they appear, and lift toward the pointer */
-.mk-in {
-  transform-origin: 0 0;    /* scale around the icon's center (its transform centers it on its spot) */
-  transition: transform 0.25s ease, scale 0.45s var(--spring), rotate 0.45s var(--spring), filter 0.3s ease;
-  animation: mk-pop 0.6s var(--spring) backwards;
-}
-@keyframes mk-pop { from { scale: 0.35; opacity: 0; } to { scale: 1; opacity: var(--fade); } }
-.mk-in:hover, .mk-in:focus-visible { scale: 1.22; rotate: -6deg; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, 0.5)) brightness(1.08); }
-.mk-in:active { scale: 1.05; }
-.moving .mk-in { transition: none; }
-/* legend and feed icons: spring and tilt on hover, bounce when toggled */
-.ico { transition: scale 0.45s var(--spring), rotate 0.45s var(--spring), filter 0.3s ease; }
-.legend-item:hover .ico, .item:hover .ico, .side-row:hover .ico { scale: 1.18; rotate: -8deg; filter: brightness(1.1); }
-.legend-item.bump .ico { animation: ico-bump 0.5s var(--spring); }
-@keyframes ico-bump { 0% { scale: 0.7; } 60% { scale: 1.25; } 100% { scale: 1; } }
+/* map icons sway a little and settle with a soft bounce when the globe is turned: app.js springs
+   --jx/--jy on the globe from how fast the surface moves; each icon follows by its own --jk */
+.mk-in { translate: calc(var(--jx, 0px) * var(--jk, 1)) calc(var(--jy, 0px) * var(--jk, 1)); }
 /* everything you press gives a little */
 .seg button:active, .legend-item:active, .chip:active, .icon-btn:active, .item:active, .side-row:active, .filters-toggle:active { scale: 0.97; }
-/* a soft glare follows the pointer across the glass (desktop; set by app.js) */
-.panel.glare {
-  background-image: radial-gradient(380px circle at var(--mx, -999px) var(--my, -999px), rgba(170, 210, 255, 0.075), rgba(170, 210, 255, 0) 70%),
-                    linear-gradient(180deg, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0) 120px);
-}
+
+/* liveness: a live light and a running UTC clock in the header; counts tick when they change */
+.live-clock { display: inline-flex; align-items: center; gap: 7px; margin-left: 10px; color: var(--ink-2); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.live-clock .live-tag { display: inline-flex; align-items: center; gap: 6px; color: var(--accent); font-weight: 650; }
+.live-clock .live-tag::before { content: ""; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); animation: live-dot 1.6s ease-in-out infinite; }
+.live-clock .live-tag[hidden] { display: none; }
+.tally strong { display: inline-block; transition: color 0.6s ease; }
+.tally strong.ticked { color: var(--accent); }
 
 @media (max-width: 859px) {
   /* phones: solid panels, same colors and motion */
@@ -1360,9 +1346,8 @@ body::after {
 
 @media (prefers-reduced-motion: reduce) {
   .brand, .filters, .feed, .feed-list, .detail:not([hidden]), .item.arrive, .beacon.ok, .live-note::before { animation: none; }
-  .mk-in, .legend-item.bump .ico { animation: none; }
-  .mk-in, .ico { transition: none; }
-  .mk-in:hover, .mk-in:focus-visible, .legend-item:hover .ico, .item:hover .ico, .side-row:hover .ico { scale: none; rotate: none; }
+  .mk-in { translate: none; }
+  .live-clock .live-tag::before { animation: none; }
   .mk.is-selected .mk-in { animation: none; box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px rgba(var(--accent-rgb), 0.25); }
   .seg::before, .seg button, .item, .legend-item, .chip, .icon-btn, .linkish, .side-row, .filters-toggle { transition: none; }
   .item:hover, .legend-item:hover, .chip:hover { transform: none; }
