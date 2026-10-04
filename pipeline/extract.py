@@ -738,9 +738,11 @@ def _overflow(batches: list[list[dict]], why: str, state: dict, settings: dict, 
         return 0
     sent = 0
     for batch in batches[:limit]:
+        # gpt-oss thought through all 9,000 tokens of a 40-post batch and its answer was cut off
+        # (2026-10-04): it is told to think briefly, with more room for the answer
         out = providers.ask_routed(SYSTEM_PROMPT, _payload(batch), state, settings, now, "extract",
-                                   max_tokens=int(settings["max_output_tokens"]), temperature=0.1,
-                                   max_wait=OVERFLOW_WAIT)
+                                   max_tokens=int(settings["max_output_tokens"]) + 3000, temperature=0.1,
+                                   max_wait=OVERFLOW_WAIT, effort="low")
         if out is None:
             break
         sent += 1

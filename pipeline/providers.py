@@ -164,16 +164,18 @@ def _pace(p: dict, need: int, max_wait: float = MAX_WAIT) -> bool:
 
 def ask_json(p: dict, system_prompt: str, user_text: str, state: dict, now, max_tokens: int = 4000,
              env=os.environ, purpose: str = "analysis", temperature: float = 0,
-             max_wait: float = MAX_WAIT) -> tuple[dict | None, str | None]:
+             max_wait: float = MAX_WAIT, effort: str | None = None) -> tuple[dict | None, str | None]:
     """One call to provider `p`: (parsed JSON, model that answered), or (None, None). Models are
-    tried in order when one is unknown or busy; JSON mode is dropped if the model refuses it."""
+    tried in order when one is unknown or busy; JSON mode is dropped if the model refuses it.
+    `effort` ("low") asks a reasoning model to think less, leaving more of max_tokens for the answer;
+    dropped if the model refuses it."""
     import extract  # the shared request and reply-parsing helpers
 
     token = (env.get(p.get("key") or "") or "").strip()
     if not token:
         return None, None
     sent = extract._estimate_tokens(system_prompt) + extract._estimate_tokens(user_text)
-    need = sent + max_tokens // 4
+    need = sent + max_tokens  # Cerebras counts the answer allowance against the minute's limit
     for model in p.get("models") or []:
         for json_mode in (True, False):
             if not available(p, state, now, env):
@@ -185,6 +187,8 @@ def ask_json(p: dict, system_prompt: str, user_text: str, state: dict, now, max_
                     "messages": [{"role": "system", "content": system_prompt}, {"role": "user", "content": user_text}]}
             if json_mode:
                 body["response_format"] = {"type": "json_object"}
+            if effort:
+                body["reasoning_effort"] = effort
             _count(state, p["name"], now, 1)
             try:
                 r = extract._post(p["url"], body, token)
@@ -195,6 +199,11 @@ def ask_json(p: dict, system_prompt: str, user_text: str, state: dict, now, max_
             if r.status_code in (401, 403):
                 log(f"[providers] {p['name']}: the key was refused ({r.status_code}); check the {p.get('key')} secret")
                 return None, None
+            if r.status_code == 400 and effort and "reasoning_effort" in (r.text or ""):
+                _count(state, p["name"], now, -1)
+                effort = None
+                log(f"[providers] {p['name']} {model}: reasoning_effort refused; asking without it")
+                continue  # note: this skips the JSON-mode-off retry for this model, which is rarely needed
             if r.status_code == 400 and json_mode and "response_format" in (r.text or ""):
                 _count(state, p["name"], now, -1)
                 continue  # this model doesn't take JSON mode: ask again without it
@@ -232,7 +241,7 @@ def ask_json(p: dict, system_prompt: str, user_text: str, state: dict, now, max_
 
 def ask_routed(system_prompt: str, user_text: str, state: dict, settings: dict, now, purpose: str,
                max_tokens: int = 4000, env=os.environ, temperature: float = 0,
-               max_wait: float = MAX_WAIT) -> dict | None:
+               max_wait: float = MAX_WAIT, effort: str | None = None) -> dict | None:
     """Ask the providers routed for `purpose`, in order, within their token caps. None if none answered."""
     import extract
 
@@ -240,7 +249,7 @@ def ask_routed(system_prompt: str, user_text: str, state: dict, settings: dict, 
     for p, cap in routes(settings, purpose):
         if not has_room(p, cap, state, now, purpose, need, env):
             continue
-        reply, _ = ask_json(p, system_prompt, user_text, state, now, max_tokens, env, purpose, temperature, max_wait)
+        reply, _ = ask_json(p, system_prompt, user_text, state, now, max_tokens, env, purpose, temperature, max_wait, effort)
         if reply is not None:
             return reply
     return None

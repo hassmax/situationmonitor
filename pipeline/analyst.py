@@ -51,6 +51,7 @@ MAX_JUDGMENTS = 14
 REACH_KM = 2500           # carriers and aircraft counted for a region: this far from its camera point
 CORROBORATED_HIGH = 2
 ANALYSIS_WAIT = 65  # seconds the analysis may wait for an outside provider's per-minute limit
+FIT_MIN_EVENTS = 12  # the fewest events a region keeps when a request is trimmed to fit a provider
 MIN_CITED = 2
 MAX_FLIGHTS_PER_REGION = 15
 # A single tracked flight of these kinds may be a line of its own ("KC-135 tanker left Al Udeid and
@@ -275,6 +276,21 @@ def validate(reply, shown: list[dict], events: list[dict], flights: dict | None 
     return [{"theater": rid, "name": names[rid], "judgments": got[rid]} for rid in allowed if rid in got]
 
 
+def _fit(shown: list[dict], payload: dict, budget: int) -> tuple[list[dict], str]:
+    """The regions with fewer events each, so the request (instructions included) stays within
+    `budget` tokens: each region keeps its first events, which are the new ones, then the most
+    serious (see `regions`)."""
+    cap = MAX_EVENTS_PER_REGION
+    while True:
+        trimmed = [{**r, "events": r["events"][:cap]} for r in shown]
+        text = json.dumps({**payload, "regions": trimmed}, ensure_ascii=False)
+        if extract_tokens(PROMPT + text) <= budget or cap <= FIT_MIN_EVENTS:
+            if cap < MAX_EVENTS_PER_REGION:
+                log(f"[analyst] up to {cap} events a region, to fit the provider's per-minute limit")
+            return trimmed, text
+        cap -= 4
+
+
 def update(state: dict, events: list[dict], theaters: list[dict], carriers: list[dict], flights: dict | None,
            settings: dict, now, ask, remaining: int, share: int) -> None:
     """Write a new analysis into state["analysis"] when it is due; otherwise keep the previous one."""
@@ -316,13 +332,25 @@ def update(state: dict, events: list[dict], theaters: list[dict], carriers: list
             model, label = flash or (state.get("llm_model") or {}).get("model"), "Gemini"
         else:
             p = providers.configured(settings).get(step)
-            need = extract_tokens(PROMPT + text) + 2000
-            if not p or not providers.has_room(p, caps.get(step), state, now, "analysis", need):
+            if not p:
                 continue
-            # about 36,000 tokens (2026-10-04), more than Cerebras allows in a minute: it waits for a clear minute
-            reply, model = providers.ask_json(p, PROMPT, text, state, now, max_tokens=8000, purpose="analysis",
+            seen, sent = shown, text
+            if p.get("tokens_per_minute"):
+                # Cerebras counts the prompt and the answer allowance against its minute's limit: a full
+                # request (about 24,000 tokens plus 8,000, 2026-10-04) was refused even in a clear minute
+                seen, sent = _fit(shown, payload, int(p["tokens_per_minute"]) - 8000)
+            if not providers.has_room(p, caps.get(step), state, now, "analysis", extract_tokens(PROMPT + sent) + 2000):
+                continue
+            reply, model = providers.ask_json(p, PROMPT, sent, state, now, max_tokens=8000, purpose="analysis",
                                               max_wait=ANALYSIS_WAIT)
             label = p.get("label") or step
+            out = validate(reply, seen, events, flights)
+            if out is not None:
+                by = f"{model} ({label})" if model else label
+                break
+            if reply is not None:
+                log(f"[analyst] {step}: nothing usable in the reply")
+            continue
         out = validate(reply, shown, events, flights)
         if out is not None:
             by = f"{model} ({label})" if model else label

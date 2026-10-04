@@ -127,7 +127,9 @@ def test_extraction_spills_over_when_gemini_refuses_for_billing(monkeypatch):
         items = json.loads(body["messages"][1]["content"])["items"]
         return R(200, {"events": [{"i": it["i"], "relevant": False} for it in items]}, 15000)
     sent = routed(monkeypatch, cerebras, lambda body: R(402, text="Your prepayment credits are depleted"))
-    monkeypatch.setattr(providers, "_sleep", lambda s: None)
+    clock = [1000.0]
+    monkeypatch.setattr(providers, "_clock", lambda: clock[0])
+    monkeypatch.setattr(providers, "_sleep", lambda s: clock.__setitem__(0, clock[0] + s))
     state = gemini_state()
     queue = [item(i) for i in range(100)]   # three batches of 40, 40, 20
     records, left, used, _ = extract.run(queue, state, SETTINGS, NOW)
