@@ -55,7 +55,7 @@ def test_confidence_comes_from_the_cited_events_not_the_model():
     assert [r["theater"] for r in out] == ["mideast"]
     first, second = out[0]["judgments"]
     assert first["text"] == "More US aircraft and units arrived in Qatar." and first["confidence"] == "higher"
-    assert first["tally"] == {"corroborated": 2, "single_source": 0, "claimed": 0}
+    assert first["tally"] == {"corroborated": 2, "single_source": 0, "claimed": 0, "tracked": 0}
     # "Strikes on Gulf bases" rests only on a single-source report and a claim, stated as fact: dropped
     assert second["headline"] == "Reports suggest a drawdown" and second["confidence"] == "low"
     assert analyst.validate("nonsense", shown, EVENTS) is None
@@ -154,3 +154,23 @@ def test_a_line_resting_partly_on_claims_cannot_call_itself_corroborated():
     fine = {"regions": [{"region": "mideast", "judgments": [
         {"headline": "Army advancing", "trend": "escalating", "text": "Corroborated reports indicate the army advanced.", "ids": ["a1", "a2"]}]}]}
     assert analyst.validate(fine, shown, EVENTS)[0]["judgments"][0]["confidence"] == "higher"
+
+
+def test_tracked_flights_can_be_cited_and_carry_their_own_links():
+    moves = {"aircraft": [], "attribution": "Flight data: adsb.lol contributors", "license_url": "https://example.org/odbl", "movements": [
+        {"id": "fk1", "role": "tanker", "time": "2026-10-04T17:00:00Z", "places": [(25.117, 51.315)], "url": "https://adsb.lol/?icao=k1",
+         "label": "KC-135 tanker · Al Udeid Air Base", "text": "KC-135 tanker (PAWN54) took off from Al Udeid Air Base, Qatar, at 4 Oct 16:00 UTC; last reported 400 km northwest."},
+        {"id": "fk2", "role": "tanker", "time": "2026-10-04T17:10:00Z", "places": [(25.117, 51.315)], "url": "https://adsb.lol/?icao=k2",
+         "label": "KC-135 tanker · Al Udeid Air Base", "text": "KC-135 tanker (PAWN55) took off from Al Udeid Air Base, Qatar, at 4 Oct 16:10 UTC."},
+        {"id": "fz9", "role": "airlift", "time": "2026-10-04T17:10:00Z", "places": [(51.68, -1.79)], "url": "https://adsb.lol/?icao=z9",
+         "label": "C-17 transport · RAF Fairford", "text": "C-17 took off from RAF Fairford."}]}
+    shown = analyst.regions(EVENTS, THEATERS, CARRIERS, moves, NOW)
+    me = next(r for r in shown if r["region"] == "mideast")
+    assert [m["id"] for m in me["flight_movements"]] == ["fk2", "fk1"]      # newest first; Fairford is not in the Middle East
+    reply = {"regions": [{"region": "mideast", "judgments": [
+        {"headline": "US tankers leaving Al Udeid", "trend": "shifting", "text": "Two KC-135 tankers took off from Al Udeid toward the northwest.", "ids": ["fk1", "fk2"]},
+        {"headline": "Stray flight", "trend": "shifting", "text": "A C-17 left Fairford.", "ids": ["fz9", "fk1"]}]}]}   # Fairford isn't in this region
+    out = analyst.validate(reply, shown, EVENTS, moves)
+    j = out[0]["judgments"]
+    assert len(j) == 1 and j[0]["ids"] == [] and [f["url"] for f in j[0]["flights"]] == ["https://adsb.lol/?icao=k1", "https://adsb.lol/?icao=k2"]
+    assert j[0]["tally"]["tracked"] == 2 and j[0]["confidence"] == "higher"
