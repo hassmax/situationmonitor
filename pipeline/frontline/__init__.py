@@ -31,6 +31,8 @@ from . import assess, cartographer, claims, isw, ledger, review, scout, standing
 
 __all__ = ["search", "update", "public"]
 
+REVIEW_VERSION = 2   # bump when the reviewer's rules change in a way that should revisit its rejections
+
 
 def search(state: dict, session, now, outlets: dict | None = None, conflicts: list[dict] | None = None,
            items: list[dict] | None = None) -> list[dict]:
@@ -47,6 +49,23 @@ def update(events: list[dict], conflicts: list[dict], state: dict, settings: dic
     """One round: read claims, file and place them, assess, review. `budget(purpose)` gives the
     model calls a purpose may make now. Returns counts for the log."""
     fl = ledger.state_of(state)
+    if fl.get("review_version", 0) < REVIEW_VERSION:
+        # 2026-10-04: the reviewer set aside descriptions of all of Crimea ("occupied Crimea") as not
+        # naming the town; it now counts them for every town in it. Give those claims back.
+        back = 0
+        for p in fl["places"].values():
+            for c in p["claims"]:
+                if c.get("basis") != ledger.DESCRIBED:
+                    continue
+                said = c.get("summary") or ""
+                quoted = said.split('"')[1] if said.count('"') >= 2 else ""
+                if quoted and p["name"].lower() not in quoted.lower() and "covers all of" not in said:
+                    c["summary"] = f"{said}, which covers all of that region, {p['name']} included"
+                if c.pop("rejected", None):
+                    back += 1
+            p.pop("asked", None)
+        fl["review_version"] = REVIEW_VERSION
+        log(f"[frontline] {back} descriptions set aside by the earlier review rule are back for review")
     if not disabled:
         found = claims.run(events, conflicts, state, settings, now, ask, budget("frontline"))
         if session is not None:

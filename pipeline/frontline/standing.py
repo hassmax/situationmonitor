@@ -145,11 +145,14 @@ def _claims(item: dict, conflict: dict, places: list[dict], now) -> list[dict]:
     for p, actor, words in find(item.get("text") or "", conflict, places):
         source = item.get("source") or "a news outlet"
         for town in p.get("whole") or [p]:
+            said = f'{source} writes "{words}"'
+            if p.get("whole"):   # a region one side holds all of: the description covers this town
+                said += f", which covers all of {p['name']}, {town['name']} included"
             out.append({"name": town["name"], "region": town["region"], "country": town["country"], "conflict": conflict["id"],
                         "local": None, "hint": None,
                         "claim": {"time": iso(t), "actor": actor, "change": "holds", "claimed_by": None, "basis": "described",
                                   "aligned": aligned, "group": item.get("group") or source, "source": source,
-                                  "url": item.get("url"), "summary": f'{source} writes "{words}"', "event": None}})
+                                  "url": item.get("url"), "summary": said, "event": None}})
     return out
 
 
