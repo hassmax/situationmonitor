@@ -42,7 +42,9 @@ def test_confidence_comes_from_the_cited_events_not_the_model():
         {"headline": "US increasing force posture in the Middle East", "trend": "escalating",
          "text": "More US aircraft and units arrived in Qatar (a1).", "ids": ["a1", "a2"], "confidence": "certain"},
         {"headline": "Strikes on Gulf bases", "trend": "escalating", "text": "Iran struck bases.", "ids": ["s1", "c1"]},
-        {"headline": "Reports suggest a drawdown", "trend": "de-escalating", "text": "A single report says jets left.", "ids": ["s1"]},
+        {"headline": "Reports suggest a drawdown", "trend": "de-escalating", "text": "A single report says jets left; Iran claims more.", "ids": ["s1", "c1"]},
+        {"headline": "Army retakes town", "trend": "escalating", "text": "The army retook the town.", "ids": ["a1", "s1"]},   # single-source stated as fact
+        {"headline": "One event only", "trend": "escalating", "text": "Units arrived.", "ids": ["a1"]},
     ]}, {"region": "ukraine", "judgments": [
         {"headline": "Made-up link", "trend": "steady", "text": "x", "ids": ["a1"]},        # cites another region's event
         {"headline": "Bad trend word", "trend": "volatile", "text": "x", "ids": ["u1"]},
@@ -65,11 +67,11 @@ def test_update_is_hourly_budgeted_and_keeps_the_last_good_analysis():
     def ask(system, user, state, settings, now, max_tokens=0, purpose=""):
         calls.append(purpose)
         return {"regions": [{"region": "mideast", "judgments": [
-            {"headline": "US increasing force posture", "trend": "escalating", "text": "Units arrived.", "ids": ["a1"]}]}]}
+            {"headline": "US increasing force posture", "trend": "escalating", "text": "Units arrived.", "ids": ["a1", "a2"]}]}]}
 
     state = {}
     analyst.update(state, EVENTS, THEATERS, CARRIERS, FLIGHTS, {}, NOW, ask, remaining=100, share=5)
-    assert calls == ["analysis"] and state["analysis"]["regions"][0]["judgments"][0]["confidence"] == "moderate"
+    assert calls == ["analysis"] and state["analysis"]["regions"][0]["judgments"][0]["confidence"] == "higher"
     analyst.update(state, EVENTS + [ev("n1")], THEATERS, CARRIERS, FLIGHTS, {}, NOW + timedelta(minutes=20), ask, 100, 5)
     assert calls == ["analysis"]                                   # not again within the hour
     later = NOW + timedelta(hours=2)

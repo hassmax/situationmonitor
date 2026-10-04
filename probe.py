@@ -28,3 +28,4 @@ for r in (state.get("analysis") or {}).get("regions", []):
         for i in j["ids"]:
             e = by[i]
             print(f"       - {e['status']:12} {e['type']:14} {e.get('place','')[:30]:30} {e['summary'][:110]}")
+# rerun 2

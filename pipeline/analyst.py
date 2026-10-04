@@ -12,11 +12,13 @@ events it rests on.
 
 What keeps it honest (the old per-theater lines were removed because they folded single-source
 reports into statements of fact):
-- every judgment must cite events of that region, and judgments citing anything else are dropped;
+- every judgment must cite at least MIN_CITED events of that region (a trend, not one event's news),
+  and judgments citing anything else are dropped;
 - the confidence shown is worked out here from the cited events, never by the model: "higher" with
   CORROBORATED_HIGH or more corroborated events, "moderate" with one, "low" with none;
-- a judgment resting on no corroborated event must say so in its words ("reports suggest", "claims"),
-  else it is dropped;
+- a judgment citing any event that isn't corroborated must say so in its words ("reports suggest",
+  "claims"), else it is dropped (in the first trial a single-source capture, cited beside a
+  corroborated summit, was stated as fact);
 - no outside knowledge and no predictions; event ids written into the text are stripped.
 
 One model call (purpose "analysis", paced daily share `analysis_daily_max`), at most every
@@ -41,6 +43,7 @@ PER_REGION = 2
 MAX_JUDGMENTS = 14
 REACH_KM = 2500           # carriers and aircraft counted for a region: this far from its camera point
 CORROBORATED_HIGH = 2
+MIN_CITED = 2
 VERSION = 1
 TRENDS = ("escalating", "de-escalating", "shifting", "steady")
 
@@ -63,18 +66,29 @@ CONFIDENCE = {"corroborated": "corroborated by independent sources", "unconfirme
 
 PROMPT = """You are a careful military and political analyst writing for a live armed-conflict map. For each region you get the map's own events from the last 3 days (those from the last 6 hours are marked "new"), activity counts against the days before, and context: US aircraft carriers near the region and military aircraft broadcasting their position over it.
 
-Say what is changing in each region: the direction things are moving, as an analyst would put it in one line ("US increasing force posture in the Middle East", "Russia shifting strikes to Ukraine's energy grid", "Talks between Pakistan and Afghanistan stalling"). Focus on what the last 6 hours add to the picture of the last 3 days.
+Say what is changing in each region: the direction things are moving, as an analyst would put it in one line. A judgment is a trend drawn from several events, not the news of one event.
+
+Good headlines (actor, direction, what, where):
+- "US increasing force posture in the Gulf"
+- "US withdrawing bombers from Europe"
+- "Russia intensifying drone strikes on Ukraine's energy grid"
+- "Sudan's army regaining ground in North Kordofan"
+- "Houthis widening attacks to Saudi oil sites"
+- "Pakistan–Afghanistan talks stalling"
+Bad: "Japan lodges protest after Marine arrest" (one event, no direction), "Army retakes town as summit convenes" (two unrelated things).
+
+What to look for: force posture (deployments, forces moved, carriers, tankers and transports in the air, exercises), the level and targets of strikes and fighting, ground changing hands, attacks spreading to new places or targets, diplomacy advancing or stalling. Focus on what the last 6 hours add to the picture of the last 3 days.
 
 Rules:
 - Use only what you are given. No outside knowledge, no background, no predictions of what will happen next.
-- Every judgment must rest on the events it cites (ids from that region only), and the cited events together must support it. A trend ("increasing", "withdrawing", "shifting", "escalating") needs at least two cited events pointing the same way, or one event that states the trend itself.
+- Every judgment cites at least two events of its region (ids from that region only) that point the same way. Never combine unrelated events into one judgment.
 - Carriers and aircraft are context: mention them only together with events, never as the only basis.
-- Weigh confidence: events marked single-source or one side's claim are weaker. When a judgment rests on them, say so in the words ("reports suggest", "Russia claims", "unconfirmed reports"). Keep each event's own attribution. Never state a single-source report or a claim as fact.
+- Weigh confidence: events marked single-source or one side's claim are weaker. When a judgment cites any of them, say so in the words ("reports suggest", "Russia claims", "unconfirmed reports"). Keep each event's own attribution. Never state a single-source report or a claim as fact.
 - Name actors only as the events name them. Don't assign blame or intent the events don't state.
 - Plain, neutral language; no drama. Keep numbers exactly as given.
 - Never write event ids in the text; they go only in "ids".
 - Only regions where something notable is happening; at most 2 judgments per region, most important first. Skip a region rather than write filler.
-- "trend" is one of: escalating (more or heavier fighting, strikes, buildup), de-escalating (less fighting, withdrawals, ceasefires, talks advancing), shifting (a change of focus, place or method rather than of level), steady (activity continuing at about the same level, worth noting).
+- "trend" is one of: escalating (more or heavier fighting, strikes, buildup), de-escalating (less fighting, withdrawals, ceasefires, talks advancing), shifting (a change of focus, place or method rather than of level), steady (a pattern of several events continuing at about the same level; never for a one-off).
 
 Reply with one JSON object and nothing else:
 {"regions": [{"region": "<region id>", "judgments": [{"headline": "<at most 12 words>", "trend": "<trend>", "text": "<one or two sentences>", "ids": ["<event id>", ...]}]}]}"""
@@ -214,11 +228,11 @@ def validate(reply, shown: list[dict], events: list[dict]) -> list[dict] | None:
             ids = [i for i in dict.fromkeys(j.get("ids") or []) if isinstance(i, str)]
             headline, text = _clean(j.get("headline"), 120, ids), _clean(j.get("text"), 400, ids)
             trend = str(j.get("trend") or "").lower()
-            if not ids or not headline or trend not in TRENDS or not all(i in allowed[rid] for i in ids):
+            if len(ids) < MIN_CITED or not headline or trend not in TRENDS or not all(i in allowed[rid] for i in ids):
                 continue
             t = tally(ids, by_id)
-            if not t["corroborated"] and not _HEDGE.search(f"{headline} {text}"):
-                continue  # resting on single-source reports or claims, stated as fact
+            if (t["single_source"] or t["claimed"]) and not _HEDGE.search(f"{headline} {text}"):
+                continue  # single-source reports or claims, stated as fact
             got.setdefault(rid, []).append({"headline": headline, "trend": trend, "text": text, "ids": ids[:12],
                                             "tally": t, "confidence": confidence(t)})
             total += 1
