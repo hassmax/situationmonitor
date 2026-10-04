@@ -163,11 +163,11 @@ On the globe this becomes shaded areas of control. Only corroborated control is 
 pip install -r pipeline/requirements.txt
 export LLM_API_KEY=<your Gemini API key>   # optional; add --no-llm to skip
 python pipeline/run.py --state state --out out
-mkdir -p site/data && cp out/events.json site/data/events.json
+mkdir -p site/data && cp out/events.json site/data/events.json && cp -r out/reports site/data/reports
 python -m http.server --directory site 8000   # then open http://localhost:8000 (or /?demo)
 ```
 
-Don't commit `site/data/events.json`; the workflow generates it on every run.
+Don't commit `site/data/events.json` or `site/data/reports/`; the workflow generates them on every run. The reports behind each event (sources, links, their summaries) are kept out of `events.json`, in 64 small files under `reports/`, and the page fetches one when an event is opened (or pointed at): they are most of the data, and the page needs them only then.
 
 ## Backfill
 
