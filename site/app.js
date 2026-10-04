@@ -1822,6 +1822,19 @@
   }
 
   function wire() {
+    // a soft glare follows the pointer across the glass panels (desktop, a fine pointer, motion allowed)
+    if (!PHONE && !reduceMotion && window.matchMedia("(hover: hover) and (pointer: fine)").matches) {
+      document.querySelectorAll(".panel").forEach((p) => {
+        let frame = 0, x = 0, y = 0;
+        p.classList.add("glare");
+        p.addEventListener("pointermove", (ev) => {
+          const r = p.getBoundingClientRect();
+          x = ev.clientX - r.left; y = ev.clientY - r.top;
+          if (!frame) frame = requestAnimationFrame(() => { frame = 0; p.style.setProperty("--mx", `${x}px`); p.style.setProperty("--my", `${y}px`); });
+        });
+        p.addEventListener("pointerleave", () => { p.style.setProperty("--mx", "-999px"); p.style.setProperty("--my", "-999px"); });
+      });
+    }
     $("#windowSeg").addEventListener("click", (ev) => {
       const b = ev.target.closest("[data-window]");
       if (b) { setWindow(Number(b.dataset.window)); render(); }
@@ -1835,6 +1848,7 @@
     $("#legend").addEventListener("click", (ev) => {
       const b = ev.target.closest("[data-legend]");
       if (!b) return;
+      b.classList.remove("bump"); void b.offsetWidth; b.classList.add("bump");  // the icon bounces
       const key = b.dataset.legend;
       S.off.has(key) ? S.off.delete(key) : S.off.add(key);
       legendChanged();
