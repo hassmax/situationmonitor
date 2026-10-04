@@ -151,6 +151,29 @@ class Busy(RuntimeError):
     against the daily budget; an outage used to drain it with failed attempts."""
 
 
+class OutOfCredit(RuntimeError):
+    """The provider refused for billing (HTTP 402, "prepayment credits are depleted"): nothing was
+    done, it is not counted, posts keep their place in the queue, and the model is left alone for
+    CREDIT_RECHECK (one probe then) instead of every model being probed every run."""
+
+
+CREDIT_RECHECK = timedelta(hours=1)
+
+
+def _paused(state: dict, now: datetime) -> bool:
+    """The provider refused for billing less than CREDIT_RECHECK ago."""
+    t = parse_time(state.get("llm_out_of_credit"))
+    return bool(t and now - t < CREDIT_RECHECK)
+
+
+def _out_of_credit(state: dict, now: datetime, r) -> None:
+    if not state.get("llm_out_of_credit"):
+        log(f"[extract] the model provider refused for billing (HTTP 402: credits depleted); nothing is counted, "
+            f"posts wait in the queue, and the model is checked again hourly: {_describe(r)[:160]}")
+    state["llm_out_of_credit"] = iso(now)
+    state.pop("llm_model", None)
+
+
 # Words added to the filter on 2026-09-27. Posts that matched only these were rejected before
 # then; run.py uses this once to give them another look.
 _ADDED_WORDS = {
@@ -241,12 +264,14 @@ def used_today(state: dict, purpose: str) -> int:
 # three a run, every run, while its backlog never emptied) and extraction stopped with 358 posts
 # waiting. Each share is paced over the day: by noon, about half of it (plus SHARE_BURST).
 SHARES = {"dedupe": "dedupe_daily_max", "recency": "recency_daily_max", "maproom": "maproom_daily_max",
-          "frontline": "frontline_daily_max", "frontline_review": "frontline_review_daily_max"}
+          "frontline": "frontline_daily_max", "frontline_review": "frontline_review_daily_max",
+          "frontline_isw": "frontline_isw_daily_max"}
 SHARE_DEFAULTS = {"dedupe_daily_max": 140, "recency_daily_max": 48, "maproom_daily_max": 16,
-                  "frontline_daily_max": 40, "frontline_review_daily_max": 24}
+                  "frontline_daily_max": 40, "frontline_review_daily_max": 24, "frontline_isw_daily_max": 60}
 SHARE_BURST = 4
-# Not paced over the day: ISW's maps come out together, around 01:00 UTC, and are read as they come.
-UNPACED = {"maproom"}
+# Not paced over the day: ISW's maps come out together, around 01:00 UTC, and are read as they come;
+# ISW's written reports are read up front (two weeks' backlog first), then as they come.
+UNPACED = {"maproom", "frontline_isw"}
 
 
 def share_left(state: dict, settings: dict, now: datetime, purpose: str) -> int:
@@ -426,6 +451,10 @@ def _find_model(token: str, settings: dict, state: dict, skip=()) -> dict | None
                 break
             if r.status_code == 429:
                 raise RateLimited(r.text[:200])
+            if r.status_code == 402:
+                _spend(state, "probe", -1)  # refused for billing: nothing was done, and the other models share the bill
+                _out_of_credit(state, datetime.now().astimezone(), r)
+                return None
             if r.status_code >= 500:
                 _spend(state, "probe", -1)  # overloaded or down: not counted
                 log(f"[extract] probe {model}: busy ({_describe(r)[:60]}), trying the next model")
@@ -440,6 +469,8 @@ def _find_model(token: str, settings: dict, state: dict, skip=()) -> dict | None
                 found = {"url": url, "model": model, "json_mode": json_mode, "fallback": backup,
                          "checked": iso(datetime.now().astimezone())}
                 state["llm_model"] = found
+                if state.pop("llm_out_of_credit", None):
+                    log("[extract] the model provider answers again")
                 log(f"[extract] using {model} (json_mode={json_mode})"
                     + (" as a backup while the preferred models are busy" if backup else ""))
                 return found
@@ -472,6 +503,8 @@ def _call_model(batch: list[dict], token: str, chosen: dict, settings: dict) -> 
     r = _post(chosen["url"], body, token)
     if r.status_code == 429:
         raise RateLimited(r.text[:200])
+    if r.status_code == 402:
+        raise OutOfCredit(r)
     if r.status_code >= 500:
         raise Busy(_describe(r))
     if r.status_code >= 400:
@@ -625,6 +658,10 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
     log(f"[extract] queue={len(queue)} batches={len(batches)} allowed_calls={allowed}")
     if not allowed or not batches:
         return [], queue, 0, []
+    if _paused(state, now):
+        log(f"[extract] the model provider refused for billing at {state['llm_out_of_credit']}; "
+            f"{len(queue)} posts wait in the queue until it is checked again")
+        return [], queue, 0, []
 
     chosen = state.get("llm_model")
     checked = parse_time(chosen.get("checked")) if chosen else None
@@ -661,6 +698,11 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
             out = _call_model(batch, token, chosen, settings)
         except RateLimited as exc:
             log(f"[extract] rate limited, stopping for this run: {exc}")
+            break
+        except OutOfCredit as exc:
+            used -= 1
+            _spend(state, "extract", -1)  # not counted: refused for billing, the posts keep their place
+            _out_of_credit(state, now, exc.args[0])
             break
         except Busy as exc:
             used -= 1
@@ -724,7 +766,8 @@ def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, no
     `images` (data: URLs) are shown to the model after the text."""
     token = os.environ.get("LLM_API_KEY", "").strip()
     chosen = state.get("llm_model")
-    if not token or not chosen or calls_allowed(state, settings, now) <= 0 or share_left(state, settings, now, purpose) <= 0:
+    if (not token or not chosen or _paused(state, now) or calls_allowed(state, settings, now) <= 0
+            or share_left(state, settings, now, purpose) <= 0):
         return None
     body = {
         "model": chosen["model"], "temperature": 0, "max_tokens": max_tokens, "stream": False,
@@ -748,6 +791,10 @@ def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, no
                 if other:
                     return ask_json(system_prompt, user_text, state, settings, now, max_tokens, _retry=False,
                                     purpose=purpose, images=images)
+            return None
+        if r.status_code == 402:
+            _spend(state, purpose, -1)  # refused for billing: nothing was done, not counted
+            _out_of_credit(state, now, r)
             return None
         if r.status_code == 429:
             _spend(state, purpose, -1)  # refused for the rate limit: nothing was done, not counted

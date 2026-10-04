@@ -37,9 +37,10 @@ For each report (identified by "i"), list every settlement the report says chang
 - settlement: its standard English name, one spelling for every report: for Ukraine the Ukrainian transliteration (Hrachivka, not Grachovka; Nesterne, not Nesternoye; Kupiansk, not Kupyansk). local_name: for Ukraine and Russia only, the same name in Cyrillic (Ukrainian for Ukraine, Russian for Russia), or null if you are not sure; null for every other country.
 - region: the province, oblast, state or governorate it is in, as the report gives it, or if the report does not, the one you know it to be in when the name is not shared with other places; else null. country: ISO 3166-1 alpha-2 of the settlement.
 - date: YYYY-MM-DD the change happened, if the report gives it, else null.
+- note: what the report says about this settlement, in your own words, at most 15 words.
 Never infer a claim the report does not make, and keep each side's claim as that side's claim. An empty list is fine.
 
-JSON: {{"reports": [{{"i": <n>, "claims": [{{"settlement": "...", "local_name": "..." or null, "region": "..." or null, "country": "..", "conflict": "<id>", "change": "...", "actor": "<id>" or null, "claimed_by": "<id>" or null, "basis": "...", "date": "YYYY-MM-DD" or null}}]}}]}}"""
+JSON: {{"reports": [{{"i": <n>, "claims": [{{"settlement": "...", "local_name": "..." or null, "region": "..." or null, "country": "..", "conflict": "<id>", "change": "...", "actor": "<id>" or null, "claimed_by": "<id>" or null, "basis": "...", "date": "YYYY-MM-DD" or null, "note": "..."}}]}}]}}"""
 
 
 def report_key(r: dict) -> str:

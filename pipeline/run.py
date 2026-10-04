@@ -269,7 +269,7 @@ def main() -> int:
                      geo.Geocoder(state["geocache"], session, 15),
                      lambda purpose: min(extract.share_left(state, settings, t0, purpose),
                                          extract.calls_allowed(state, settings, t0, reserve=reserve)),
-                     disabled=args.no_llm)
+                     disabled=args.no_llm, session=session)
     if not args.no_llm:
         brief.update(state, published, {t["id"]: t["name"] for t in cfg.theaters}, settings, t0,
                      extract.ask_json, extract.calls_remaining(state, settings, t0))
