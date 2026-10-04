@@ -27,7 +27,7 @@ from datetime import timedelta
 
 from common import iso, log
 
-from . import assess, cartographer, claims, isw, ledger, review, scout, standing
+from . import assess, cartographer, claims, heat, isw, ledger, review, scout, standing
 
 __all__ = ["search", "update", "public"]
 
@@ -75,6 +75,8 @@ def update(events: list[dict], conflicts: list[dict], state: dict, settings: dic
         added = 0
     placed = assess.locate(fl, conflicts, geocoder)
     merged = assess.merge_spellings(fl)
+    if session is not None and not disabled:
+        heat.update(conflicts, fl, session, now)  # satellite fire detections near tracked places (no model)
 
     cutoff = iso(now - timedelta(days=ledger.MEMORY_DAYS))
     pending = []

@@ -5,8 +5,12 @@ map data, whose terms forbid reuse without written permission.
 
 - Which reports: ISW's sitemap (one request an hour, CHECK_EVERY) lists its research by date. The
   series in SERIES are read: the Russian Offensive Campaign Assessment and the Russian Occupation
-  Update (Ukraine), the Iran Update (the Houthi-Saudi war in Yemen), and the Africa File if ISW
-  hosts it. Up front, the last BACKFILL of reports; then each new one, newest first.
+  Update (Ukraine) and the Iran Update (the Houthi-Saudi war in Yemen). The Africa File (Sudan, the
+  Sahel, eastern DRC, Somalia, Ethiopia) is published by ISW's partner, the Critical Threats Project,
+  on criticalthreats.org only (never in ISW's sitemap, and its addresses end, not start, with
+  "africa-file-<date>", so it was never read until 2026-10-04): its list page carries the reports as
+  data (CTP_LIST, `INI_LIST`: slug, title, publication time). Up front, the last BACKFILL of
+  reports; then each new one, newest first.
 - How: the report page is fetched (as the Map Room reader does) and cut into sentences; the ones
   about ground changing hands or being held (CONTROL_RE) go to the claims agent's model prompt,
   BATCH a call, which lists settlement-level claims with their basis: "ISW assesses" is an
@@ -15,8 +19,9 @@ map data, whose terms forbid reuse without written permission.
   if need be (`state["frontline"]["isw"]["read"]` keeps where it stopped).
 - Every sentence is also scanned for "occupied Melitopol"-style descriptions of listed towns
   (standing.find, no model): ISW describing a town as held counts like any outlet doing so.
-- What is kept: the claims, credited to ISW (group "isw", unaligned) and linked to the report, with
-  a note in the model's own words; never ISW's text.
+- What is kept: the claims, credited to ISW or Critical Threats (one group, "isw", unaligned: the
+  two work together, so they never corroborate each other) and linked to the report, with a note
+  in the model's own words; never their text.
 
 Model calls: purpose "frontline_isw", share frontline_isw_daily_max (not paced over the day, so the
 backlog is read up front), at most CALLS_PER_RUN a run.
@@ -33,6 +38,9 @@ from sources.maproom import HEADERS
 from . import claims, ledger, standing
 
 SITEMAP_INDEX = "https://understandingwar.org/sitemap_index.xml"
+CTP_LIST = "https://www.criticalthreats.org/analysis/africa-file"
+CTP_BASE = "https://www.criticalthreats.org/analysis/"
+AFRICA = ["sudan", "sahel", "drc", "somalia", "ethiopia"]
 CHECK_EVERY = timedelta(hours=1)
 BACKFILL = timedelta(days=14)
 CALLS_PER_RUN = 2
@@ -43,7 +51,6 @@ SERIES = {
     "russian-offensive-campaign-assessment": ("Russian Offensive Campaign Assessment", ["ukraine"]),
     "russian-occupation-update": ("Russian Occupation Update", ["ukraine"]),
     "iran-update": ("Iran Update", ["yemen"]),
-    "africa-file": ("Africa File", ["sudan", "sahel", "drc", "somalia", "ethiopia"]),
 }
 MONTHS = "january|february|march|april|may|june|july|august|september|october|november|december"
 CONTROL_RE = re.compile(
@@ -88,13 +95,45 @@ def listing(session, fl: dict, now) -> list[dict]:
             for url in re.findall(r"<loc>([^<]+)</loc>", r.text):
                 ser, day = _series(url), _date(url)
                 if ser and day and now - day <= BACKFILL:
-                    reports.append({"url": url, "series": ser[1], "conflicts": ser[2], "date": iso(min(day, now))})
-    except Exception as exc:  # noqa: BLE001 - the last list is kept; tried again next run
+                    reports.append({"url": url, "series": ser[1], "conflicts": ser[2], "date": iso(min(day, now)), "publisher": "ISW"})
+    except Exception as exc:  # noqa: BLE001 - ISW's last list is kept; tried again next run
         log(f"[frontline] ISW sitemap failed: {exc}")
-        return st["reports"]
+        reports = [x for x in st["reports"] if x.get("publisher", "ISW") == "ISW"]
+    reports += africa_file(session, now)
     reports.sort(key=lambda x: x["date"], reverse=True)
     st["reports"], st["checked"] = reports, iso(now)
     return reports
+
+
+def africa_file(session, now) -> list[dict]:
+    """The Critical Threats Project's Africa File reports of the last BACKFILL, from the data its
+    list page carries (`var INI_LIST = [...]`), or failing that the report links on the page."""
+    try:
+        r = session.get(CTP_LIST, headers=HEADERS, timeout=TIMEOUT)
+        r.raise_for_status()
+    except Exception as exc:  # noqa: BLE001 - tried again at the next check
+        log(f"[frontline] Critical Threats Africa File list failed: {exc}")
+        return []
+    out = []
+    m = re.search(r"var INI_LIST\s*=\s*(\[.*?\]);?\s*</script>", r.text, re.S)
+    try:
+        items = json.loads(m.group(1)) if m else []
+    except ValueError:
+        items = []
+    for it in items:
+        slug, ts = str(it.get("slug") or ""), it.get("published_timestamp")
+        if not slug or not isinstance(ts, (int, float)) or "year-in-review" in slug:
+            continue
+        day = datetime.fromtimestamp(ts, tz=now.tzinfo)
+        if now - day <= BACKFILL:
+            out.append({"url": CTP_BASE + slug, "series": "Africa File", "conflicts": AFRICA, "date": iso(min(day, now)), "publisher": "Critical Threats"})
+    if not items:   # no data on the page: the links, dated by their address
+        for url in sorted(set(re.findall(r'href="(https://www\.criticalthreats\.org/analysis/[^"#]*africa-file-[a-z]+-\d{1,2}-\d{4})"', r.text))):
+            day = _date(url.rsplit("/", 1)[-1])
+            if day and now - day <= BACKFILL:
+                out.append({"url": url, "series": "Africa File", "conflicts": AFRICA, "date": iso(min(day, now)), "publisher": "Critical Threats"})
+    log(f"[frontline] Critical Threats: {len(out)} Africa File reports from the last {BACKFILL.days} days")
+    return out
 
 
 def sentences(html: str) -> list[str]:
@@ -117,10 +156,10 @@ def run(conflicts: list[dict], state: dict, settings: dict, session, now, ask, b
     cutoff = iso(now - BACKFILL - timedelta(days=2))
     st["read"] = {u: v for u, v in st["read"].items() if (v.get("date") or "") >= cutoff}
     by_id = {c["id"]: c for c in conflicts}
-    found, calls = [], 0
+    found, calls, down = [], 0, set()
     for rep in reports:
         mark = st["read"].get(rep["url"]) or {}
-        if mark.get("done") or calls >= min(budget, CALLS_PER_RUN):
+        if mark.get("done") or calls >= min(budget, CALLS_PER_RUN) or rep.get("publisher", "ISW") in down:
             continue
         cs = [by_id[c] for c in rep["conflicts"] if c in by_id]
         if not cs:
@@ -129,10 +168,12 @@ def run(conflicts: list[dict], state: dict, settings: dict, session, now, ask, b
             r = session.get(rep["url"], headers=HEADERS, timeout=TIMEOUT)
             r.raise_for_status()
         except Exception as exc:  # noqa: BLE001 - tried again next run
-            log(f"[frontline] ISW report failed: {rep['url']}: {exc}")
-            break
+            log(f"[frontline] {rep.get('publisher', 'ISW')} report failed: {rep['url']}: {exc}")
+            down.add(rep.get("publisher", "ISW"))   # that site is down this run; the other's reports still go
+            continue
         text = sentences(r.text)
-        source = {"url": rep["url"], "time": rep["date"], "summary": "", "source": f"ISW ({rep['series']})",
+        pub = rep.get("publisher") or "ISW"
+        source = {"url": rep["url"], "time": rep["date"], "summary": "", "source": f"{pub} ({rep['series']})",
                   "group": "isw", "side": None}
         if not mark:   # first look: towns ISW describes as held ("occupied Melitopol"), no model
             for c in cs:
@@ -145,12 +186,12 @@ def run(conflicts: list[dict], state: dict, settings: dict, session, now, ask, b
         while start < len(todo) and calls < min(budget, CALLS_PER_RUN):
             batch = todo[start:start + BATCH]
             items = [{"i": n, "conflict": cs[0]["id"] if len(cs) == 1 else None, "posted": rep["date"][:10],
-                      "source": "ISW", "summary": s} for n, s in enumerate(batch)]
+                      "source": pub, "summary": s} for n, s in enumerate(batch)]
             got = ask(system, json.dumps({"reports": items}, ensure_ascii=False), state, settings, now,
                       max_tokens=8000, purpose="frontline_isw")
             calls += 1
             if got is None:
-                log("[frontline] ISW: the model gave no answer; the report waits")
+                log(f"[frontline] {pub}: the model gave no answer; the report waits")
                 break
             n_claims = 0
             for rep_out in got.get("reports") or []:
@@ -161,10 +202,10 @@ def run(conflicts: list[dict], state: dict, settings: dict, session, now, ask, b
                     cl = claims._clean(c, {"report": source, "event": {}, "conflict": cs[0]}, conflicts)
                     if cl:
                         note = re.sub(r"\s+", " ", str(c.get("note") or "")).strip()[:160]
-                        cl["claim"]["summary"] = f"ISW: {note}" if note else f"ISW {rep['series']}, {rep['date'][:10]}"
+                        cl["claim"]["summary"] = f"{pub}: {note}" if note else f"{pub} {rep['series']}, {rep['date'][:10]}"
                         found.append(cl)
                         n_claims += 1
             start += len(batch)
-            log(f"[frontline] ISW {rep['series']} {rep['date'][:10]}: read {start}/{len(todo)} sentences, {n_claims} control claims")
+            log(f"[frontline] {pub} {rep['series']} {rep['date'][:10]}: read {start}/{len(todo)} sentences, {n_claims} control claims")
         st["read"][rep["url"]] = {"date": rep["date"], "at": start, "done": start >= len(todo)}
     return found

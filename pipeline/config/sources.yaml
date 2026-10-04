@@ -409,6 +409,67 @@ rss:
     url: https://news.un.org/feed/subscribe/en/news/topic/peace-and-security/feed/rss.xml
     kind: news
     group: un
+  # The ground-level reporting front-line mappers work from (2026-10-04, the owner's request to map
+  # like ISW and Black Bird Group): regional newsrooms that report towns changing hands, checked to
+  # answer GitHub's servers that day. Independent outlets are unaligned; lefaso.net, which works
+  # under Burkina Faso's junta and largely relays the army's statements, speaks for that side.
+  - id: sudanwarmonitor
+    name: Sudan War Monitor
+    url: https://sudanwarmonitor.com/feed
+    kind: analysis
+    group: sudanwarmonitor
+    weight: 2
+  - id: sudanspost
+    name: Sudans Post
+    url: https://www.sudanspost.com/feed/
+    kind: news
+    group: sudanspost
+  - id: dabanga
+    name: Dabanga
+    url: https://www.dabangasudan.org/en/feed
+    kind: news
+    group: dabanga
+  - id: myanmarnow
+    name: Myanmar Now
+    url: https://myanmar-now.org/en/feed/
+    kind: news
+    group: myanmarnow
+  - id: dvb
+    name: DVB
+    url: https://english.dvb.no/feed/
+    kind: news
+    group: dvb
+  - id: bni
+    name: BNI Online
+    url: https://www.bnionline.net/en/rss.xml
+    kind: news
+    group: bni
+  - id: somaliguardian
+    name: Somali Guardian
+    url: https://www.somaliguardian.com/feed/
+    kind: news
+    group: somaliguardian
+  - id: radiookapi
+    name: Radio Okapi
+    url: https://www.radiookapi.net/rss.xml
+    kind: news
+    group: radiookapi
+  - id: actualitecd
+    name: Actualite.cd
+    url: https://actualite.cd/feed
+    kind: news
+    group: actualitecd
+  - id: lefaso
+    name: lefaso.net
+    url: https://lefaso.net/spip.php?page=backend
+    kind: news
+    group: lefaso
+    side: BF
+  - id: rfi-afrique
+    name: RFI Afrique
+    url: https://www.rfi.fr/fr/afrique/rss
+    kind: news
+    group: rfi
   # Google News searches stand in for regional outlets that block GitHub's servers.
   # Each result links to the original outlet's article.
   - id: gnews-horn

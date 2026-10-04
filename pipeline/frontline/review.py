@@ -18,7 +18,7 @@ import json
 
 from common import haversine_km, iso, log
 
-from . import ledger
+from . import heat, ledger
 
 PER_CALL = 15
 NEARBY_KM = 40
@@ -31,6 +31,7 @@ For each item decide:
 - "downgrade": the change is supported, but every piece of evidence traces back to one side's own statement; it will be shown as "claimed". Use the tally: several independent outlets, or reporting from the scene, are not one side's statement, even if a side also made a claim.
 - "reject": the evidence does not say this (it is about fighting near the settlement, a strike on it, a facility such as its airport or a base rather than the town, a different place with a similar name, or an old event), or the settlement's position does not fit the region named or the nearby front.
 Evidence with basis "described" quotes the few words an outlet wrote. A description of a region that one side holds in its entirety ("occupied Crimea", which "covers all of Crimea") is evidence for every settlement in that region: do not reject it for naming the region rather than the town. Reject it when the words are about a region, district or province of the same name rather than the town (in Ukraine "occupied Kherson" usually means the Kherson region, whose capital Ukraine holds), or the position does not fit what the map shows nearby.
+An item may carry "satellite_heat": satellite fire detections (NASA FIRMS) near the settlement over the last week and the week before. Heat comes from shelling and burning vehicles but also from farm, bush and forest fires: it never shows who holds a place. It can support reports of fighting in or around the settlement (a sharp rise alongside such reports), and a quiet week weakens a "contested" proposal resting on a single old report. Do not confirm or reject on heat alone.
 Give a short reason (max 20 words).
 
 JSON: {"items": [{"n": <n>, "verdict": "confirm" | "downgrade" | "reject", "reason": "..."}]}"""
@@ -94,7 +95,11 @@ def _review(batch: list[tuple], conflicts: list[dict], fl: dict, state: dict, se
     items = []
     for n, (k, proposed) in enumerate(batch):
         p = fl["places"][k]
-        items.append(_item(n, p, ledger.conflict_for(conflicts, p["country"], p["conflict"]), proposed, fl["places"]))
+        it = _item(n, p, ledger.conflict_for(conflicts, p["country"], p["conflict"]), proposed, fl["places"])
+        hot = heat.near(fl, k, now)
+        if hot is not None:
+            it["satellite_heat"] = hot
+        items.append(it)
     got = ask(PROMPT, json.dumps({"items": items}, ensure_ascii=False), state, settings, now,
               max_tokens=3000, purpose="frontline_review")
     if got is None:

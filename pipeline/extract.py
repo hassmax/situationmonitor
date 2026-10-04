@@ -130,8 +130,17 @@ _EN = (r"air ?strikes?|strikes?|struck|missiles?|drones?|uavs?|shahed|shell(?:in
        r"tankers?|vessels?|ships?|shipping|cargo|freighters?|bulk carrier|container ship|merchant|mariners?|seafarers?|"
        r"crew|ukmto|ambrey|jmic|projectiles?|hormuz|bab el-mandeb|red sea|gulf of aden|hijack(?:ed|ing)?|boarded|"
        r"mines?|limpet|sank|sinking|ablaze|adrift|hits?|" + _COMMITMENTS + "|" + _EUROPE_ASIA)
+# Ground changing hands, as regional outlets headline it ("Sudan Army Captures Mazroub", "resistance
+# forces take control of"), and French for the Sahel and eastern DRC (Radio Okapi, actualite.cd,
+# lefaso.net, RFI Afrique): added 2026-10-04 with those feeds (prefilter version 6).
+_CAPTURE = (r"captur(?:e|es|ed|ing)|recaptur\w*|retak(?:e|es|en|ing)|retook|overr(?:an|un|uns|unning)|"
+            r"(?:take|takes|took|taken|taking|seiz\w*|regain\w*|wrest\w*|lose|loses|lost|losing)\s+control")
+_FRENCH = (r"attaques?|frappes?|combats?|affrontements?|tu[ée]s|tu[ée]es|morts|bless[ée]s|rebelles|"
+           r"jihadistes?|djihadistes?|terroristes?|embuscades?|offensive|assauts?|empar[ée]e?s?|"
+           r"reprennent|reprend|repris|reprise|FARDC|wazalendo|enl[èe]vements?|bombardements?")
 CONFLICT_RE = re.compile(
     rf"\b(?:{_EN})\b"
+    rf"|\b(?:{_CAPTURE}|{_FRENCH})\b"
     r"|удар|обстр|ракет|дрон|бпла|шахед|атак|вибух|взрыв|штурм|наступ|звільн|освобо|ппо|пво|загибл|погиб|"
     r"поранен|ранен|збит|сбит|знищ|уничтож|окупант|оккупан"
     r"|غارة|غارات|قصف|صاروخ|صواريخ|مسيرة|مسيّرة|اشتباك|انفجار|استهداف|قتلى|جرحى"
@@ -181,6 +190,7 @@ _ADDED_WORDS = {
     3: re.compile(rf"\b(?:{_COMMITMENTS})\b", re.IGNORECASE),  # 2026-09-30: treaties, bodies, expulsions, sanctions
     4: re.compile(rf"\b(?:{_EUROPE_ASIA})\b", re.IGNORECASE),  # 2026-10-02: German, Italian, Dutch, Spanish, Portuguese, Indonesian
     5: re.compile(r"هجوم|هجمات|ضربة|ضربات|باليستي|اعتراض|إسقاط|مسيرات"),  # 2026-10-02: Arabic attack words
+    6: re.compile(rf"\b(?:{_CAPTURE}|{_FRENCH})\b", re.IGNORECASE),  # 2026-10-04: captures, and French
 }
 PREFILTER_VERSION = max(_ADDED_WORDS)
 
