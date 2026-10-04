@@ -1,6 +1,7 @@
 """Front-line agents: claims are read once and kept as each side's word; the assessor separates
 assessed control from a claim by fixed evidence rules; the reviewer gates every change; same-named
 villages far from the war are not used."""
+import json
 from datetime import datetime, timedelta, timezone
 
 import frontline
@@ -330,3 +331,60 @@ def test_where_provinces_fill_a_held_town_shades_its_whole_province():
     assert inside(houthi["polygons"], 43.75, 14.65)      # Raymah: no town of its own, filled from Dhamar
     assert inside(gov["polygons"], 45.32, 15.40)         # Marib, on the front: only its reach...
     assert not inside(gov["polygons"], 46.3, 15.6)       # ...not the whole governorate
+
+
+# ----------------------------------------------------------------------------- ISW reader
+
+class _Resp:
+    def __init__(self, text):
+        self.text, self.ok = text, True
+
+    def raise_for_status(self):
+        pass
+
+
+class _Session:
+    def __init__(self, pages):
+        self.pages, self.asked = pages, []
+
+    def get(self, url, **kw):
+        self.asked.append(url)
+        return _Resp(self.pages[url])
+
+
+def test_isw_reports_are_read_for_control_claims_credited_to_isw_without_its_text():
+    from frontline import isw
+    roca = "https://understandingwar.org/research/russia-ukraine/russian-offensive-campaign-assessment-october-2-2026/"
+    old = "https://understandingwar.org/research/russia-ukraine/russian-offensive-campaign-assessment-august-2-2026/"
+    pages = {
+        isw.SITEMAP_INDEX: "<loc>https://understandingwar.org/post-sitemap6.xml</loc><loc>https://understandingwar.org/map-sitemap22.xml</loc>",
+        "https://understandingwar.org/post-sitemap6.xml":
+            f"<loc>{old}</loc><loc>{roca}</loc><loc>https://understandingwar.org/research/china-taiwan/china-taiwan-update-october-2-2026/</loc>"
+            "<loc>https://understandingwar.org/research/russia-ukraine/russian-offensive-campaign-assessment-updates-september-2026-present/</loc>",
+        roca: "<html><nav>Menu</nav><article><p>Geolocated footage published on October 1 indicates that Russian forces recently "
+              "seized Ulanove in Sumy Oblast.[12]</p><p>Partisans struck a depot in occupied Melitopol overnight, sources said today.</p>"
+              "<p>The Kremlin continued its information operations about negotiations this week.</p></article></html>",
+    }
+    sess = _Session(pages)
+    seen = []
+
+    def ask(system, user, state, settings, now, **kw):
+        seen.append((kw.get("purpose"), user))
+        return {"reports": [{"i": 0, "claims": [{"settlement": "Ulanove", "region": "Sumy Oblast", "country": "UA",
+                                                 "conflict": "ukraine", "change": "took", "actor": "RU", "claimed_by": None,
+                                                 "basis": "footage", "date": "2026-10-01", "note": "footage shows Russian troops in the village"}]}]}
+    state = {}
+    conflicts = [{**UA_STANDING}]
+    found = isw.run(conflicts, state, {}, sess, NOW, ask, budget=5)
+    assert [p for p, _ in seen] == ["frontline_isw"]
+    sent = json.loads(seen[0][1])["reports"]
+    assert len(sent) == 2 and "Kremlin" not in json.dumps(sent)        # only sentences about control
+    took = [f for f in found if f["name"] == "Ulanove"][0]["claim"]
+    assert (took["basis"], took["group"], took["aligned"], took["url"]) == ("footage", "isw", None, roca)
+    assert took["summary"] == "ISW: footage shows Russian troops in the village"   # the model's words, not ISW's
+    described = [f for f in found if f["name"] == "Melitopol"][0]["claim"]
+    assert (described["basis"], described["actor"], described["group"]) == ("described", "RU", "isw")
+    assert old not in sess.asked                                         # older than the backfill
+    # read once: the next run asks nothing more about it, and the sitemap waits an hour
+    seen.clear()
+    assert isw.run(conflicts, state, {}, sess, NOW + timedelta(minutes=15), ask, budget=5) == [] and not seen

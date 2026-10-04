@@ -6,6 +6,8 @@ the conflicts and their sides):
   standing.py      finds the towns news outlets describe as held as settled fact ("Russian-occupied
                    Melitopol", "Houthi-held Hodeidah"): long-held ground the reports of fighting
                    never mention (no model)
+  isw.py           reads ISW's written reports (its text, never its maps) and lists the control
+                   findings in them, credited to ISW (model, purpose "frontline_isw")
   claims.py        reads the map's ground-fighting and territory reports and lists every control
                    claim: who took, holds, lost or fights inside which settlement, on whose word,
                    on what evidence (model, purpose "frontline")
@@ -25,7 +27,7 @@ from datetime import timedelta
 
 from common import iso, log
 
-from . import assess, cartographer, claims, ledger, review, scout, standing
+from . import assess, cartographer, claims, isw, ledger, review, scout, standing
 
 __all__ = ["search", "update", "public"]
 
@@ -41,12 +43,14 @@ def search(state: dict, session, now, outlets: dict | None = None, conflicts: li
 
 
 def update(events: list[dict], conflicts: list[dict], state: dict, settings: dict, now, ask, geocoder,
-           budget, disabled: bool = False) -> dict:
+           budget, disabled: bool = False, session=None) -> dict:
     """One round: read claims, file and place them, assess, review. `budget(purpose)` gives the
     model calls a purpose may make now. Returns counts for the log."""
     fl = ledger.state_of(state)
     if not disabled:
         found = claims.run(events, conflicts, state, settings, now, ask, budget("frontline"))
+        if session is not None:
+            found += isw.run(conflicts, state, settings, session, now, ask, budget("frontline_isw"))
         added = assess.add(fl, found, now)
     else:
         added = 0

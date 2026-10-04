@@ -98,3 +98,34 @@ def test_extraction_switches_models_mid_run(monkeypatch):
             "url": "u", "weight": 1}
     records, leftover, used, _ = extract.run([item], state, settings, NOW)
     assert state["llm_model"]["model"] == "flash" and leftover == [] and used == 1
+
+
+def test_depleted_credits_cost_nothing_keep_posts_and_are_rechecked_hourly(monkeypatch):
+    """HTTP 402 ("prepayment credits are depleted"): not counted, one probe instead of every
+    model, posts keep their place in the queue, and nothing is asked for an hour."""
+    from datetime import timedelta
+    calls = []
+
+    def post(url, body, token):
+        calls.append(body["model"])
+        return Resp(402, "Your prepayment credits are depleted")
+    monkeypatch.setattr(extract, "_post", post)
+    monkeypatch.setenv("LLM_API_KEY", "key")
+    state = {"llm_calls": {"date": "2026-09-28", "count": 10},
+             "llm_model": {"url": "https://example.com", "model": "m1", "json_mode": True,
+                           "checked": "2026-09-28T11:00:00Z"}}
+    import config
+    settings = {**config.load().settings, **SETTINGS, "extraction_reserve": 0, "seconds_between_calls": 0}
+    queue = [{"id": f"p{i}", "source": "s", "platform": "rss", "time": "2026-09-28T11:00:00Z", "text": "Missile strike",
+              "kind": "news", "weight": 1} for i in range(3)]
+    records, left, used, _ = extract.run(queue, state, settings, NOW)
+    assert (records, used, state["llm_calls"]["count"]) == ([], 0, 10)
+    assert [it["id"] for it in left] == ["p0", "p1", "p2"] and not any(it.get("attempts") for it in left)
+    assert state.get("llm_out_of_credit") and "llm_model" not in state
+    calls.clear()
+    for _ in range(3):   # the same hour: nothing is sent
+        extract.run(left, state, settings, NOW + timedelta(minutes=15))
+        assert extract.ask_json("p", "t", state, settings, NOW + timedelta(minutes=15)) is None
+    assert calls == []
+    extract.run(left, state, settings, NOW + timedelta(hours=1, minutes=5))   # an hour on: one probe
+    assert calls == ["m1"] and state["llm_calls"]["count"] == 10
