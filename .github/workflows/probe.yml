@@ -1,0 +1,20 @@
+name: probe (temporary)
+on:
+  push:
+    branches: [claude/tender-albattani-9vfp56]
+    paths: [probe.py, .github/workflows/probe.yml]
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.11"}
+      - run: pip install -q -r pipeline/requirements.txt
+      - run: git fetch -q --depth 1 origin data && git show origin/data:events.json > /tmp/events.json && git show origin/data:state.json > /tmp/state.json
+      - run: python probe.py
+        env:
+          LLM_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
