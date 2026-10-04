@@ -10,7 +10,8 @@ events = data["events"]
 shown = analyst.regions(events, cfg.theaters, data.get("fleet") or [], data.get("flights"), now)
 print("regions shown:", [(r["region"], len(r["events"]), r.get("us_carriers_nearby") and len(r["us_carriers_nearby"]), r.get("military_aircraft_broadcasting_now")) for r in shown])
 print("payload chars:", len(json.dumps({"regions": shown}, ensure_ascii=False)))
-state = {}
+state = {"llm_model": json.load(open("/tmp/state.json")).get("llm_model")}
+print("model:", (state["llm_model"] or {}).get("model"))
 raw = {}
 def ask(*a, **k):
     out = extract.ask_json(*a, **k)
