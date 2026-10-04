@@ -61,7 +61,9 @@ def test_confidence_comes_from_the_cited_events_not_the_model():
     assert analyst.validate({"regions": []}, shown, EVENTS) is None
 
 
-def test_update_is_hourly_budgeted_and_keeps_the_last_good_analysis():
+def test_update_is_hourly_budgeted_and_keeps_the_last_good_analysis(monkeypatch):
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     calls = []
 
     def ask(system, user, state, settings, now, max_tokens=0, purpose="", model=None):
@@ -82,7 +84,9 @@ def test_update_is_hourly_budgeted_and_keeps_the_last_good_analysis():
     assert calls == ["analysis"]                                   # no share left: no call
 
 
-def test_flash_first_then_the_usual_model():
+def test_flash_first_then_the_usual_model(monkeypatch):
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
     asked = []
 
     def ask(system, user, state, settings, now, max_tokens=0, purpose="", model=None):
@@ -94,4 +98,48 @@ def test_flash_first_then_the_usual_model():
 
     state = {"llm_model": {"model": "lite"}}
     analyst.update(state, EVENTS, THEATERS, CARRIERS, FLIGHTS, {"llm_fallback_models": ["flash"]}, NOW, ask, 100, 5)
-    assert asked == ["flash", None] and state["analysis_model"] == "lite" and state["analysis"]["regions"]
+    assert asked == ["flash", None] and state["analysis"]["by"] == "lite (Gemini)" and state["analysis"]["regions"]
+
+
+def test_free_providers_first_with_their_own_counts(monkeypatch):
+
+    sent = []
+
+    class R:
+        status_code = 200
+        headers = {"content-type": "application/json"}
+
+        def __init__(self, text):
+            self.text = text
+
+        def json(self):
+            import json
+            return json.loads(self.text)
+
+    def post(url, body, token):
+        sent.append((url, body["model"], token))
+        reply = {"regions": [{"region": "mideast", "judgments": [
+            {"headline": "US increasing force posture", "trend": "escalating", "text": "Units arrived.", "ids": ["a1", "a2"]}]}]}
+        import json
+        return R(json.dumps({"choices": [{"message": {"content": json.dumps(reply)}}]}))
+
+    import extract
+    monkeypatch.setattr(extract, "_post", post)
+    monkeypatch.setenv("OPENROUTER_API_KEY", "k-or")   # Cerebras has no key: skipped
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
+    gemini = []
+    state = {}
+    analyst.update(state, EVENTS, THEATERS, CARRIERS, FLIGHTS, {}, NOW,
+                   lambda *a, **k: gemini.append(1), remaining=0, share=0)   # Gemini out of calls
+    assert [s[0] for s in sent] == ["https://openrouter.ai/api/v1/chat/completions"] and sent[0][2] == "k-or"
+    assert not gemini and state["analysis"]["by"].endswith("(OpenRouter)")
+    assert state["providers"]["openrouter"]["count"] == 1
+    assert "llm_calls" not in state                                    # not counted against Gemini
+
+
+def test_no_keys_and_no_gemini_left_means_no_call(monkeypatch):
+    monkeypatch.delenv("CEREBRAS_API_KEY", raising=False)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    state, asked = {}, []
+    analyst.update(state, EVENTS, THEATERS, CARRIERS, FLIGHTS, {}, NOW, lambda *a, **k: asked.append(1), remaining=2, share=5)
+    assert not asked and "analysis" not in state

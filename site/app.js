@@ -1996,7 +1996,7 @@
         <time datetime="${esc(a.generated_at)}">Written ${esc(ago(Date.parse(a.generated_at)))}</time></div>
       <p class="an-sub">The last ${esc(a.window_hours || 6)} hours against the ${esc(a.context_days || 3)} days before</p>
       ${body}
-      <p class="brief-note">Machine-written analysis of this map's own events. Confidence comes from the events each line cites (corroborated, single-source, or one side's claim); open them before relying on it.</p>
+      <p class="brief-note">Machine-written analysis of this map's own events${a.by ? ` by ${esc(a.by)}` : ""}. Confidence comes from the events each line cites (corroborated, single-source, or one side's claim); open them before relying on it.</p>
     </section></li>`;
   }
 

@@ -21,12 +21,13 @@ reports into statements of fact):
   corroborated summit, was stated as fact);
 - no outside knowledge and no predictions; event ids written into the text are stripped.
 
-One model call (purpose "analysis", paced daily share `analysis_daily_max`), at most every
-MIN_INTERVAL and only when the last WINDOW_HOURS of events changed; skipped when fewer than
-brief_min_calls calls are left. It asks regular Flash first (`analysis_models`, default the first of
-`llm_fallback_models`: Flash-Lite, the usual model, wrote single events up as trends and hedged
-corroborated ones in the first trial), then the usual model once if that fails. If nothing valid
-comes back, the previous analysis stays with its time.
+At most every MIN_INTERVAL, and only when the last WINDOW_HOURS of events changed. Who writes it
+(ORDER, setting `analysis_order`): the free outside providers in providers.py (Cerebras, then
+OpenRouter), each with its own key and daily limit, then Gemini's regular Flash, then Gemini's usual
+model (Flash-Lite, which in the first trial wrote single events up as trends and hedged corroborated
+ones). Gemini calls use the shared budget (purpose "analysis", paced share `analysis_daily_max`;
+skipped when fewer than brief_min_calls calls are left). The first valid answer is kept, with the
+model that wrote it (`by`); if none, the previous analysis stays with its time.
 """
 from __future__ import annotations
 
@@ -35,6 +36,7 @@ import json
 import re
 from datetime import timedelta
 
+import providers
 from common import haversine_km, iso, log, parse_time
 
 WINDOW_HOURS = 6
@@ -48,6 +50,9 @@ CORROBORATED_HIGH = 2
 MIN_CITED = 2
 VERSION = 1
 TRENDS = ("escalating", "de-escalating", "shifting", "steady")
+# Who is asked, in order (providers.py): the free outside providers first, whose models write better
+# analysis, then Gemini's regular Flash, then Gemini's usual model. A provider without its key is skipped.
+ORDER = ["cerebras", "openrouter", "gemini-flash", "gemini"]
 
 TYPES = {
     "airstrike": "airstrike", "missile_drone": "drone or missile attack", "artillery": "shelling",
@@ -258,28 +263,45 @@ def update(state: dict, events: list[dict], theaters: list[dict], carriers: list
         state["analysis"] = {"generated_at": iso(now), "window_hours": WINDOW_HOURS, "version": VERSION, "regions": []}
         state["analysis_fp"] = fp
         return
-    if remaining < int(settings.get("brief_min_calls", 5)) or share <= 0:
-        log(f"[analyst] skipped: {remaining} model calls left today, {share} in its share")
+    order = settings.get("analysis_order") or ORDER
+    outside = [providers.configured(settings).get(s) for s in order if s not in ("gemini-flash", "gemini")]
+    outside = [p for p in outside if p and providers.available(p, state, now)]
+    if remaining < int(settings.get("brief_min_calls", 5)):
+        share = 0  # Gemini's day is nearly used up: outside providers only
+    if share <= 0 and not outside:
+        log(f"[analyst] skipped: no outside provider available, {remaining} Gemini calls left today, {share} in its share")
         return
     state["analysis_attempt"] = iso(now)
     payload = {"now": iso(now), "window_hours": WINDOW_HOURS, "context_days": ANALYSIS_DAYS, "regions": shown}
     text = json.dumps(payload, ensure_ascii=False)
-    # Analysis is where a stronger model pays off: regular Flash (also free, its own smaller daily
-    # limit, and this is at most one call an hour) is asked first, the usual model if it fails.
-    out = None
-    for model in [m for m in (settings.get("analysis_models") or (settings.get("llm_fallback_models") or [])[:1]) if m][:1] + [None]:
-        if share <= 0:
-            break
-        reply = ask(PROMPT, text, state, settings, now, max_tokens=3000, purpose="analysis", **({"model": model} if model else {}))
-        share -= 1
+    out, by = None, None
+    for step in order:
+        if step in ("gemini-flash", "gemini"):
+            # Gemini: regular Flash (also free, its own smaller daily limit) first, then the usual model
+            if share <= 0:
+                continue
+            flash = (settings.get("llm_fallback_models") or [None])[0] if step == "gemini-flash" else None
+            if step == "gemini-flash" and not flash:
+                continue
+            reply = ask(PROMPT, text, state, settings, now, max_tokens=3000, purpose="analysis", **({"model": flash} if flash else {}))
+            share -= 1
+            model, label = flash or (state.get("llm_model") or {}).get("model"), "Gemini"
+        else:
+            p = providers.configured(settings).get(step)
+            if not p or not providers.available(p, state, now):
+                continue
+            reply, model = providers.ask_json(p, PROMPT, text, state, now, max_tokens=8000)
+            label = p.get("label") or step
         out = validate(reply, shown, events)
         if out is not None:
-            state["analysis_model"] = model or (state.get("llm_model") or {}).get("model")
+            by = f"{model} ({label})" if model else label
             break
+        if reply is not None:
+            log(f"[analyst] {step}: nothing usable in the reply")
     if out is None:
         log("[analyst] no usable analysis from the model; keeping the previous one")
         return
     state["analysis"] = {"generated_at": iso(now), "window_hours": WINDOW_HOURS, "context_days": ANALYSIS_DAYS,
-                         "version": VERSION, "regions": out}
+                         "version": VERSION, "by": by, "regions": out}
     state["analysis_fp"] = fp
-    log(f"[analyst] written: {sum(len(r['judgments']) for r in out)} judgments for {len(out)} regions")
+    log(f"[analyst] written by {by}: {sum(len(r['judgments']) for r in out)} judgments for {len(out)} regions")
