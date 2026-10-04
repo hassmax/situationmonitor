@@ -1382,6 +1382,11 @@ body::after {
 .mk-fly.open .tip { animation: fly-open 0.26s var(--ease-out) both; }
 .mk-fly.open.to-left .tip { animation-name: fly-open-left; }
 .mk-fly.glide { transition: left 0.16s var(--ease-out), top 0.16s var(--ease-out); }
+/* phones and tablets: the card opens above (or below) the tapped marker, and a tap on it opens it */
+.mk-fly.on-touch .tip { max-width: min(300px, calc(100vw - 24px)); cursor: pointer; }
+.mk-fly.on-touch .fly-tail { display: none; }
+.mk-fly.on-touch.open .tip, .mk-fly.on-touch.open.to-left .tip { animation: tip-in 0.2s var(--ease-out) both; }
+.mk-fly.on-touch .fly-rows button { padding: 9px 6px; }
 @keyframes fly-open { from { clip-path: inset(0 100% 0 0 round 10px); transform: translateX(-8px); opacity: 0.5; } to { clip-path: inset(0 0 0 0 round 10px); transform: none; opacity: 1; } }
 @keyframes fly-open-left { from { clip-path: inset(0 0 0 100% round 10px); transform: translateX(8px); opacity: 0.5; } to { clip-path: inset(0 0 0 0 round 10px); transform: none; opacity: 1; } }
 .fly-tail {
