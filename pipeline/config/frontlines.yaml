@@ -124,11 +124,13 @@ conflicts:
                  Al Hazm/Al-Hazm, Harib, Sirwah]
       - region: south and east
         places: [Aden, Mukalla, Seiyun/Sayun, Ataq, Lahij/Al Houta, Zinjibar, Al Ghaydah, Lawdar, Ash Shihr, Tarim, Hadibu, Nishtun, Al Abr,
-                 Marib, Mocha/Al-Mokha, Al Khawkhah/Khokha, Al Turbah, Bayhan]
+                 Al Turbah, Bayhan]
       - region: front lines
         reach_km: 10
         front: true
-        places: [{name: Taiz, city_only: true}, Al Dhale/Dhale, Hays, Haradh, Midi]
+        # the west coast moved in September 2026 (the Houthis took Mocha) and Marib is under attack
+        places: [{name: Taiz, city_only: true}, Al Dhale/Dhale, Hays, Haradh, Midi, Marib, Mocha/Mokha/Al-Mokha/Mukha/Al-Mukha,
+                 Al Khawkhah/Khokha/Al-Khokha]
 
   - id: sudan
     name: Sudan

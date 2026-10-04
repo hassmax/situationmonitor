@@ -98,7 +98,7 @@ def _build(conflict: dict, names: list[str]) -> re.Pattern | None:
     held = rf"(?P<adj>{adj})[\s-]+{VERBS}"
     hold = rf"(?P<adj2>{adj})(?:['’]s)?\s+(?:(?:northern|southern|eastern|western|last|key|main|major)\s+)?strongholds?(?:\s+of)?"
     lead = rf"(?:{held}|{hold}|{plain})" if plain else rf"(?:{held}|{hold})"
-    return re.compile(rf"\b{lead}\s+{LEADS}(?P<town>{town})\b(?!-)(?P<after>\s+(?:city\b|(?:{NOT_TOWN})\b))?", re.I)
+    return re.compile(rf"\b{lead}\s+{LEADS}(?P<town>{town})\b(?!-)(?P<after>\s+(?:(?:port\s+)?city\b|(?:{NOT_TOWN})\b))?", re.I)
 
 
 def _actor_for(conflict: dict, word: str | None) -> str | None:
@@ -122,10 +122,10 @@ def find(text: str, conflict: dict, places: list[dict]) -> list[tuple[dict, str,
         if FORMERLY.search(text[max(0, m.start() - 20):m.start()]):
             continue
         p = by_name.get(re.sub(r"\s+", " ", m["town"]).lower())
-        after = (m["after"] or "").strip().lower()
-        if not p or (after and after != "city"):
+        after = re.sub(r"\s+", " ", (m["after"] or "").strip().lower())
+        if not p or (after and after not in ("city", "port city")):
             continue
-        if p.get("city_only") and after != "city" and not re.search(r"\bof\s*$", text[m.start():m.start("town")], re.I):
+        if p.get("city_only") and after not in ("city", "port city") and not re.search(r"\bof\s*$", text[m.start():m.start("town")], re.I):
             continue
         adj = m["adj"] if m["adj"] is not None else m["adj2"]
         actor = _actor_for(conflict, adj)
