@@ -196,25 +196,30 @@ def test_a_rejected_change_sets_its_claims_aside():
 
 # ----------------------------------------------------------------------------- cartographer: areas
 
-def test_areas_shade_around_settlements_and_split_halfway_between_sides():
+def test_areas_shade_corroborated_control_only_and_split_halfway_between_sides():
     import mapshapes
     from frontline import cartographer
-    conflict = {**UA, "area_km": 6}
-    P = lambda name, lat, lon, status, holder: {"name": name, "conflict": "ukraine", "lat": lat, "lon": lon,
-                                               "status": status, "holder": holder, "last": "2026-10-03T00:00:00Z"}
+    conflict = {**UA, "area_km": 6, "actors": [{**UA["actors"][0], "controlled": "Russian-controlled"}, UA["actors"][1]]}
+    P = lambda name, lat, lon, status, holder, previous=None: {
+        "name": name, "conflict": "ukraine", "lat": lat, "lon": lon, "status": status, "holder": holder,
+        "previous": previous, "last": "2026-10-03T00:00:00Z"}
     layers = cartographer.areas([P("A", 50.0, 37.0, "assessed", "RU"), P("B", 50.0, 37.12, "assessed", "UA"),
-                                 P("C", 50.3, 37.4, "claimed", "RU"), P("D", 50.05, 37.3, "contested", None)], conflict)
+                                 P("C", 50.3, 37.4, "claimed", "RU"),                  # a claim alone: not shaded
+                                 P("D", 50.3, 37.8, "claimed", "UA", previous="RU"),  # claimed back: stays Russian
+                                 P("E", 50.05, 37.3, "contested", "UA")], conflict)   # fighting inside: stays Ukrainian
     by = {L["id"]: L for L in layers}
-    assert [L["style"] for L in layers] == ["claimed", "occupied", "occupied", "infiltration"]   # paint order
+    assert set(by) == {"fl-ukraine-assessed-RU", "fl-ukraine-assessed-UA"}
     ru, ua = by["fl-ukraine-assessed-RU"], by["fl-ukraine-assessed-UA"]
-    assert (ru["label"], ru["color"], ru["assessment"]) == ("Held by Russia", "#e39b5b", True)
+    assert (ru["label"], ru["color"], ru["assessment"]) == ("Russian-controlled", "#e39b5b", True)
+    assert ua["label"] == "Held by Ukraine"                                                 # no `controlled` given
     inside = mapshapes._inside
     assert inside(ru["polygons"], 37.0, 50.0) and not inside(ru["polygons"], 37.12, 50.0)
     assert inside(ua["polygons"], 37.12, 50.0)
     assert inside(ru["polygons"], 37.055, 50.0) and inside(ua["polygons"], 37.065, 50.0)   # the line runs halfway
     assert not inside(ru["polygons"], 37.0, 50.2)                                           # nothing far from a named place
-    assert by["fl-ukraine-claimed-RU"]["label"] == "Claimed by Russia"
-    assert by["fl-ukraine-contested-none"]["label"].startswith("Contested")
+    assert not inside(ru["polygons"], 37.4, 50.3)                                           # C: only claimed
+    assert inside(ru["polygons"], 37.8, 50.3)                                               # D: until corroborated
+    assert inside(ua["polygons"], 37.3, 50.05)                                              # E
 
 
 # ----------------------------------------------------------------------------- standing control
@@ -278,15 +283,15 @@ def test_standing_towns_reach_further_stay_on_land_and_home_ground_is_not_shaded
         "name": name, "conflict": "ukraine", "country": country, "lat": lat, "lon": lon, "status": status,
         "holder": holder, "standing": standing, "last": "2026-10-03T00:00:00Z"}
     inside = mapshapes._inside
-    # Melitopol, assessed and listed: shades 35 km; a claimed village: 10 km
+    # Melitopol, assessed and listed: shades 35 km; a village only claimed: nothing
     layers = cartographer.areas([P("Melitopol", 46.85, 35.37, "assessed", "RU", standing=True),
                                  P("Village", 47.6, 36.6, "claimed", "RU")], UA_STANDING)
-    held = next(L for L in layers if L["style"] == "occupied")
+    assert len(layers) == 1
+    held = layers[0]
     assert inside(held["polygons"], 35.37, 47.10)                 # ~28 km north of Melitopol
     assert not inside(held["polygons"], 35.37, 47.25)             # beyond reach
     assert not inside(held["polygons"], 35.6, 46.55)              # the Sea of Azov is not shaded
-    claimed = next(L for L in layers if L["style"] == "claimed")
-    assert not inside(claimed["polygons"], 36.6, 47.75)           # a claim only reaches area_km
+    assert not inside(held["polygons"], 36.6, 47.6)               # a claimed village isn't shaded
     # Russian-held villages in Russia are Russia's own ground: nothing to shade
     assert cartographer.areas([P("Tetkino", 51.27, 34.27, "assessed", "RU", country="RU")], UA_STANDING) == []
     # Ukrainian-held Sumy's zone stops at the border

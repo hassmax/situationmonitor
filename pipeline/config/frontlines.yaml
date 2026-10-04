@@ -20,7 +20,8 @@
 #                   description of the region itself ("Russian-occupied Crimea") counts for every
 #                   town listed in it (only where a side holds all of it); `aka`: its other names.
 #   actors          the sides, each with:
-#     id, name      id used by the agents, and the name shown ("Held by Russia")
+#     id, name      id used by the agents, and the name used in the reviewer's notes
+#     controlled    what hovering over ground it holds says ("Russian-controlled")
 #     color         the map colour of ground it holds
 #     sources       source `side` codes (sources.yaml) whose reports are aligned with this actor:
 #                   their claims count as the actor's own claims
@@ -39,9 +40,9 @@ conflicts:
     area_km: 10
     reach_km: 35
     actors:
-      - {id: RU, name: Russia, color: "#e39b5b", sources: [RU, BY], aka: "Russian forces, Russian MoD, the 'Sever/Zapad/Tsentr/Yug/Vostok/Dnepr' groupings, Wagner, Akhmat",
+      - {id: RU, name: Russia, controlled: Russian-controlled, color: "#e39b5b", sources: [RU, BY], aka: "Russian forces, Russian MoD, the 'Sever/Zapad/Tsentr/Yug/Vostok/Dnepr' groupings, Wagner, Akhmat",
          held_as: [Russian, Russia, Russian-backed, Moscow, Kremlin], plain_occupied: true, home: [RU]}
-      - {id: UA, name: Ukraine, color: "#5aa9e6", sources: [UA], aka: "Ukrainian forces, the General Staff of Ukraine, Ukrainian brigades, DeepState",
+      - {id: UA, name: Ukraine, controlled: Ukrainian-controlled, color: "#5aa9e6", sources: [UA], aka: "Ukrainian forces, the General Staff of Ukraine, Ukrainian brigades, DeepState",
          held_as: [Ukrainian, Ukraine, Kyiv], home: []}
     standing:
       # reach_km 10 on a group: towns on the front or on a river (the Dnipro), whose shading must
@@ -95,9 +96,9 @@ conflicts:
     area_km: 10
     reach_km: 35
     actors:
-      - {id: HOUTHI, name: the Houthis, color: "#e39b5b", sources: [YE], aka: "Houthis, Ansar Allah, the Sanaa-based authorities, Houthi media (Al-Masirah, Saba)",
+      - {id: HOUTHI, name: the Houthis, controlled: Houthi-controlled, color: "#e39b5b", sources: [YE], aka: "Houthis, Ansar Allah, the Sanaa-based authorities, Houthi media (Al-Masirah, Saba)",
          held_as: [Houthi, Houthis, Huthi, Houthi rebel, rebel, Iran-backed Houthi, Iran-aligned Houthi, Ansar Allah]}
-      - {id: ROYG, name: Yemeni government-aligned forces, color: "#5aa9e6", sources: [SA, AE], aka: "the internationally recognized government, PLC, Giants Brigades, STC, National Resistance, Saudi-led coalition",
+      - {id: ROYG, name: Yemeni government-aligned forces, controlled: Government-controlled, color: "#5aa9e6", sources: [SA, AE], aka: "the internationally recognized government, PLC, Giants Brigades, STC, National Resistance, Saudi-led coalition",
          held_as: [government, Yemeni government, Saudi-backed, Emirati-backed, UAE-backed, separatist, STC, Southern Transitional Council, coalition]}
     standing:
       - region: Houthi-held north
@@ -117,9 +118,9 @@ conflicts:
     area_km: 25
     reach_km: 90
     actors:
-      - {id: SAF, name: the Sudanese army, color: "#5aa9e6", sources: [], aka: "Sudanese Armed Forces, SAF, the army, Port Sudan authorities, joint forces allied with the army",
+      - {id: SAF, name: the Sudanese army, controlled: Army-controlled, color: "#5aa9e6", sources: [], aka: "Sudanese Armed Forces, SAF, the army, Port Sudan authorities, joint forces allied with the army",
          held_as: [army, Sudanese army, SAF, military, government, Sudanese government]}
-      - {id: RSF, name: the Rapid Support Forces, color: "#e39b5b", sources: [], aka: "RSF, Rapid Support Forces, Tasis/the parallel government",
+      - {id: RSF, name: the Rapid Support Forces, controlled: RSF-controlled, color: "#e39b5b", sources: [], aka: "RSF, Rapid Support Forces, Tasis/the parallel government",
          held_as: [RSF, Rapid Support Forces, paramilitary, Sudanese paramilitary, paramilitary RSF]}
     standing:
       - region: Khartoum and the Nile
@@ -143,11 +144,11 @@ conflicts:
     area_km: 20
     reach_km: 45
     actors:
-      - {id: ENDF, name: Ethiopian government forces, color: "#5aa9e6", sources: [], aka: "ENDF, the federal army, regional special forces allied with Addis Ababa",
+      - {id: ENDF, name: Ethiopian government forces, controlled: Government-controlled, color: "#5aa9e6", sources: [], aka: "ENDF, the federal army, regional special forces allied with Addis Ababa",
          held_as: [government, federal, army, military]}
-      - {id: TPLF, name: Tigray forces, color: "#e39b5b", sources: [], aka: "TPLF, Tigray Defense Forces, TDF, Tigrayan fighters",
+      - {id: TPLF, name: Tigray forces, controlled: Tigrayan-controlled, color: "#e39b5b", sources: [], aka: "TPLF, Tigray Defense Forces, TDF, Tigrayan fighters",
          held_as: [TPLF, Tigrayan, Tigray forces, TDF]}
-      - {id: FANO, name: Fano militias, color: "#c77dcc", sources: [], aka: "Fano, Amhara militias",
+      - {id: FANO, name: Fano militias, controlled: Fano-controlled, color: "#c77dcc", sources: [], aka: "Fano, Amhara militias",
          held_as: [Fano, Fano militia, militia]}
     standing:
       - region: Tigray
@@ -163,9 +164,9 @@ conflicts:
     area_km: 12
     reach_km: 30
     actors:
-      - {id: M23, name: AFC/M23, color: "#e39b5b", sources: [RW], aka: "M23, AFC, Alliance Fleuve Congo, Congo River Alliance",
+      - {id: M23, name: AFC/M23, controlled: M23-controlled, color: "#e39b5b", sources: [RW], aka: "M23, AFC, Alliance Fleuve Congo, Congo River Alliance",
          held_as: [M23, AFC/M23, M23 rebel, rebel, Rwanda-backed, Rwanda-backed M23, Rwandan-backed]}
-      - {id: FARDC, name: Congolese government forces, color: "#5aa9e6", sources: [CD], aka: "FARDC, the Congolese army, Wazalendo militias allied with the army",
+      - {id: FARDC, name: Congolese government forces, controlled: Government-controlled, color: "#5aa9e6", sources: [CD], aka: "FARDC, the Congolese army, Wazalendo militias allied with the army",
          held_as: [government, Congolese government, army, Congolese army, FARDC, Kinshasa]}
     standing:
       - region: North Kivu
@@ -187,9 +188,9 @@ conflicts:
     area_km: 15
     reach_km: 30
     actors:
-      - {id: JUNTA, name: the military junta, color: "#e39b5b", sources: [MM], aka: "Tatmadaw, the junta, the military regime, SAC, the military government",
+      - {id: JUNTA, name: the military junta, controlled: Junta-controlled, color: "#e39b5b", sources: [MM], aka: "Tatmadaw, the junta, the military regime, SAC, the military government",
          held_as: [junta, military, regime, military junta, Tatmadaw]}
-      - {id: RESIST, name: resistance forces, color: "#5aa9e6", sources: [], aka: "People's Defence Forces, PDF, NUG, Arakan Army, MNDAA, TNLA, KIA, KNU, Karenni forces, ethnic armed organizations, the Three Brotherhood Alliance",
+      - {id: RESIST, name: resistance forces, controlled: Resistance-controlled, color: "#5aa9e6", sources: [], aka: "People's Defence Forces, PDF, NUG, Arakan Army, MNDAA, TNLA, KIA, KNU, Karenni forces, ethnic armed organizations, the Three Brotherhood Alliance",
          held_as: [rebel, resistance, Arakan Army, MNDAA, TNLA, KIA, Kachin Independence Army, KNU, Karen, PDF, ethnic armed group, ethnic army, insurgent]}
     standing:
       - region: Rakhine
@@ -209,9 +210,9 @@ conflicts:
     area_km: 30
     reach_km: 60
     actors:
-      - {id: JIHADI, name: jihadist groups, color: "#e39b5b", sources: [], aka: "JNIM, al-Qaeda's Sahel branch, Islamic State Sahel, ISGS",
+      - {id: JIHADI, name: jihadist groups, controlled: Jihadist-controlled, color: "#e39b5b", sources: [], aka: "JNIM, al-Qaeda's Sahel branch, Islamic State Sahel, ISGS",
          held_as: [jihadist, JNIM, Islamist, militant, al-Qaeda, Islamic State]}
-      - {id: STATE, name: Sahel governments' forces, color: "#5aa9e6", sources: [], aka: "the Malian, Burkinabe or Nigerien army, FAMa, Africa Corps or Wagner alongside them, VDP",
+      - {id: STATE, name: Sahel governments' forces, controlled: Government-controlled, color: "#5aa9e6", sources: [], aka: "the Malian, Burkinabe or Nigerien army, FAMa, Africa Corps or Wagner alongside them, VDP",
          held_as: [government, army, junta, military]}
     standing:
       - region: Mali
@@ -232,9 +233,9 @@ conflicts:
     area_km: 25
     reach_km: 50
     actors:
-      - {id: SHABAAB, name: al-Shabaab, color: "#e39b5b", sources: [], aka: "al-Shabaab, Harakat al-Shabaab al-Mujahideen",
+      - {id: SHABAAB, name: al-Shabaab, controlled: Al-Shabaab-controlled, color: "#e39b5b", sources: [], aka: "al-Shabaab, Harakat al-Shabaab al-Mujahideen",
          held_as: [al-Shabaab, al Shabaab, Al-Shabab, Shabaab, Shabab, militant, Islamist, jihadist, extremist]}
-      - {id: SFG, name: Somali government forces, color: "#5aa9e6", sources: [], aka: "Somali National Army, SNA, federal forces, AUSSOM, clan militias (macawisley) allied with the government, Jubaland or Puntland forces",
+      - {id: SFG, name: Somali government forces, controlled: Government-controlled, color: "#5aa9e6", sources: [], aka: "Somali National Army, SNA, federal forces, AUSSOM, clan militias (macawisley) allied with the government, Jubaland or Puntland forces",
          held_as: [government, Somali government, federal government, army, Somali army, SNA, Jubaland, Puntland]}
     standing:
       - region: southern and central Somalia

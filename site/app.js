@@ -697,15 +697,12 @@
     }
     return best;
   }
-  function tipArea(L, lat, lng) {
-    const p = nearestPlace(L, lat, lng);
-    const what = p && (p.status === "contested" ? "fighting reported inside" : p.status === "claimed" ? `${esc(p.holder_name)} claims it` : `held by ${esc(p.holder_name)}`);
-    return `<div class="tip"><div class="tip-meta"><span class="control-swatch${L.style === "infiltration" ? " hatched" : ""}" style="${L.color && L.style !== "infiltration" ? `background:${esc(L.color)};opacity:${L.style === "claimed" ? 0.5 : 0.9}` : ""}" aria-hidden="true"></span><b>${esc(L.label)}</b></div>
-      ${p ? `<div class="tip-sum">Nearest named place: ${esc(p.name)}${p.region ? `, ${esc(p.region)}` : ""}: ${what}${p.since ? ` since ${esc(flDay(p.since))}` : ""}. Basis: ${esc(p.basis || "reports")}.</div>` : ""}
-      <div class="tip-foot"><span>This site's assessment, approximate area</span>${p && p.sources ? `<span>${p.sources} source${p.sources === 1 ? "" : "s"}</span>` : ""}</div></div>`;
+  // The site's own front-line areas: just who controls the ground ("Russian-controlled").
+  function tipArea(L) {
+    return `<div class="tip"><div class="tip-meta"><b>${esc(L.label)}</b></div></div>`;
   }
   function tipControl(L, lat, lng) {
-    if (L.assessment) return tipArea(L, lat, lng);
+    if (L.assessment) return tipArea(L);
     const day = L.as_of ? new Date(L.as_of).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" }) : "";
     return `<div class="tip"><div class="tip-meta"><span class="control-swatch${L.style === "infiltration" ? " hatched" : L.style === "advance" ? " advance" : ""}" aria-hidden="true"></span><b>${esc(L.label)}</b></div>
       <div class="tip-foot"><span>${L.approx ? `Approximate: traced from the ${esc(L.source || "source")} map` : esc(L.source || "Source map")}${day ? `${L.approx ? " of" : ", as of"} ${esc(day)}` : ""}</span></div></div>`;
@@ -1344,10 +1341,9 @@
   // Who drew the control shapes, and when: credited under the legend, with a link to the source's map.
   function renderControlNote() {
     const el = $("#controlNote");
-    const layers = controlLayers();
+    const layers = controlLayers().filter((L) => !L.assessment);  // the site's own areas need no note
     el.hidden = !layers.length;
     if (el.hidden) return;
-    const own = layers.filter((L) => L.assessment);
     const bySource = new Map();
     const traced = layers.filter((L) => L.approx && !L.assessment);
     for (const L of layers.filter((x) => !x.approx && !x.assessment)) {
@@ -1368,13 +1364,6 @@
       + `. The shapes are theirs, simplified${hatched ? "; hatched areas have forces present but not in control" : ""}.`);
     for (const L of traced) parts.push(`${esc(L.label)}${L.country ? ` ${esc(country(L.country))}` : ""} (dashed edge) is approximate: traced by this site from the `
       + `<a href="${esc(L.link || "#")}" target="_blank" rel="noopener">${esc(L.source || "source")} map</a>${L.as_of ? ` of ${esc(day(L.as_of))}` : ""}, which is published only as a picture.`);
-    if (own.length) {
-      const conflicts = ((S.data.frontline && S.data.frontline.conflicts) || []).filter((c) => own.some((L) => L.conflict === c.id)).map((c) => c.name);
-      parts.push(`Coloured areas${conflicts.length ? ` in ${esc(conflicts.join(", "))}` : ""} (dashed edge) are this site's own assessment, approximate: `
-        + `ground around the settlements the reports name, in the holder's colour, solid where control is confirmed (geolocated footage, reporting from the scene, both sides, or two independent sources), `
-        + `reaching further around established towns that independent outlets describe as held ("Russian-occupied Melitopol"), never over the sea or across a border; `
-        + `light where only one side claims it, hatched where fighting is reported; where two sides meet, the line runs halfway between their settlements. A second check reviews every change before it is shown.`);
-    }
     el.innerHTML = parts.join(" ");
   }
 

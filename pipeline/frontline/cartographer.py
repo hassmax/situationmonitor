@@ -1,9 +1,10 @@
 """Cartographer: no model. Turns the reviewed settlement assessments into shaded areas of control,
 the way the globe already shows territorial control:
 
-- Every published settlement shades the ground around it, out to its conflict's `area_km`, in its
-  holder's colour: solid where control is assessed, light where only one side claims it, hatched
-  where fighting is reported inside. A town on the conflict's `standing` list (frontlines.yaml)
+- Every settlement whose control is assessed (corroborated) shades the ground around it, out to
+  its conflict's `area_km`, in its holder's colour, labelled simply "Russian-controlled",
+  "Houthi-controlled" (the actor's `controlled`). One side's claim, or fighting inside, doesn't
+  change it: the shading moves only when a capture is corroborated (the owner's choice, 2026-10-04). A town on the conflict's `standing` list (frontlines.yaml)
   whose control is assessed reaches further, to `reach_km`: those are the established towns and
   cities behind the lines, and together they fill the ground a side has held for a long time.
 - Shading stays on the land of the country the settlement lies in (the globe's own country
@@ -59,7 +60,7 @@ def _places(fl: dict, conflicts: list[dict], now) -> list[dict]:
         out.append({
             "name": p["name"], "region": p.get("region"), "country": p["country"], "conflict": conflict["id"],
             "lat": p["lat"], "lon": p["lon"], "status": pub["status"],
-            "holder": pub.get("holder"), "holder_name": holder["name"] if holder else None,
+            "holder": pub.get("holder"), "holder_name": holder["name"] if holder else None, "previous": pub.get("previous"),
             "color": holder["color"] if holder else None, "previous_name": prev["name"] if prev else None,
             "since": pub.get("since"), "basis": pub.get("basis"), "sources": pub.get("sources"),
             "last": live[-1]["time"] if live else p["claims"][-1]["time"], "event": pub.get("event"),
@@ -87,9 +88,20 @@ def _home(p: dict, conflict: dict) -> bool:
     return bool(a and p["status"] != "contested" and p.get("country") in (a.get("home") or []))
 
 
+def controller(p: dict) -> str | None:
+    """Who the map shades a settlement for: the side whose control is assessed (corroborated). A
+    newer claim by the other side, or fighting inside, leaves it with that side until the capture
+    is corroborated too; a place no side's control was ever assessed for isn't shaded."""
+    if p["status"] == "claimed":
+        return p.get("previous")
+    return p.get("holder")
+
+
 def areas(places: list[dict], conflict: dict) -> list[dict]:
-    """Shaded areas for one conflict's published settlements: one layer per (status, holder)."""
-    pts = [p for p in places if p["conflict"] == conflict["id"] and not _home(p, conflict)]
+    """Shaded areas for one conflict: one layer per side, around the settlements it controls."""
+    pts = [{**p, "status": "assessed", "holder": controller(p)} for p in places
+           if p["conflict"] == conflict["id"] and controller(p)]
+    pts = [p for p in pts if not _home(p, conflict)]
     if not pts:
         return []
     import contourpy
@@ -146,17 +158,13 @@ def areas(places: list[dict], conflict: dict) -> list[dict]:
         status, holder = k
         a = ledger.actor(conflict, holder)
         members = [p for p, kk in zip(pts, klass) if kk == k]
-        label = {"assessed": f"Held by {a['name']}" if a else "Held",
-                 "claimed": f"Claimed by {a['name']}" if a else "Claimed",
-                 "contested": "Contested: fighting reported"}[status]
+        label = (a.get("controlled") or f"Held by {a['name']}") if a else "Held"
         layers.append({"id": f"fl-{conflict['id']}-{status}-{holder or 'none'}", "label": label, "style": STYLE[status],
                        "color": a["color"] if a else None, "country": None, "conflict": conflict["id"],
                        "source": "This site's assessment", "assessment": True, "area_km": area,
                        "reach_km": max(_reach(p, conflict) for p in members),
                        "as_of": max(p["last"] for p in members), "settlements": len(members), "polygons": polys})
-    # paint order: claims first (lightest), then held ground, then contested hatching on top
-    order = {"claimed": 0, "occupied": 1, "infiltration": 2}
-    return sorted(layers, key=lambda L: order.get(L["style"], 3))
+    return layers
 
 
 def public(fl: dict, conflicts: list[dict], now) -> dict:
