@@ -18,7 +18,7 @@ reports into statements of fact):
   CORROBORATED_HIGH or more corroborated events, "moderate" with one, "low" with none;
 - a judgment citing any event that isn't corroborated must say so in its words ("reports suggest",
   "claims"), else it is dropped (in the first trial a single-source capture, cited beside a
-  corroborated summit, was stated as fact);
+  corroborated summit, was stated as fact), and may not call itself corroborated or confirmed;
 - no outside knowledge and no predictions; event ids written into the text are stripped.
 
 At most every MIN_INTERVAL, and only when the last WINDOW_HOURS of events changed. Who writes it
@@ -96,7 +96,8 @@ Rules:
 - Plain, neutral language; no drama. Keep numbers exactly as given.
 - Never write event ids in the text; they go only in "ids".
 - Only regions where something notable is happening; at most 2 judgments per region, most important first. Skip a region rather than write filler.
-- "trend" is one of: escalating (more or heavier fighting, strikes, buildup), de-escalating (less fighting, withdrawals, ceasefires, talks advancing), shifting (a change of focus, place or method rather than of level), steady (a pattern of several events continuing at about the same level; never for a one-off).
+- Never write "corroborated" or "confirmed" in the text: the confidence is shown beside each judgment, worked out from the events it cites.
+- "trend" is one of: escalating (more or heavier fighting, strikes, buildup, threats, expulsions, new sanctions), de-escalating (less fighting, withdrawals, ceasefires, talks agreed, proposed or advancing), shifting (a change of focus, place or method rather than of level), steady (a pattern of several events continuing at about the same level; never for a one-off).
 
 Reply with one JSON object and nothing else:
 {"regions": [{"region": "<region id>", "judgments": [{"headline": "<at most 12 words>", "trend": "<trend>", "text": "<one or two sentences>", "ids": ["<event id>", ...]}]}]}"""
@@ -192,6 +193,7 @@ def fingerprint(events: list[dict], now) -> str:
 _HEDGE = re.compile(r"\b(?:report\w*|claim\w*|say|says|said|stat(?:e|es|ed|ing)|according|alleg\w*|single-source|"
                     r"unconfirmed|unverified|aligned|reportedly|assert\w*|accus\w*|suggest\w*|indicat\w*|appear\w*|"
                     r"possibl\w*|may|might)\b", re.IGNORECASE)
+_CONFIRMED = re.compile(r"\b(?:corroborat\w*|confirm(?:s|ed)?)\b", re.IGNORECASE)
 _ID_IN_TEXT = re.compile(r"\s*[(\[]\s*(?:ids?:?\s*)?[0-9a-f]{12}(?:\s*[,;/]\s*[0-9a-f]{12})*\s*[)\]]|\b[0-9a-f]{12}\b")
 
 
@@ -241,6 +243,8 @@ def validate(reply, shown: list[dict], events: list[dict]) -> list[dict] | None:
             t = tally(ids, by_id)
             if (t["single_source"] or t["claimed"]) and not _HEDGE.search(f"{headline} {text}"):
                 continue  # single-source reports or claims, stated as fact
+            if (t["single_source"] or t["claimed"]) and _CONFIRMED.search(f"{headline} {text}"):
+                continue  # "Corroborated reports indicate..." over a one-sided claim (Cerebras trial, 2026-10-04)
             got.setdefault(rid, []).append({"headline": headline, "trend": trend, "text": text, "ids": ids[:12],
                                             "tally": t, "confidence": confidence(t)})
             total += 1

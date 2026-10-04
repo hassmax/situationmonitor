@@ -45,6 +45,7 @@ def test_confidence_comes_from_the_cited_events_not_the_model():
         {"headline": "Reports suggest a drawdown", "trend": "de-escalating", "text": "A single report says jets left; Iran claims more.", "ids": ["s1", "c1"]},
         {"headline": "Army retakes town", "trend": "escalating", "text": "The army retook the town.", "ids": ["a1", "s1"]},   # single-source stated as fact
         {"headline": "One event only", "trend": "escalating", "text": "Units arrived.", "ids": ["a1"]},
+        {"headline": "Advance confirmed", "trend": "escalating", "text": "Corroborated reports indicate the army advanced.", "ids": ["a1", "c1"]},
     ]}, {"region": "ukraine", "judgments": [
         {"headline": "Made-up link", "trend": "steady", "text": "x", "ids": ["a1"]},        # cites another region's event
         {"headline": "Bad trend word", "trend": "volatile", "text": "x", "ids": ["u1"]},
@@ -143,3 +144,13 @@ def test_no_keys_and_no_gemini_left_means_no_call(monkeypatch):
     state, asked = {}, []
     analyst.update(state, EVENTS, THEATERS, CARRIERS, FLIGHTS, {}, NOW, lambda *a, **k: asked.append(1), remaining=2, share=5)
     assert not asked and "analysis" not in state
+
+
+def test_a_line_resting_partly_on_claims_cannot_call_itself_corroborated():
+    shown = analyst.regions(EVENTS, THEATERS, CARRIERS, FLIGHTS, NOW)
+    bad = {"regions": [{"region": "mideast", "judgments": [
+        {"headline": "Army advancing", "trend": "escalating", "text": "Corroborated reports indicate the army advanced.", "ids": ["a1", "c1"]}]}]}
+    assert analyst.validate(bad, shown, EVENTS) is None
+    fine = {"regions": [{"region": "mideast", "judgments": [
+        {"headline": "Army advancing", "trend": "escalating", "text": "Corroborated reports indicate the army advanced.", "ids": ["a1", "a2"]}]}]}
+    assert analyst.validate(fine, shown, EVENTS)[0]["judgments"][0]["confidence"] == "higher"
