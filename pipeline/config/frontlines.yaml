@@ -252,7 +252,7 @@ conflicts:
     actors:
       - {id: JIHADI, name: jihadist groups, controlled: Jihadist-controlled, color: "#e39b5b", sources: [], aka: "JNIM, al-Qaeda's Sahel branch, Islamic State Sahel, ISGS",
          held_as: [jihadist, JNIM, Islamist, militant, al-Qaeda, Islamic State]}
-      - {id: STATE, name: Sahel governments' forces, controlled: Government-controlled, color: "#5aa9e6", sources: [], aka: "the Malian, Burkinabe or Nigerien army, FAMa, Africa Corps or Wagner alongside them, VDP",
+      - {id: STATE, name: Sahel governments' forces, controlled: Government-controlled, color: "#5aa9e6", sources: [BF], aka: "the Malian, Burkinabe or Nigerien army, FAMa, Africa Corps or Wagner alongside them, VDP",
          held_as: [government, army, junta, military]}
     standing:
       - region: Mali
