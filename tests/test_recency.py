@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, timezone
 import recency
 
 NOW = datetime(2026, 9, 28, 12, 0, tzinfo=timezone.utc)
-SETTINGS = {}
+SETTINGS = {"daily_llm_calls": 470, "max_calls_per_run": 6}
 
 
 def ev(i, summary, hours_ago=5):

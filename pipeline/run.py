@@ -33,6 +33,7 @@ import geo  # noqa: E402
 import control  # noqa: E402
 import hunter  # noqa: E402
 import merge  # noqa: E402
+import providers  # noqa: E402
 import publish  # noqa: E402
 import recency  # noqa: E402
 from common import hours_since, http_session, iso, load_json, log, now, save_json  # noqa: E402
@@ -276,8 +277,7 @@ def main() -> int:
     reserve = int(settings.get("extraction_reserve", 30))
     frontline.update([e for e in events if e["id"] not in hidden], cfg.frontlines, state, settings, t0, extract.ask_json,
                      geo.Geocoder(state["geocache"], session, 30),
-                     lambda purpose: min(extract.share_left(state, settings, t0, purpose),
-                                         extract.calls_allowed(state, settings, t0, reserve=reserve)),
+                     lambda purpose: extract.room(state, settings, t0, purpose, reserve=reserve),
                      disabled=args.no_llm, session=session)
     if not args.no_llm:
         analyst.update(state, published, cfg.theaters, fleet.public(state, t0), flights.for_analyst(state, t0), settings, t0,
@@ -308,6 +308,15 @@ def main() -> int:
         "candidates": len(fresh), "model_calls": calls, "events_added": len(candidates),
         "queue": len(leftover),
     }
+    # Tokens by job today, Gemini and the outside providers, to see which jobs could move off Gemini
+    usage = state.get("llm_calls") or {}
+    if usage.get("date") == t0.strftime("%Y-%m-%d"):
+        tokens = ", ".join(f"{k} {v:,}" for k, v in sorted((usage.get("tokens") or {}).items(), key=lambda kv: -kv[1]))
+        log(f"[budget] Gemini today: {usage.get('count', 0)} calls ({', '.join(f'{k} {v}' for k, v in sorted((usage.get('by') or {}).items()))}); "
+            f"tokens {tokens or 'none counted yet'}")
+    outside = providers.summary(state, t0)
+    if outside:
+        log(f"[budget] outside providers today: {outside}")
 
     # 10. Archive on the data branch: one file per day, rewritten only when that day changed
     taken_down = {str(i): None for i in cfg.removed}

@@ -201,8 +201,8 @@ def check(events: list[dict], new_ids: set[str], session, ask, state: dict, sett
     asked = parse_time(state.get("recency_asked"))
     if asked and now - asked < MODEL_GAP and len(todo) < MODEL_BATCH:
         return events  # a few waiting: check them together in a while
-    if todo and extract.share_left(state, settings, now, "recency") <= 0:
-        return events  # its share of today's model calls is used for now (see extract.SHARES)
+    if todo and extract.room(state, settings, now, "recency") <= 0:
+        return events  # its share of today's model calls is used for now (see extract.SHARES, providers.ROUTES)
     todo.sort(key=lambda e: e.get("time") or "", reverse=True)
     todo = sorted(todo, key=lambda e: e["id"] not in new_ids)[:CHECKS_PER_RUN]  # this run's events, then newest
     cases = []

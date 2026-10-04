@@ -39,6 +39,7 @@ from datetime import timedelta
 
 import flights as flights_mod
 import providers
+from extract import _estimate_tokens as extract_tokens
 from common import haversine_km, iso, log, parse_time
 
 WINDOW_HOURS = 6
@@ -289,7 +290,8 @@ def update(state: dict, events: list[dict], theaters: list[dict], carriers: list
         return
     order = settings.get("analysis_order") or ORDER
     outside = [providers.configured(settings).get(s) for s in order if s not in ("gemini-flash", "gemini")]
-    outside = [p for p in outside if p and providers.available(p, state, now)]
+    caps = {p["name"]: cap for p, cap in providers.routes(settings, "analysis")}
+    outside = [p for p in outside if p and providers.has_room(p, caps.get(p["name"]), state, now, "analysis", 0)]
     if remaining < int(settings.get("brief_min_calls", 5)):
         share = 0  # Gemini's day is nearly used up: outside providers only
     if share <= 0 and not outside:
@@ -313,9 +315,10 @@ def update(state: dict, events: list[dict], theaters: list[dict], carriers: list
             model, label = flash or (state.get("llm_model") or {}).get("model"), "Gemini"
         else:
             p = providers.configured(settings).get(step)
-            if not p or not providers.available(p, state, now):
+            need = extract_tokens(PROMPT + text) + 2000
+            if not p or not providers.has_room(p, caps.get(step), state, now, "analysis", need):
                 continue
-            reply, model = providers.ask_json(p, PROMPT, text, state, now, max_tokens=8000)
+            reply, model = providers.ask_json(p, PROMPT, text, state, now, max_tokens=8000, purpose="analysis")
             label = p.get("label") or step
         out = validate(reply, shown, events, flights)
         if out is not None:
