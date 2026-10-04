@@ -5,6 +5,13 @@
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const params = new URLSearchParams(location.search);
   const DEMO = params.has("demo");
+  // This page's own version: the commit stamped into its script address by the update workflow
+  // (app.js?v=<commit>); empty when run locally. See checkBuild.
+  const OWN_BUILD = (() => {
+    const m = document.currentScript && /[?&]v=([^&]+)/.exec(document.currentScript.getAttribute("src") || "");
+    return m && m[1] !== "__BUILD__" ? m[1] : "";
+  })();
+  if (params.has("v")) history.replaceState(null, "", location.pathname + location.hash);  // the address a self-reload used
   const REFRESH_MS = 5 * 60 * 1000;
   const HOUR = 3600e3, DAY = 86400e3;
   const LIVE_MS = 6 * HOUR;          // events this recent animate
@@ -1034,7 +1041,40 @@
   // downloaded only when it has. Without those headers, the full file is fetched every REFRESH_MS.
   let dataStamp = null, lastFull = 0;
   const stampOf = (res) => res.headers.get("etag") || res.headers.get("last-modified");
+  // A page left open while the site's code is updated would go on running the old code against
+  // newer data (on 2026-10-04 that left every event without its reports). The data says which
+  // version is live (`build`); when it differs from this page's own, the page reloads: at once if
+  // it is in the background or untouched for two minutes, else when the note is clicked or it
+  // next goes idle. Once per version: a cached copy of the page may still be served for a while.
+  let lastInput = Date.now(), pendingBuild = "";
+  ["pointerdown", "keydown", "wheel"].forEach((t) => window.addEventListener(t, () => { lastInput = Date.now(); }, { capture: true, passive: true }));
+  function reloadFor(build) {
+    try { sessionStorage.setItem("gsm_reload", build); } catch (_) { /* storage blocked */ }
+    location.replace(`${location.pathname}?v=${encodeURIComponent(build)}${location.hash}`);  // a new address, past any cached copy
+  }
+  function checkBuild(data) {
+    const live = data && data.build;
+    if (DEMO || !OWN_BUILD || !live || live === OWN_BUILD) return;
+    let tried = "";
+    try { tried = sessionStorage.getItem("gsm_reload") || ""; } catch (_) { /* storage blocked */ }
+    if (tried === live) return;
+    pendingBuild = live;
+    if (document.hidden || Date.now() - lastInput > 120e3) { reloadFor(live); return; }
+    let note = document.getElementById("updateNote");
+    if (!note) {
+      note = document.createElement("div");
+      note.id = "updateNote";
+      note.className = "live-note update-note is-on";
+      note.setAttribute("role", "status");
+      note.innerHTML = 'The site was updated. <button class="linkish" type="button">Reload</button>';
+      note.querySelector("button").addEventListener("click", () => reloadFor(pendingBuild));
+      document.body.appendChild(note);
+    }
+  }
+  const reloadIfIdle = () => { if (pendingBuild && (document.hidden || Date.now() - lastInput > 120e3)) reloadFor(pendingBuild); };
+
   async function checkForUpdate() {
+    reloadIfIdle();
     if (DEMO || document.hidden) return;
     try {
       const res = await fetch(`data/events.json?t=${Date.now()}`, { method: "HEAD", cache: "no-store" });
@@ -1147,6 +1187,7 @@
     else theaters.forEach((t) => { if (!S.theaters.some((x) => x.id === t.id)) S.theaterOn.add(t.id); });
     S.theaters = theaters;
     S.hot = new Set(theaters.flatMap((t) => t.highlight || []));
+    checkBuild(data);
     const before = S.data ? new Set(S.data.events.map((e) => e.id)) : null;
     S.data = data;
     if (before) {
@@ -2324,7 +2365,7 @@
   }
   if (!DEMO) {
     setInterval(checkForUpdate, 60e3);
-    document.addEventListener("visibilitychange", () => { if (!document.hidden) checkForUpdate(); });
+    document.addEventListener("visibilitychange", () => { if (document.hidden) reloadIfIdle(); else checkForUpdate(); });
   }
   setInterval(() => {
     updateFreshness();

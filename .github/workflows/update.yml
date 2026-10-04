@@ -93,6 +93,9 @@ jobs:
           cp -r site/. _site/
           cp out/events.json _site/data/events.json
           cp -r out/reports _site/data/reports
+          # each version of the code gets its own address (app.js?v=<commit>), so browsers fetch it
+          # afresh after an update instead of running a cached copy against newer data
+          sed -i "s/__BUILD__/${GITHUB_SHA:0:12}/g" _site/index.html
 
       - uses: actions/configure-pages@v5
 

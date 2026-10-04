@@ -1224,6 +1224,7 @@ h2 {
 }
 .live-note.is-on { transform: translate(-50%, 0); }
 @media (prefers-reduced-motion: reduce) { .live-note { transition: none; } }
+.update-note { pointer-events: auto; }  /* has a button, and stays until used */
 
 /* "possibly an old story": a single-source event with only older coverage */
 .verdict--doubt { border-color: rgba(243, 193, 75, 0.45); margin-bottom: 8px; }
