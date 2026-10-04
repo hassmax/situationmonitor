@@ -47,7 +47,7 @@
     production: ["supply", "factory", ""],
   };
   const CAT_RGB = { strike: [255, 91, 58], ground: [245, 165, 36], naval: [76, 195, 255], deploy: [159, 184, 212],
-    hybrid: [177, 140, 255], diplo: [233, 238, 245], supply: [63, 193, 201], aid: [96, 214, 122], fleet: [205, 228, 255] };
+    hybrid: [177, 140, 255], diplo: [233, 238, 245], supply: [63, 193, 201], aid: [96, 214, 122], fleet: [205, 228, 255], flight: [255, 214, 102] };
   const ICONS = {
     missile: '<path d="M13.6 2.4 7 5.4 4.6 7.9l3.5 3.5 2.5-2.4z" fill="currentColor"/><path d="M4.6 7.9l-2.1.8M8.1 11.4l-.8 2.1M5.4 10.6l-2.6 2.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>',
     air: '<path d="M8 1.3 9 5.9l5.5 2.5v1.5L9 8.8l-.4 3.1 1.6 1.3v1.2L8 13.7l-2.2.7v-1.2l1.6-1.3L7 8.8 1.5 9.9V8.4L7 5.9z" fill="currentColor"/>',
@@ -66,6 +66,7 @@
     crate: '<path d="M2 5.2 8 2.3l6 2.9v5.6L8 13.7l-6-2.9z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none"/><path d="M2 5.2 8 8.1l6-2.9M8 8.1v5.6" stroke="currentColor" stroke-width="1.4" fill="none"/>',
     factory: '<path d="M1.6 14.2V7.4l3.6 2.3V7.4l3.6 2.3V2.4h1.7v-.8h2.2v.8h1.7v11.8z" fill="currentColor"/>',
     carrier: '<path d="M.8 9.6 2.9 6h10.3l2.2 1.6v1.8l-1.6 1.6H2.6z" fill="currentColor"/><rect x="10.4" y="3.8" width="2.2" height="2.4" rx=".3" fill="currentColor"/>',
+    plane: '<path d="M8 .9c.6 0 .9.7.9 1.6v3.6l5.4 3.2v1.5L8.9 9.2v3l1.7 1.3v1.1L8 14l-2.6.6v-1.1l1.7-1.3v-3L1.7 10.8V9.3l5.4-3.2V2.5C7.1 1.6 7.4.9 8 .9z" fill="currentColor"/>',
     alert: '<path d="M4.4 12.2V9a3.6 3.6 0 0 1 7.2 0v3.2z" fill="currentColor"/><rect x="2.6" y="12.7" width="10.8" height="1.9" rx=".6" fill="currentColor"/><path d="M8 1.4v2.1M2.8 3.6l1.5 1.5M13.2 3.6l-1.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
   };
   const svgIcon = (name) => `<svg viewBox="0 0 16 16" aria-hidden="true">${ICONS[name] || ICONS.blast}</svg>`;
@@ -76,10 +77,10 @@
     ["ground", "ground", "Ground fighting"], ["territory", "ground", "Territory change"], ["naval", "naval", "Naval"],
     ["hybrid", "hybrid", "Hybrid attack"], ["incursion", "hybrid", "Incursion"], ["deploy", "deploy", "Deployment"],
     ["diplo", "diplo", "Diplomacy, legal"], ["crate", "supply", "Arms or forces moved"], ["factory", "supply", "Arms production"], ["coin", "aid", "Financial aid"],
-    ["carrier", "fleet", "US carrier at sea"],
+    ["carrier", "fleet", "US carrier at sea"], ["plane", "flight", "Military flights"],
   ];
   const MODE = { air: "by air", sea: "by sea", land: "overland", unspecified: "" };
-  const PLATFORM = { bluesky: "Bluesky", telegram: "Telegram", rss: "News feed", gdelt: "GDELT", map: "Map data", maproom: "ISW map" };
+  const PLATFORM = { bluesky: "Bluesky", telegram: "Telegram", rss: "News feed", gdelt: "GDELT", map: "Map data", maproom: "ISW map", adsb: "Flight tracking" };
   const KIND = { official: "Official", partisan: "Partisan", osint: "OSINT", news: "News", analysis: "Analysis" };
   const WINDOWS = [["6h", 6], ["24h", 24], ["3d", 72], ["7d", 168]];
   const ACCENT = [255, 90, 54];  // live, new and selected (styles.css --accent)
@@ -218,7 +219,7 @@
     windowH: 24,
     theaterOn: new Set(FALLBACK_THEATERS.map((t) => t.id)),
     statusOn: new Set(Object.keys(STATUS)),
-    layers: { paths: true, supply: true, carriers: true },
+    layers: { paths: true, supply: true, carriers: true, flights: true },
     off: new Set(),  // "On the map" entries switched off
     query: "",
     feedLimit: 250,
@@ -226,6 +227,8 @@
     arrived: null,      // ids of events that just arrived (they slide into the feed once)
     selectedHull: null,
     selectedFlow: null,
+    selectedFlight: null,  // hex code of the opened aircraft
+    flights: [],
     hot: new Set(),
     active: new Set(),
     activeKey: "",
@@ -608,9 +611,9 @@
     .arcDashAnimateTime((a) => (reduceMotion ? 0 : a.ms || 0))
     .arcAltitude((a) => (a.alt === undefined ? null : a.alt))
     .arcAltitudeAutoScale(0.36)
-    .arcLabel((a) => (a.carrier ? tipCarrier(a.carrier) : a.flow ? tipFlow(a.flow) : a.ref ? tipEvent(a.ref) : ""))
+    .arcLabel((a) => (a.carrier ? tipCarrier(a.carrier) : a.flight ? tipFlight(a.flight) : a.flow ? tipFlow(a.flow) : a.ref ? tipEvent(a.ref) : ""))
     .onArcHover((a) => { globeEl.style.cursor = a ? "pointer" : ""; })
-    .onArcClick((a) => { if (a.carrier) selectCarrier(a.carrier.hull, true); else if (a.flow) selectFlow(a.flow.key); else if (a.ref) select(a.ref.id, true); })
+    .onArcClick((a) => { if (a.carrier) selectCarrier(a.carrier.hull, true); else if (a.flight) selectFlight(a.flight.hex, true); else if (a.flow) selectFlow(a.flow.key); else if (a.ref) select(a.ref.id, true); })
     // a click on bare globe (no marker, line or dot) ends the focus on an opened event, carrier or route
     .onGlobeClick(() => { if (focused()) closeDetail(); });
 
@@ -754,6 +757,48 @@
     btn.onmouseleave = () => hideFly();
     c.el = el; c.key = `cvn:${c.hull}`; c.hAlt = 0.012; c.prio = 1;
     return c;
+  }
+
+  // Military and other notable aircraft (pipeline/flights.py): a plane pointing where it was heading,
+  // at its last reported position. Pointing at one draws the positions reported on this flight.
+  const ROLE_LABEL = { bomber: "Bomber", tanker: "Tanker", surveillance: "Surveillance", airlift: "Transport",
+    command: "Airborne command post", government: "Government flight", emergency: "Hijack code" };
+  let flightHover = [];
+  function flightMarker(f) {
+    const key = `fl:${f.hex}`;
+    const el = markerEl(key);
+    el.className = `mk mk-fl role-${f.role}${f.hex === S.selectedFlight ? " is-selected" : ""}${layoutClasses(el)}`;
+    el.style.setProperty("--hdg", `${isFinite(f.heading) ? f.heading : 0}deg`);
+    el.style.setProperty("--fade", String(Date.now() - f._seen > 45 * 60e3 ? 0.55 : 1));
+    setHtml(el, `${svgIcon("plane")}${f.hex === S.selectedFlight && f.callsign ? `<span class="mk-label">${esc(f.callsign)}</span>` : ""}`);
+    const btn = el.firstChild;
+    btn.setAttribute("aria-label", `${f.label}${f.callsign ? `, callsign ${f.callsign}` : ""}, seen ${ago(f._seen)}`);
+    btn.onclick = (ev) => { ev.stopPropagation(); closeFly(); selectFlight(f.hex, false); };
+    btn.onmouseenter = () => {
+      showFly(el, tipFlight(f));
+      flightHover.forEach((a) => extraArcs.delete(a));
+      if (f.hex !== S.selectedFlight) { flightHover = flightTrack(f, 0.75); flightHover.forEach((a) => extraArcs.add(a)); pushArcs(); }
+    };
+    btn.onmouseleave = () => { hideFly(); flightHover.forEach((a) => extraArcs.delete(a)); flightHover = []; pushArcs(); };
+    return markerDatum(key, { key, flight: f, el, lat: f.lat, lon: f.lon, hAlt: 0.016, prio: 0.5 });
+  }
+  // The positions reported on this flight, joined by straight lines (not the exact path flown).
+  function flightTrack(f, alpha) {
+    const pts = (f.track || []).map(([lat, lon]) => ({ lat, lon }));
+    const arcs = [];
+    for (let i = 1; i < pts.length; i++) {
+      if (km(pts[i - 1].lat, pts[i - 1].lon, pts[i].lat, pts[i].lon) < 1) continue;
+      arcs.push(...surfaceArcs(pts[i - 1], pts[i], { _k: `fl|${f.hex}|${i}`, flight: f, kind: "track", color: rgba(f.role === "emergency" ? ACCENT : CAT_RGB.flight, alpha), stroke: 0.22, ms: 0, seed: 0 }, 0.004));
+    }
+    return arcs;
+  }
+  const fmtAlt = (alt) => (alt == null ? "" : alt === 0 ? "on the ground" : `${Math.round(alt / 100) * 100 >= 1000 ? (Math.round(alt / 100) * 100).toLocaleString("en-US") : alt} ft`);
+  function tipFlight(f) {
+    const who = [f.callsign && `callsign ${f.callsign}`, f.reg].filter(Boolean).join(", ");
+    return `<div class="tip"><div class="tip-meta">${iconBadge("plane", "flight")}<b>${esc(ROLE_LABEL[f.role] || "Military flight")}</b><span>${esc(who)}</span></div>
+      <div class="tip-sum">${esc(f.label)}${f.op ? `, ${esc(f.op)}` : ""}</div>
+      <div class="tip-foot"><span>${esc(fmtAlt(f.alt))}</span><span>seen ${esc(ago(f._seen))}</span><span>adsb.lol</span></div>
+      <div class="tip-hint">Click for details</div></div>`;
   }
 
   // Simple tooltip for HTML markers (3D layers use globe.gl's own).
@@ -1225,6 +1270,10 @@
       (c.track || []).forEach((t) => { t.time = move(t.time); });
     });
     if (data.fleet_meta) data.fleet_meta.tracker_time = move(data.fleet_meta.tracker_time);
+    if (data.flights) {
+      data.flights.as_of = move(data.flights.as_of);
+      (data.flights.aircraft || []).forEach((f) => { f.seen = move(f.seen); f.since = move(f.since); });
+    }
   }
 
   function ingest(data) {
@@ -1255,6 +1304,17 @@
       return d;
     }).sort((a, b) => (a.at_home === b.at_home ? a.hull.localeCompare(b.hull) : a.at_home ? 1 : -1));
     S.fleetMeta = data.fleet_meta || {};
+    const byHex = new Map(S.flights.map((f) => [f.hex, f]));
+    S.flightsMeta = data.flights || {};
+    S.flights = ((data.flights && data.flights.aircraft) || []).filter((f) => isFinite(f.lat) && isFinite(f.lon)).map((f) => {
+      const d = byHex.get(f.hex) || {};
+      Object.assign(d, f);
+      d._seen = Date.parse(f.seen);
+      d._since = Date.parse(f.since);
+      return d;
+    });
+    const hexes = new Set(S.flights.map((f) => `fl:${f.hex}`));
+    for (const k of [...elCache.keys()]) if (k.startsWith("fl:") && !hexes.has(k)) { elCache.delete(k); markerData.delete(k); }
     const theaters = Array.isArray(data.theaters) && data.theaters.length ? data.theaters : FALLBACK_THEATERS;
     if (S.firstLoad) S.theaterOn = new Set(theaters.map((t) => t.id));
     else theaters.forEach((t) => { if (!S.theaters.some((x) => x.id === t.id)) S.theaterOn.add(t.id); });
@@ -1295,6 +1355,9 @@
     } else if (S.selectedHull) {
       const c = S.fleet.find((x) => x.hull === S.selectedHull);
       if (c) renderCarrierDetail(c, true);
+    } else if (S.selectedFlight) {
+      const f = S.flights.find((x) => x.hex === S.selectedFlight);
+      if (f) renderFlightDetail(f, true);
     }
   }
 
@@ -1408,7 +1471,7 @@
 
   // Focus: with an event, carrier or route open, everything else on the globe dims (markers in
   // styles.css, under body.focus; lines, dots and rings here), so what you opened stands out.
-  const focused = () => !!(S.selectedId || S.selectedHull || S.selectedFlow);
+  const focused = () => !!(S.selectedId || S.selectedHull || S.selectedFlow || S.selectedFlight);
   const FOCUS_DIM = 0.28;
   const dimOf = (isSelected) => (focused() && !isSelected ? FOCUS_DIM : 1);
 
@@ -1759,6 +1822,9 @@
     const animated = new Set(mapEvents.filter((e) => isLive(e) && catOf(e)[2]).slice(0, MAX_ANIMATED_NOW).map((e) => e.id));
     const html = mapEvents.map((e) => eventMarker(e, labelled.has(e.id), animated.has(e.id)));
     S.fleet.filter(carrierOnMap).forEach((c) => html.push(carrierMarker(c)));
+    if (S.layers.flights || S.selectedFlight) {
+      S.flights.filter((f) => S.layers.flights || f.hex === S.selectedFlight).slice(0, PHONE ? 40 : 90).forEach((f) => html.push(flightMarker(f)));
+    }
     S.html = html;
     if (!sailing) world.htmlElementsData(html);
 
@@ -1789,10 +1855,12 @@
     if (sel) rings.push(stable("rings", `sel|${sel.id}`, { lat: sel.lat, lon: sel.lon, rgb: ACCENT, alpha: 0.9, max: 4, speed: reduceMotion ? 0 : 2.2, period: 1200 }));
     const selC = S.selectedHull && S.fleet.find((c) => c.hull === S.selectedHull);
     if (selC) rings.push(stable("rings", `selc|${selC.hull}`, { lat: selC._lat, lon: selC._lon, rgb: ACCENT, alpha: 0.9, max: 4, speed: reduceMotion ? 0 : 2.2, period: 1200 }));
+    const selF = S.selectedFlight && S.flights.find((f) => f.hex === S.selectedFlight);
+    if (selF) rings.push(stable("rings", `self|${selF.hex}`, { lat: selF.lat, lon: selF.lon, rgb: ACCENT, alpha: 0.9, max: 3, speed: reduceMotion ? 0 : 2.2, period: 1200 }));
     baseRings = rings;
     pushRings();
 
-    const routeArcs = [...supplyArcs(S.supply.flows), ...(S.layers.carriers ? fleetArcs() : [])];
+    const routeArcs = [...supplyArcs(S.supply.flows), ...(S.layers.carriers ? fleetArcs() : []), ...(selF ? flightTrack(selF, 0.85) : [])];
     baseArcs = [...attackPaths(mapEvents), ...routeArcs, ...hitArcs(routeArcs)];
     pushArcs();
     updateActive(mapEvents);
@@ -2069,7 +2137,7 @@
   }
   function hideDetail() { $("#detail").hidden = true; $("#feedList").hidden = false; $("#feedHead").hidden = false; }
   function closeDetail() {
-    S.selectedId = null; S.selectedHull = null; S.selectedFlow = null;
+    S.selectedId = null; S.selectedHull = null; S.selectedFlow = null; S.selectedFlight = null;
     history.replaceState(null, "", location.pathname + location.search);
     hideDetail();
     render();
@@ -2136,7 +2204,7 @@
     if (!e) return;
     hotEvent(null);
     const fresh = id !== S.selectedId;
-    S.selectedId = id; S.selectedHull = null; S.selectedFlow = null;
+    S.selectedId = id; S.selectedHull = null; S.selectedFlow = null; S.selectedFlight = null;
     markViewed(id);
     history.replaceState(null, "", "#" + encodeURIComponent(id));
     let flight = 0;
@@ -2203,7 +2271,7 @@
     const s = S.supply;
     const f = (pledge ? s.pledges : s.flows).find((x) => x.key === key) || s.flows.find((x) => x.key === key) || s.pledges.find((x) => x.key === key);
     if (!f) return;
-    S.selectedFlow = key; S.selectedId = null; S.selectedHull = null;
+    S.selectedFlow = key; S.selectedId = null; S.selectedHull = null; S.selectedFlight = null;
     const a = f.from || countryCenter(f.supplier), b = f.to || countryCenter(f.recipient);
     if (a && b) { const mid = slerp(a, b, 0.5); zoomTo(mid.lat, mid.lon, clamp(0.6 + km(a.lat, a.lon, b.lat, b.lon) / 5000, 1.1, 2.6)); }
     const isPledge = s.pledges.includes(f);
@@ -2227,10 +2295,45 @@
     renderSoon();
   }
 
+  function selectFlight(hex, fly) {
+    const f = S.flights.find((x) => x.hex === hex);
+    if (!f) return;
+    S.selectedFlight = hex; S.selectedId = null; S.selectedHull = null; S.selectedFlow = null;
+    history.replaceState(null, "", location.pathname + location.search);
+    if (fly) zoomTo(f.lat, f.lon, clamp(world.pointOfView().altitude, 0.9, 1.6));
+    renderFlightDetail(f);
+    renderSoon();
+    if (isMobile()) toggleFilters(false);
+  }
+
+  function renderFlightDetail(f, refresh = false) {
+    const nearby = S.data.events.filter((e) => onMap(e) && e._t > Date.now() - DAY && km(e.lat, e.lon, f.lat, f.lon) <= 400)
+      .sort((a, b) => b._t - a._t).slice(0, 6);
+    const meta = S.flightsMeta || {};
+    const facts = [
+      ["Callsign", f.callsign], ["Registration", f.reg], ["Aircraft type", f.type], ["Flown by", f.op],
+      ["Altitude", fmtAlt(f.alt)], ["Ground speed", isFinite(f.gs) && f.gs ? `${Math.round(f.gs)} knots` : ""],
+      ["Heading", isFinite(f.heading) ? `${Math.round(f.heading)}°` : ""],
+      ["Last reported", `${fmtDay(f._seen)}, ${new Date(f._seen).toISOString().slice(11, 16)} UTC (${ago(f._seen)})`],
+      ["Tracked since", `${new Date(f._since).toISOString().slice(11, 16)} UTC, ${(f.track || []).length} positions`],
+    ].filter(([, v]) => v);
+    showDetail(`
+      <div class="detail-type">${iconBadge("plane", "flight")}${esc(ROLE_LABEL[f.role] || "Military flight")}</div>
+      <h3>${esc(f.label)}</h3>
+      <dl class="flight-facts">${facts.map(([k, v]) => `<dt>${esc(k)}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
+      <div class="verdict verdict--ice"><span class="mark mark--ice" aria-hidden="true"></span><div><strong>Position as broadcast by the aircraft</strong><p>Shown where its transponder last reported it. The line joins the positions reported on this flight; it is not the exact path flown, and the map does not estimate where the aircraft is now. Military aircraft often fly with transponders off, so most flights are never seen.</p></div></div>
+      ${f.role === "emergency" ? `<p class="muted">Code 7500 means unlawful interference, but crews also set it by mistake. Nothing is known beyond the code.</p>` : ""}
+      <h2 class="reports-title">Events within 400 km, last 24 hours (${nearby.length})</h2>
+      ${nearby.length ? `<ul class="targets">${nearby.map((e) => `<li><button class="target" type="button" data-event="${esc(e.id)}"><span>${esc(e.summary)}</span><span class="target-meta">${esc(agoShort(e._t))}</span></button></li>`).join("")}</ul>` : '<p class="muted">None reported.</p>'}
+      <h2 class="reports-title">Source</h2>
+      <p class="muted">${esc(meta.attribution || "Flight data: adsb.lol contributors")} <a href="${esc(safeUrl(meta.license_url || "https://opendatacommons.org/licenses/odbl/1-0/"))}" target="_blank" rel="noopener noreferrer">Licence</a>. <a href="https://adsb.lol/?icao=${esc(encodeURIComponent(f.hex))}" target="_blank" rel="noopener noreferrer">Open on adsb.lol</a></p>
+    `, refresh);
+  }
+
   function selectCarrier(hull, fly) {
     const c = S.fleet.find((x) => x.hull === hull);
     if (!c) return;
-    S.selectedHull = hull; S.selectedId = null; S.selectedFlow = null;
+    S.selectedHull = hull; S.selectedId = null; S.selectedFlow = null; S.selectedFlight = null;
     history.replaceState(null, "", "#" + encodeURIComponent(hull));
     if (fly) zoomTo(c._lat, c._lon, clamp(world.pointOfView().altitude, 1.3, 1.8));
     renderCarrierDetail(c);
@@ -2315,7 +2418,7 @@
   function legendChanged() {
     const items = document.querySelectorAll("[data-legend]");
     items.forEach((b) => b.setAttribute("aria-pressed", String(!S.off.has(b.dataset.legend))));
-    S.layers = { paths: !S.off.has("paths"), supply: !S.off.has("crate"), carriers: !S.off.has("carrier") };
+    S.layers = { paths: !S.off.has("paths"), supply: !S.off.has("crate"), carriers: !S.off.has("carrier"), flights: !S.off.has("plane") };
     $("#legendReset").hidden = !S.off.size;
     $("#legendNone").hidden = S.off.size >= items.length;
     renderSoon();

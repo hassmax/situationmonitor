@@ -13,8 +13,8 @@ things like OpenSky or Flightradar24". What was checked from GitHub's servers th
 Each run (one request, plus one for the hijack code 7500) the agent keeps the aircraft whose type
 or callsign makes them notable (ROLES, CALLSIGNS): bombers, tankers, surveillance, airlift,
 airborne command posts, government VIP flights, and any aircraft squawking 7500. Aircraft over the
-contiguous United States are left out (training and domestic airlift would bury everything else),
-except government and hijack-code flights. Each aircraft's reported positions are kept for
+contiguous United States are left out (training, domestic airlift and VIP jets between US cities
+would bury everything else), except airborne command posts and hijack-code flights (US_KEEP). Each aircraft's reported positions are kept for
 TRACK_HOURS (`state["flights"]`); the map shows aircraft seen in the last LIVE_MINUTES at their last
 reported position with its time, never a position estimated between reports.
 
@@ -86,7 +86,23 @@ CALLSIGNS = {
     "PLF": ("Polish Air Force", None), "BAF": ("Belgian Air Component", None), "NAF": ("Royal Netherlands Air Force", None),
     "MMF": ("NATO Multinational MRTT Fleet", None), "RSD": ("Russian government (Rossiya special flight detachment)", "government"),
     "FORTE": ("US Air Force RQ-4 Global Hawk", None), "HOMER": ("US Navy maritime patrol", None),
+    "UAF": ("UAE Air Force", None), "ASY": ("Royal Australian Air Force", None), "CFC": ("Royal Canadian Air Force", None),
 }
+# Airframes known by registration: the E-4B (shown by adsb.lol as a Boeing 747) and the VC-25s.
+REGISTRATIONS = {
+    "73-1676": ("command", "E-4B airborne command post"), "73-1677": ("command", "E-4B airborne command post"),
+    "74-0787": ("command", "E-4B airborne command post"), "75-0125": ("command", "E-4B airborne command post"),
+    "82-8000": ("government", "VC-25 (Air Force One aircraft)"), "92-9000": ("government", "VC-25 (Air Force One aircraft)"),
+}
+# Plain names for the jets government flights use, when the type itself isn't one listed above.
+TYPE_NAMES = {
+    "GLF4": "Gulfstream IV", "GLF5": "Gulfstream V", "GLF6": "Gulfstream G650", "GL7T": "Global 7500", "LJ35": "Learjet 35",
+    "B752": "Boeing 757", "B737": "Boeing 737", "B738": "Boeing 737", "A319": "Airbus A319", "A320": "Airbus A320",
+    "A321": "Airbus A321", "A333": "Airbus A330", "A359": "Airbus A350", "B77W": "Boeing 777", "B788": "Boeing 787",
+    "F900": "Falcon 900", "FA7X": "Falcon 7X", "FA8X": "Falcon 8X", "IL96": "Il-96", "T204": "Tu-204", "T214": "Tu-214",
+}
+# Over the contiguous United States only these are kept (the rest is training and domestic travel).
+US_KEEP = {"command", "emergency"}
 IMPORTANCE = {"emergency": 7, "command": 6, "bomber": 5, "government": 4, "surveillance": 3, "tanker": 2, "airlift": 1}
 ROLE_WORDS = {"bomber": "bombers", "tanker": "tankers", "surveillance": "surveillance aircraft", "airlift": "transport aircraft",
               "command": "airborne command posts", "government": "government aircraft"}
@@ -94,6 +110,11 @@ ROLE_WORDS = {"bomber": "bombers", "tanker": "tankers", "surveillance": "surveil
 
 def _contiguous_us(lat: float, lon: float) -> bool:
     return 24.5 <= lat <= 49.5 and -125 <= lon <= -66.5
+
+
+def _callsign(a: dict) -> str:
+    c = (a.get("flight") or "").strip().upper()
+    return c if len(c) >= 3 else ""   # adsb.lol shows "X" or "" for missing callsigns
 
 
 def _prefix(callsign: str) -> str:
@@ -104,13 +125,14 @@ def _prefix(callsign: str) -> str:
 def classify(a: dict, hijack: bool = False) -> tuple[str, str, str | None] | None:
     """(role, label, operator) for a notable aircraft, else None."""
     t = (a.get("t") or "").replace("?", "").strip().upper()
-    callsign = (a.get("flight") or "").strip().upper()
+    callsign = _callsign(a)
     op, op_role = CALLSIGNS.get(_prefix(callsign), (a.get("ownOp"), None))
     if hijack:
         return "emergency", "Transponder set to the hijack code 7500 (often set in error)", op
-    role, label = ROLES.get(t, (None, None))
-    if op_role == "government":
-        return "government", label or (a.get("desc") or t or "Aircraft"), op
+    role, label = REGISTRATIONS.get((a.get("r") or "").strip()) or ROLES.get(t, (None, None))
+    if op_role == "government" and role != "command":
+        name = label if role == "government" else TYPE_NAMES.get(t) or a.get("desc") or t or "aircraft"
+        return "government", label if role == "government" else f"{name} (government VIP flight)", op
     if not role:
         return None
     return role, label, op
@@ -153,11 +175,11 @@ def update(state: dict, session, health: dict, now: datetime, bases: list[dict])
         if not what:
             continue
         role, label, op = what
-        if _contiguous_us(lat, lon) and role not in ("government", "emergency"):
+        if _contiguous_us(lat, lon) and role not in US_KEEP:
             continue
         ts = int(stamp - float(a.get("seen_pos") or 0))
         rec = st["aircraft"].setdefault(hexid, {"pts": []})
-        rec.update({"callsign": (a.get("flight") or "").strip(), "reg": a.get("r") or "", "type": (a.get("t") or "").replace("?", "").strip(),
+        rec.update({"callsign": _callsign(a), "reg": a.get("r") or "", "type": (a.get("t") or "").replace("?", "").strip(),
                     "role": role, "label": label, "op": op, "gs": a.get("gs"), "heading": a.get("track")})
         pts, alt = rec["pts"], _alt(a)
         if not pts or ts - pts[-1][3] >= 600 or haversine_km(pts[-1][0], pts[-1][1], lat, lon) >= MIN_STEP_KM:

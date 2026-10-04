@@ -44,12 +44,16 @@ def test_only_notable_aircraft_outside_the_contiguous_us():
     state = {}
     run(state, [ac("a1", "B1", 51.70, -1.80, "ground", "DARK01"), ac("t1", "TEX2", 50.0, 5.0, 3000),
                 ac("c1", "C17", 35.0, -100.0, 30000, "RCH123"),            # over Kansas: left out
-                ac("v1", "B752", 38.9, -77.0, 20000, "SAM46"),               # government: kept anywhere
+                ac("v1", "B752", 38.9, -77.0, 20000, "SAM46"),               # VIP jet inside the US: left out
+                ac("v2", "B752", 50.0, 4.4, 20000, "SAM46"),                 # abroad: a government flight
+                ac("e4", "B742", 41.0, -96.0, 12000, "CLUB22", r="73-1676"),  # E-4B: kept over the US
                 ac("n1", "K35R", 50.0, 10.0, None, seen=500)], T0,          # stale position: skipped
         hijack=[ac("h1", "A320", 41.0, 29.0, 9000, "THY1")])
     got = state["flights"]["aircraft"]
-    assert set(got) == {"a1", "v1", "h1"}
-    assert got["v1"]["role"] == "government" and got["v1"]["op"].startswith("US Air Force Special Air Mission")
+    assert set(got) == {"a1", "v2", "e4", "h1"}
+    assert got["v2"]["role"] == "government" and got["v2"]["op"].startswith("US Air Force Special Air Mission")
+    assert got["v2"]["label"] == "Boeing 757 (government VIP flight)"
+    assert got["e4"]["role"] == "command" and got["e4"]["label"] == "E-4B airborne command post"
     assert got["h1"]["role"] == "emergency" and "7500" in got["h1"]["label"]
     pub = flights.public(state, T0)
     assert [f["hex"] for f in pub["aircraft"]][:1] == ["h1"]  # most notable first
