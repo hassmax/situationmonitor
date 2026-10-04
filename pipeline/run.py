@@ -310,6 +310,9 @@ def main() -> int:
     save_json(state_dir / "events.json", {"events": events, "cells": cells})
     public = {
         "generated_at": iso(t0),
+        # the commit the site is built from (as stamped into index.html): an open page whose own
+        # version differs reloads (site/app.js, checkBuild)
+        "build": (os.environ.get("GITHUB_SHA") or "")[:12],
         "theaters": theaters_meta(cfg.theaters),
         "events": published,
         "brief": state.get("brief"),
