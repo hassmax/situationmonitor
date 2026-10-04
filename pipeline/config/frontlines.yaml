@@ -11,6 +11,11 @@
 #   area_km         how far around a settlement its holder's shading reaches (half the usual
 #                   distance between the settlements reports name there); where two sides' zones
 #                   meet, the line runs halfway between their settlements
+#   fill: regions   shade whole provinces: a province holding an assessed `standing` town is shaded
+#                   whole, split halfway between the two sides' settlements in it
+#                   (pipeline/frontline/regions.json, Natural Earth admin-1, public domain)
+#   fill_km         how far from its towns a province is filled (a province never hangs on one
+#                   far-off town)
 #   reach_km        how far a `standing` town's shading reaches once its control is assessed
 #                   (about half the distance between the listed towns, so held ground fills in)
 #   standing        towns and cities to check for standing control (standing.py), by region: WHERE
@@ -19,6 +24,9 @@
 #                   its region's name, so only "<town> city" / "city of <town>" counts. `whole`: a
 #                   description of the region itself ("Russian-occupied Crimea") counts for every
 #                   town listed in it (only where a side holds all of it); `aka`: its other names.
+#                   `front: true` on a group: towns on a front line or a river, which never fill a
+#                   whole province (fill: regions). `provinces` on a town: neighbouring provinces
+#                   (regions.json names) with no listed town of their own that it fills too.
 #   actors          the sides, each with:
 #     id, name      id used by the agents, and the name used in the reviewer's notes
 #     controlled    what hovering over ground it holds says ("Russian-controlled")
@@ -60,6 +68,7 @@ conflicts:
                  Avdiivka, Soledar, Marinka, Vuhledar]
       - region: Donetsk Oblast
         reach_km: 10
+        front: true
         places: [Kurakhove, Selydove, Pokrovsk, Myrnohrad, Toretsk, Kostiantynivka/Konstantinovka, Druzhkivka, Kramatorsk, Sloviansk/Slavyansk,
                  Lyman, Siversk, Chasiv Yar, Dobropillia, Velyka Novosilka]
       - region: Luhansk Oblast
@@ -67,25 +76,31 @@ conflicts:
                  Dovzhansk/Sverdlovsk, Bilovodsk, Novoaidar, Kadiivka/Stakhanov, Shchastia, Popasna, Brianka, Perevalsk, Lutuhyne, Milove]
       - region: Luhansk Oblast
         reach_km: 10
+        front: true
         places: [Kreminna, Svatove, Troitske, Bilokurakyne]
       - region: Zaporizhzhia Oblast
         places: [Melitopol, Berdiansk/Berdyansk, Tokmak, Polohy, Prymorsk, Mykhailivka, Yakymivka, Pryazovske, Molochansk, Bilmak, Chernihivka, Rozivka]
       - region: Zaporizhzhia Oblast
         reach_km: 10
+        front: true
         places: [Enerhodar/Energodar, Kamianka-Dniprovska, Vasylivka, Dniprorudne, Huliaipole, Orikhiv, Stepnohirsk, {name: Zaporizhzhia, city_only: true}]
       - region: Kherson Oblast
         places: [Skadovsk, Henichesk, Chaplynka, Kalanchak, Novotroitske, Nyzhni Sirohozy, Ivanivka, Lazurne]
       - region: Kherson Oblast
         reach_km: 10
+        front: true
         places: [Nova Kakhovka, Oleshky, Kakhovka, Hola Prystan, Velyka Lepetykha, Hornostaivka, Beryslav, {name: Kherson, city_only: true}]
       - region: Kharkiv Oblast
         reach_km: 10
+        front: true
         places: [Kupiansk/Kupyansk, Vovchansk, Izium/Izyum, Balakliia/Balakleya, Borova, Velykyi Burluk, Chuhuiv, {name: Kharkiv, city_only: true}]
       - region: Dnipropetrovsk Oblast
         reach_km: 10
+        front: true
         places: [Nikopol, Marhanets, Pavlohrad, Mezhova, Pokrovske]
       - region: Sumy Oblast
         reach_km: 10
+        front: true
         places: [{name: Sumy, city_only: true}, Okhtyrka, Bilopillia, Krasnopillia]
 
   - id: yemen
@@ -93,6 +108,8 @@ conflicts:
     countries: [YE]
     center: [15.3, 45.0]
     radius_km: 900
+    fill: regions
+    fill_km: 120
     area_km: 10
     reach_km: 35
     actors:
@@ -102,19 +119,24 @@ conflicts:
          held_as: [government, Yemeni government, Saudi-backed, Emirati-backed, UAE-backed, separatist, STC, Southern Transitional Council, coalition]}
     standing:
       - region: Houthi-held north
-        places: [Sanaa/Sana'a, Dhamar, Yarim, Amran, Rada'a/Rada, Ibb, Al Mahwit/Mahwit, Hodeidah/Hudaydah/Hodeida, Zabid, Bajil, Bayt al-Faqih,
-                 Salif/Al-Salif, Ras Isa, Saada/Sa'ada, Hajjah]
+        places: [{name: Sanaa/Sana'a, provinces: [Sana'a]}, {name: Dhamar, provinces: [Raymah]}, Yarim, Amran, Rada'a/Rada, Ibb, Al Mahwit/Mahwit,
+                 Hodeidah/Hudaydah/Hodeida, Zabid, Bajil, Bayt al-Faqih, Salif/Al-Salif, Ras Isa, Saada/Sa'ada, Hajjah, Al Bayda,
+                 Al Hazm/Al-Hazm, Harib, Sirwah]
       - region: south and east
-        places: [Aden, Mukalla, Seiyun/Sayun, Ataq, Lahij/Al Houta, Zinjibar, Al Ghaydah, Shabwa, Lawdar, Ash Shihr, Tarim, Hadibu, Nishtun, Al Abr]
+        places: [Aden, Mukalla, Seiyun/Sayun, Ataq, Lahij/Al Houta, Zinjibar, Al Ghaydah, Lawdar, Ash Shihr, Tarim, Hadibu, Nishtun, Al Abr,
+                 Marib, Mocha/Al-Mokha, Al Khawkhah/Khokha, Al Turbah, Bayhan]
       - region: front lines
         reach_km: 10
-        places: [Marib, {name: Taiz, city_only: true}, Al Dhale/Dhale, Hays, Al Khawkhah/Khokha, Mocha/Al-Mokha, Al Bayda, Haradh, Midi, Al Hazm/Al-Hazm, Bayhan]
+        front: true
+        places: [{name: Taiz, city_only: true}, Al Dhale/Dhale, Hays, Haradh, Midi]
 
   - id: sudan
     name: Sudan
     countries: [SD]
     center: [14.5, 29.5]
     radius_km: 1300
+    fill: regions
+    fill_km: 250
     area_km: 25
     reach_km: 90
     actors:
@@ -129,11 +151,13 @@ conflicts:
         places: [Port Sudan, Kassala, Gedaref, Wad Madani, Sennar, Sinja, Kosti, Rabak, Ed Dueim, Ed Damazin, Al-Manaqil]
       - region: Kordofan
         reach_km: 25
+        front: true
         places: [El Obeid, Kadugli, Dilling, Babanusa, Al-Fula/El Fula, Al-Nuhud/En Nahud, Bara, Um Rawaba, Abu Zabad, Al-Khuwei, Heglig]
       - region: Darfur
         places: [Nyala, El Geneina/Geneina, Zalingei, Ed Daein/El Daein, Mellit, Kutum, Kabkabiya, Um Kadada, Ed al-Fursan]
       - region: Darfur
         reach_km: 25
+        front: true
         places: [El Fasher/Al-Fashir, Tawila]
 
   - id: ethiopia
@@ -141,6 +165,8 @@ conflicts:
     countries: [ET]
     center: [12.0, 39.5]
     radius_km: 900
+    fill: regions
+    fill_km: 100
     area_km: 20
     reach_km: 45
     actors:
@@ -152,8 +178,14 @@ conflicts:
          held_as: [Fano, Fano militia, militia]}
     standing:
       - region: Tigray
-        places: [Mekelle/Mek'ele, Adigrat, Shire/Inda Selassie, Axum/Aksum, Adwa, Alamata, Korem, Humera, Maychew]
-      - region: Amhara
+        places: [Mekelle/Mek'ele, Adigrat, Shire/Inda Selassie, Axum/Aksum, Adwa, Maychew, Abiy Addi, Wukro]
+      - region: disputed Western Tigray and Raya
+        reach_km: 20
+        front: true
+        places: [Alamata, Korem, Humera]
+      - region: Amhara (Fano holds much of the countryside)
+        reach_km: 20
+        front: true
         places: [Gondar, Bahir Dar, Lalibela, Debre Markos, Debre Tabor, Woldiya, Dessie, Debre Birhan, Kobo, Merawi, Debark, Finote Selam, Kombolcha]
 
   - id: drc
@@ -161,6 +193,8 @@ conflicts:
     countries: [CD]
     center: [-1.5, 28.8]
     radius_km: 700
+    fill: regions
+    fill_km: 80
     area_km: 12
     reach_km: 30
     actors:
@@ -173,11 +207,13 @@ conflicts:
         places: [Goma, Rutshuru, Kiwanja, Sake, Masisi, Kitshanga/Kitchanga, Bunagana, Rubaya, Mushaki, Butembo, Beni]
       - region: North Kivu
         reach_km: 12
+        front: true
         places: [Nyanzale, Kanyabayonga, Lubero, Walikale, Pinga, Kirumba]
       - region: South Kivu
         places: [Bukavu, Kavumu, Kalehe, Minova, Nyabibwe, Kamanyola, Nyangezi, Walungu]
       - region: South Kivu
         reach_km: 12
+        front: true
         places: [Mwenga, Uvira, Fizi, Shabunda, Kamituga, Mulenge]
 
   - id: myanmar

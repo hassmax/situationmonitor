@@ -4,7 +4,13 @@ the way the globe already shows territorial control:
 - Every settlement whose control is assessed (corroborated) shades the ground around it, out to
   its conflict's `area_km`, in its holder's colour, labelled simply "Russian-controlled",
   "Houthi-controlled" (the actor's `controlled`). One side's claim, or fighting inside, doesn't
-  change it: the shading moves only when a capture is corroborated (the owner's choice, 2026-10-04). A town on the conflict's `standing` list (frontlines.yaml)
+  change it: the shading moves only when a capture is corroborated (the owner's choice, 2026-10-04).
+  Fighting inside a settlement is hatched over it ("Contested").
+- Where a conflict fills whole provinces (`fill: regions`: Yemen, Ethiopia, Sudan, eastern DRC), a
+  province holding an established town whose control is assessed is shaded whole, each part going
+  to the nearest controlled settlement in it (so a province held by both sides is split halfway
+  between their towns), no further than the conflict's `fill_km` from it: the Houthi-held north,
+  Tigray, Darfur (regions.json, Natural Earth). A town on the conflict's `standing` list (frontlines.yaml)
   whose control is assessed reaches further, to `reach_km`: those are the established towns and
   cities behind the lines, and together they fill the ground a side has held for a long time.
 - Shading stays on the land of the country the settlement lies in (the globe's own country
@@ -39,6 +45,7 @@ GRID_STEPS = 4          # grid cells per area_km
 MAX_CELLS = 600_000     # a bigger grid is made coarser
 STYLE = {"assessed": "occupied", "claimed": "claimed", "contested": "infiltration"}
 DEFAULT_AREA_KM = 10
+DEFAULT_FILL_KM = 120
 BIG = 1e6   # "out of reach" in the distance fields (finite, so differences stay numbers)
 
 
@@ -46,7 +53,7 @@ def _places(fl: dict, conflicts: list[dict], now) -> list[dict]:
     cutoff = iso(now - timedelta(days=SHOW_DAYS))
     changed = iso(now - timedelta(days=CHANGED_DAYS))
     out = []
-    listed = {t["key"]: t["reach_km"] for c in conflicts for t in standing.towns(c) if t["key"]}
+    listed = {t["key"]: t for c in conflicts for t in standing.towns(c) if t["key"]}
     for key, p in fl.get("places", {}).items():
         pub = p.get("published")
         if not pub or p.get("lat") is None or not p["claims"] or p["claims"][-1]["time"] < cutoff:
@@ -65,7 +72,8 @@ def _places(fl: dict, conflicts: list[dict], now) -> list[dict]:
             "since": pub.get("since"), "basis": pub.get("basis"), "sources": pub.get("sources"),
             "last": live[-1]["time"] if live else p["claims"][-1]["time"], "event": pub.get("event"),
             "changed": bool(pub.get("since") and pub["since"] >= changed),
-            "standing": key in listed, **({"reach_km": listed[key]} if listed.get(key) else {}),
+            "standing": key in listed, **({"reach_km": listed[key]["reach_km"]} if key in listed and listed[key]["reach_km"] else {}),
+            "fills": key in listed and not listed[key]["front"], "provinces": listed[key]["provinces"] if key in listed else [],
         })
     out.sort(key=lambda x: x["last"], reverse=True)
     return out[:MAX_PLACES]
@@ -97,21 +105,58 @@ def controller(p: dict) -> str | None:
     return p.get("holder")
 
 
-def areas(places: list[dict], conflict: dict) -> list[dict]:
-    """Shaded areas for one conflict: one layer per side, around the settlements it controls."""
-    pts = [{**p, "status": "assessed", "holder": controller(p)} for p in places
-           if p["conflict"] == conflict["id"] and controller(p)]
-    pts = [p for p in pts if not _home(p, conflict)]
-    if not pts:
-        return []
+def _polygons(xs, ys, g) -> list:
+    """Outlines of g <= 0."""
     import contourpy
+    gen = contourpy.contour_generator(xs, ys, g, fill_type=contourpy.FillType.OuterOffset)
+    polys = []
+    for points, offsets in zip(*gen.filled(-1e9, 0.0)):
+        rings = [[[round(float(x), 3), round(float(y), 3)] for x, y in points[offsets[j]:offsets[j + 1]]]
+                 for j in range(len(offsets) - 1)]
+        rings = [r for r in rings if len(r) >= 4]
+        if rings:
+            polys.append(rings)
+    return polys
+
+
+def _provinces(ctl: list[dict], conflict: dict) -> list[tuple[dict, list[int]]]:
+    """For a conflict that fills whole provinces (`fill: regions`): each province holding an
+    established (listed, not front-line) town whose control is assessed, or named in such a
+    town's `provinces`, with the controlled settlements in it (and that town)."""
+    if conflict.get("fill") != "regions":
+        return []
+    out = []
+    for c in conflict["countries"]:
+        for r in land.regions(c):
+            members = [i for i, p in enumerate(ctl) if land.inside(r["rings"], p["lon"], p["lat"])]
+            covers = [i for i, p in enumerate(ctl) if r["name"] in (p.get("provinces") or []) and i not in members]
+            if any(ctl[i].get("fills") for i in members) or covers:
+                out.append((r, members + covers))
+    return out
+
+
+def areas(places: list[dict], conflict: dict) -> list[dict]:
+    """Shaded areas for one conflict: one layer per side, around the settlements it controls (the
+    whole province, where the conflict fills provinces), and hatching where fighting is reported
+    inside a settlement."""
+    ctl = [{**p, "status": "assessed", "holder": controller(p)} for p in places
+           if p["conflict"] == conflict["id"] and controller(p)]
+    ctl = [p for p in ctl if not _home(p, conflict)]
+    fought = [p for p in places if p["conflict"] == conflict["id"] and p["status"] == "contested"]
+    if not ctl and not fought:
+        return []
     area = float(conflict.get("area_km") or DEFAULT_AREA_KM)
-    reach = [_reach(p, conflict) for p in pts]
+    reach = [_reach(p, conflict) for p in ctl]
+    provinces = _provinces(ctl, conflict)
+    fill_km = float(conflict.get("fill_km") or DEFAULT_FILL_KM)
+    pts = ctl + fought
     lat0 = sum(p["lat"] for p in pts) / len(pts)
     kx, ky = 111.32 * math.cos(math.radians(lat0)), 110.57          # km per degree
-    pad_lon, pad_lat = (max(reach) * 1.2) / kx, (max(reach) * 1.2) / ky
-    w, e = min(p["lon"] for p in pts) - pad_lon, max(p["lon"] for p in pts) + pad_lon
-    s, n = min(p["lat"] for p in pts) - pad_lat, max(p["lat"] for p in pts) + pad_lat
+    pad = max(reach + [area]) * 1.2
+    lons = [p["lon"] for p in pts] + [x for r, _ in provinces for ring in r["rings"] for x, _ in ring]
+    lats = [p["lat"] for p in pts] + [y for r, _ in provinces for ring in r["rings"] for _, y in ring]
+    w, e = min(lons) - pad / kx, max(lons) + pad / kx
+    s, n = min(lats) - pad / ky, max(lats) + pad / ky
     step = area / GRID_STEPS
     nx, ny = int((e - w) * kx / step) + 2, int((n - s) * ky / step) + 2
     if nx * ny > MAX_CELLS:
@@ -122,48 +167,77 @@ def areas(places: list[dict], conflict: dict) -> list[dict]:
     # the land of each of the conflict's countries: a settlement shades only the country it lies in
     masks = {c: land.mask(xs, ys, [ISO_NUMERIC[c]]) for c in conflict["countries"] if c in ISO_NUMERIC}
     on_land = np.logical_or.reduce(list(masks.values())) if masks else None
-    klass = [_klass(p) for p in pts]
-    # per class: distance (km) to its nearest settlement on the same land, and how far inside the
-    # nearest settlement's reach a cell is (<= 0 inside)
-    near: dict[tuple, np.ndarray] = {}
-    inside: dict[tuple, np.ndarray] = {}
-    for i, (p, k) in enumerate(zip(pts, klass)):
+
+    def dist(p, limit):
+        """Distance (km) from every cell to p, only on the land of the country p lies in (None
+        when no land of the conflict is within limit)."""
         d = np.hypot((gx - p["lon"]) * kx, (gy - p["lat"]) * ky)
         if on_land is not None and on_land.any():
             j = np.unravel_index(np.argmin(np.where(on_land, d, np.inf)), d.shape)
-            if d[j] > reach[i]:
-                continue  # no land of the conflict within reach
+            if d[j] > limit:
+                return None
             own = next(m for m in masks.values() if m[j])
             d = np.where(own, d, BIG)
+        return d
+
+    klass = [_klass(p) for p in ctl]
+    # per side: distance (km) to its nearest settlement on the same land, and how far inside the
+    # nearest settlement's reach a cell is (<= 0 inside)
+    near: dict[tuple, np.ndarray] = {}
+    inside: dict[tuple, np.ndarray] = {}
+    for i, (p, k) in enumerate(zip(ctl, klass)):
+        d = dist(p, reach[i])
+        if d is None:
+            continue  # no land of the conflict within reach
         r = d - reach[i]
         near[k] = np.minimum(near[k], d) if k in near else d
         inside[k] = np.minimum(inside[k], r) if k in inside else r
-    by_class = near
+    # whole provinces: every cell of the province goes to its nearest controlled settlement in it
+    for prov, members in provinces:
+        pm = land.rings_mask(xs, ys, prov["rings"])
+        if not pm.any():
+            continue
+        best = np.full(pm.shape, np.inf)
+        side = np.full(pm.shape, -1)
+        for i in members:
+            d = np.hypot((gx - ctl[i]["lon"]) * kx, (gy - ctl[i]["lat"]) * ky)
+            closer = d < best
+            best[closer], side[closer] = d[closer], i
+        fill = pm & (best <= fill_km)       # a province never hangs on one far-off town
+        for i in members:
+            k = klass[i]
+            if k in inside:
+                inside[k] = np.where(fill & (side == i), np.minimum(inside[k], -1.0), inside[k])
     layers = []
-    for k, d in by_class.items():
-        others = [v for kk, v in by_class.items() if kk != k]
+    for k, d in near.items():
+        others = [v for kk, v in near.items() if kk != k]
         nearest_other = np.minimum.reduce(others) if others else np.full_like(d, np.inf)
-        # inside where within reach and nearer to this class than to any other: g <= 0
-        g = np.maximum(inside[k], (d - nearest_other) / 2)
-        gen = contourpy.contour_generator(xs, ys, g, fill_type=contourpy.FillType.OuterOffset)
-        polys = []
-        for points, offsets in zip(*gen.filled(-1e9, 0.0)):
-            rings = [[[round(float(x), 3), round(float(y), 3)] for x, y in points[offsets[j]:offsets[j + 1]]]
-                     for j in range(len(offsets) - 1)]
-            rings = [r for r in rings if len(r) >= 4]
-            if rings:
-                polys.append(rings)
+        # inside where within reach (or its province) and nearer to this side than to any other
+        polys = _polygons(xs, ys, np.maximum(inside[k], (d - nearest_other) / 2))
         if not polys:
             continue
         status, holder = k
         a = ledger.actor(conflict, holder)
-        members = [p for p, kk in zip(pts, klass) if kk == k]
+        members = [p for p, kk in zip(ctl, klass) if kk == k]
         label = (a.get("controlled") or f"Held by {a['name']}") if a else "Held"
         layers.append({"id": f"fl-{conflict['id']}-{status}-{holder or 'none'}", "label": label, "style": STYLE[status],
                        "color": a["color"] if a else None, "country": None, "conflict": conflict["id"],
                        "source": "This site's assessment", "assessment": True, "area_km": area,
                        "reach_km": max(_reach(p, conflict) for p in members),
                        "as_of": max(p["last"] for p in members), "settlements": len(members), "polygons": polys})
+    # fighting inside a settlement: hatched over whoever holds it, within area_km
+    if fought:
+        g = np.full(gx.shape, BIG)
+        for p in fought:
+            d = dist(p, area)
+            if d is not None:
+                g = np.minimum(g, d - area)
+        polys = _polygons(xs, ys, g)
+        if polys:
+            layers.append({"id": f"fl-{conflict['id']}-contested", "label": "Contested", "style": STYLE["contested"],
+                           "color": None, "country": None, "conflict": conflict["id"], "source": "This site's assessment",
+                           "assessment": True, "area_km": area, "reach_km": area, "as_of": max(p["last"] for p in fought),
+                           "settlements": len(fought), "polygons": polys})
     return layers
 
 
