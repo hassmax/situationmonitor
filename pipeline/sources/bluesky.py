@@ -114,7 +114,10 @@ def search(cfg: dict | None, listed: list[dict], session, health: dict, now) -> 
     failures = 0
     for q in queries:
         try:
-            r = session.get(SEARCH_URL, params={"q": q, "sort": "latest", "limit": SEARCH_LIMIT}, timeout=20)
+            params = {"q": q, "sort": "latest", "limit": SEARCH_LIMIT}
+            if cfg.get("lang"):
+                params["lang"] = cfg["lang"]
+            r = session.get(SEARCH_URL, params=params, timeout=20)
             r.raise_for_status()
             for post in r.json().get("posts", []):
                 record = post.get("record") or {}

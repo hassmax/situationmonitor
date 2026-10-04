@@ -19,3 +19,4 @@ print("feeds:", {k: (v.get("count"), v.get("error")) for k, v in health.items() 
 for i in got:
     if extract.is_candidate(i) and any(w in i["text"] for w in ("B-1", "bomber", "Bomber", "Fairford")):
         print(" ", i["source"][:40], "|", i["text"][:120].replace("\n", " "))
+# rerun
