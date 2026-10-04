@@ -64,7 +64,7 @@ def test_confidence_comes_from_the_cited_events_not_the_model():
 def test_update_is_hourly_budgeted_and_keeps_the_last_good_analysis():
     calls = []
 
-    def ask(system, user, state, settings, now, max_tokens=0, purpose=""):
+    def ask(system, user, state, settings, now, max_tokens=0, purpose="", model=None):
         calls.append(purpose)
         return {"regions": [{"region": "mideast", "judgments": [
             {"headline": "US increasing force posture", "trend": "escalating", "text": "Units arrived.", "ids": ["a1", "a2"]}]}]}
@@ -80,3 +80,18 @@ def test_update_is_hourly_budgeted_and_keeps_the_last_good_analysis():
     state["analysis_attempt"] = None
     analyst.update(state, EVENTS + [ev("n2", hours_ago=0)], THEATERS, CARRIERS, FLIGHTS, {}, later, ask, 100, 0)
     assert calls == ["analysis"]                                   # no share left: no call
+
+
+def test_flash_first_then_the_usual_model():
+    asked = []
+
+    def ask(system, user, state, settings, now, max_tokens=0, purpose="", model=None):
+        asked.append(model)
+        if model:
+            return None   # Flash busy or out of its own limit
+        return {"regions": [{"region": "mideast", "judgments": [
+            {"headline": "US increasing force posture", "trend": "escalating", "text": "Units arrived.", "ids": ["a1", "a2"]}]}]}
+
+    state = {"llm_model": {"model": "lite"}}
+    analyst.update(state, EVENTS, THEATERS, CARRIERS, FLIGHTS, {"llm_fallback_models": ["flash"]}, NOW, ask, 100, 5)
+    assert asked == ["flash", None] and state["analysis_model"] == "lite" and state["analysis"]["regions"]

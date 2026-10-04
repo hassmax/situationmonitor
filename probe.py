@@ -11,7 +11,7 @@ shown = analyst.regions(events, cfg.theaters, data.get("fleet") or [], data.get(
 print("regions shown:", [(r["region"], len(r["events"]), r.get("us_carriers_nearby") and len(r["us_carriers_nearby"]), r.get("military_aircraft_broadcasting_now")) for r in shown])
 print("payload chars:", len(json.dumps({"regions": shown}, ensure_ascii=False)))
 state = {"llm_model": json.load(open("/tmp/state.json")).get("llm_model")}
-print("model:", (state["llm_model"] or {}).get("model"))
+print("usual model:", (state["llm_model"] or {}).get("model"))
 raw = {}
 def ask(*a, **k):
     out = extract.ask_json(*a, **k)
@@ -28,4 +28,5 @@ for r in (state.get("analysis") or {}).get("regions", []):
         for i in j["ids"]:
             e = by[i]
             print(f"       - {e['status']:12} {e['type']:14} {e.get('place','')[:30]:30} {e['summary'][:110]}")
-# rerun 2
+# rerun 3
+print("analysis written by:", state.get("analysis_model"))

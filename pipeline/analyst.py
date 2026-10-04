@@ -23,8 +23,10 @@ reports into statements of fact):
 
 One model call (purpose "analysis", paced daily share `analysis_daily_max`), at most every
 MIN_INTERVAL and only when the last WINDOW_HOURS of events changed; skipped when fewer than
-brief_min_calls calls are left. If the call fails or nothing valid comes back, the previous analysis
-stays with its time.
+brief_min_calls calls are left. It asks regular Flash first (`analysis_models`, default the first of
+`llm_fallback_models`: Flash-Lite, the usual model, wrote single events up as trends and hedged
+corroborated ones in the first trial), then the usual model once if that fails. If nothing valid
+comes back, the previous analysis stays with its time.
 """
 from __future__ import annotations
 
@@ -83,7 +85,8 @@ Rules:
 - Use only what you are given. No outside knowledge, no background, no predictions of what will happen next.
 - Every judgment cites at least two events of its region (ids from that region only) that point the same way. Never combine unrelated events into one judgment.
 - Carriers and aircraft are context: mention them only together with events, never as the only basis.
-- Weigh confidence: events marked single-source or one side's claim are weaker. When a judgment cites any of them, say so in the words ("reports suggest", "Russia claims", "unconfirmed reports"). Keep each event's own attribution. Never state a single-source report or a claim as fact.
+- Weigh confidence: events marked single-source or one side's claim are weaker. When a judgment cites any of them, say so in the words ("reports suggest", "Russia claims", "unconfirmed reports"). Keep each event's own attribution. Never state a single-source report or a claim as fact. Corroborated events are stated plainly, without "unconfirmed".
+- The cited events must be separate incidents showing a pattern (several strikes, several deployments). One incident and the reactions to it (an arrest and the protest about it) is news, not a trend: leave it out.
 - Name actors only as the events name them. Don't assign blame or intent the events don't state.
 - Plain, neutral language; no drama. Keep numbers exactly as given.
 - Never write event ids in the text; they go only in "ids".
@@ -260,8 +263,19 @@ def update(state: dict, events: list[dict], theaters: list[dict], carriers: list
         return
     state["analysis_attempt"] = iso(now)
     payload = {"now": iso(now), "window_hours": WINDOW_HOURS, "context_days": ANALYSIS_DAYS, "regions": shown}
-    reply = ask(PROMPT, json.dumps(payload, ensure_ascii=False), state, settings, now, max_tokens=3000, purpose="analysis")
-    out = validate(reply, shown, events)
+    text = json.dumps(payload, ensure_ascii=False)
+    # Analysis is where a stronger model pays off: regular Flash (also free, its own smaller daily
+    # limit, and this is at most one call an hour) is asked first, the usual model if it fails.
+    out = None
+    for model in [m for m in (settings.get("analysis_models") or (settings.get("llm_fallback_models") or [])[:1]) if m][:1] + [None]:
+        if share <= 0:
+            break
+        reply = ask(PROMPT, text, state, settings, now, max_tokens=3000, purpose="analysis", **({"model": model} if model else {}))
+        share -= 1
+        out = validate(reply, shown, events)
+        if out is not None:
+            state["analysis_model"] = model or (state.get("llm_model") or {}).get("model")
+            break
     if out is None:
         log("[analyst] no usable analysis from the model; keeping the previous one")
         return
