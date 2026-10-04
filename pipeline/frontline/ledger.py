@@ -5,7 +5,8 @@ state["frontline"]["places"][key]:
   lat, lon                          looked up once (None until found; `tries` counts failed lookups)
   claims                            evidence, newest last (at most MAX_CLAIMS, none older than
                                     MEMORY_DAYS): {time, actor, change, claimed_by, basis, aligned,
-                                    group, source, url, summary, event, rejected?}
+                                    group, source, url, summary, event, rejected?}; basis
+                                    "described" comes from the standing-control agent
   published                         what the map shows, set only by the reviewer:
                                     {holder, status, since, reviewed, note}
   asked                             the evidence count when the reviewer last saw a change it left
@@ -21,6 +22,7 @@ MEMORY_DAYS = 60
 
 CHANGES = {"took", "holds", "lost", "contested"}
 BASES = {"footage", "on_scene", "both_sides", "analyst", "party", "unattributed"}
+DESCRIBED = "described"   # an outlet calls the town held as settled fact ("Russian-occupied Melitopol"; standing.py)
 STRONG_BASES = {"footage", "on_scene", "both_sides", "analyst"}
 
 
@@ -66,6 +68,7 @@ def state_of(state: dict) -> dict:
     fl.setdefault("places", {})
     fl.setdefault("read", {})      # report key -> when the claims agent read it
     fl.setdefault("scout", {})     # place key -> search times
+    fl.setdefault("standing", {})  # listed town key -> when the standing-control agent last searched it
     return fl
 
 

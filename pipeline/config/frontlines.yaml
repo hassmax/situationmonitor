@@ -11,12 +11,24 @@
 #   area_km         how far around a settlement its holder's shading reaches (half the usual
 #                   distance between the settlements reports name there); where two sides' zones
 #                   meet, the line runs halfway between their settlements
+#   reach_km        how far a `standing` town's shading reaches once its control is assessed
+#                   (about half the distance between the listed towns, so held ground fills in)
+#   standing        towns and cities to check for standing control (standing.py), by region: WHERE
+#                   to look, never who holds them; that comes only from what outlets write.
+#                   "Kupiansk/Kupyansk": other spellings matched too. `city_only`: the town shares
+#                   its region's name, so only "<town> city" / "city of <town>" counts. `whole`: a
+#                   description of the region itself ("Russian-occupied Crimea") counts for every
+#                   town listed in it (only where a side holds all of it); `aka`: its other names.
 #   actors          the sides, each with:
 #     id, name      id used by the agents, and the name shown ("Held by Russia")
 #     color         the map colour of ground it holds
 #     sources       source `side` codes (sources.yaml) whose reports are aligned with this actor:
 #                   their claims count as the actor's own claims
 #     aka           other names the reports use, given to the claims agent
+#     held_as       words outlets put before "-occupied/-held/-controlled/-run <town>" or
+#                   "stronghold of <town>" for this side (standing.py)
+#     plain_occupied  a bare "occupied <town>" means this side holds it
+#     home          countries where this side holding ground is the normal state (not shaded)
 
 conflicts:
   - id: ukraine
@@ -25,9 +37,55 @@ conflicts:
     center: [48.4, 36.5]
     radius_km: 700
     area_km: 10
+    reach_km: 35
     actors:
-      - {id: RU, name: Russia, color: "#e39b5b", sources: [RU, BY], aka: "Russian forces, Russian MoD, the 'Sever/Zapad/Tsentr/Yug/Vostok/Dnepr' groupings, Wagner, Akhmat"}
-      - {id: UA, name: Ukraine, color: "#5aa9e6", sources: [UA], aka: "Ukrainian forces, the General Staff of Ukraine, Ukrainian brigades, DeepState"}
+      - {id: RU, name: Russia, color: "#e39b5b", sources: [RU, BY], aka: "Russian forces, Russian MoD, the 'Sever/Zapad/Tsentr/Yug/Vostok/Dnepr' groupings, Wagner, Akhmat",
+         held_as: [Russian, Russia, Russian-backed, Moscow, Kremlin], plain_occupied: true, home: [RU]}
+      - {id: UA, name: Ukraine, color: "#5aa9e6", sources: [UA], aka: "Ukrainian forces, the General Staff of Ukraine, Ukrainian brigades, DeepState",
+         held_as: [Ukrainian, Ukraine, Kyiv], home: []}
+    standing:
+      # reach_km 10 on a group: towns on the front or on a river (the Dnipro), whose shading must
+      # not reach the other side's ground; the rest are behind the lines and reach reach_km
+      - region: Crimea
+        whole: true
+        aka: [Crimean Peninsula]
+        reach_km: 45          # all of it is held; wider so the towns fill the peninsula
+        places: [Sevastopol, Simferopol, {name: Kerch, reach_km: 20}, Yevpatoria/Yevpatoriia/Eupatoria, Feodosia/Feodosiia, Dzhankoi/Dzhankoy, Yalta,
+                 Armiansk/Armyansk, Krasnoperekopsk, Chornomorske/Chernomorskoye, Saky/Saki, Bilohirsk/Belogorsk, Sudak, Alushta, Lenine/Leninsk,
+                 Nyzhnohirskyi/Nizhnegorsky, Rozdolne/Razdolnoye, Pervomaiske/Pervomayskoye, Kirovske/Kirovskoye]
+      - region: Donetsk Oblast
+        places: [Donetsk, Makiivka/Makeevka, Horlivka/Gorlovka, Yenakiieve/Yenakiyevo, Mariupol, Volnovakha, Debaltseve, Khartsyzk, Shakhtarsk,
+                 Chystiakove/Torez, Snizhne/Snezhnoye, Amvrosiivka, Ilovaisk, Novoazovsk, Starobesheve, Dokuchaievsk, Mangush/Manhush, Bakhmut,
+                 Avdiivka, Soledar, Marinka, Vuhledar]
+      - region: Donetsk Oblast
+        reach_km: 10
+        places: [Kurakhove, Selydove, Pokrovsk, Myrnohrad, Toretsk, Kostiantynivka/Konstantinovka, Druzhkivka, Kramatorsk, Sloviansk/Slavyansk,
+                 Lyman, Siversk, Chasiv Yar, Dobropillia, Velyka Novosilka]
+      - region: Luhansk Oblast
+        places: [Luhansk, Alchevsk, Sievierodonetsk/Severodonetsk, Lysychansk, Rubizhne, Starobilsk, Rovenky, Antratsyt, Khrustalnyi/Krasnyi Luch,
+                 Dovzhansk/Sverdlovsk, Bilovodsk, Novoaidar, Kadiivka/Stakhanov, Shchastia, Popasna, Brianka, Perevalsk, Lutuhyne, Milove]
+      - region: Luhansk Oblast
+        reach_km: 10
+        places: [Kreminna, Svatove, Troitske, Bilokurakyne]
+      - region: Zaporizhzhia Oblast
+        places: [Melitopol, Berdiansk/Berdyansk, Tokmak, Polohy, Prymorsk, Mykhailivka, Yakymivka, Pryazovske, Molochansk, Bilmak, Chernihivka, Rozivka]
+      - region: Zaporizhzhia Oblast
+        reach_km: 10
+        places: [Enerhodar/Energodar, Kamianka-Dniprovska, Vasylivka, Dniprorudne, Huliaipole, Orikhiv, Stepnohirsk, {name: Zaporizhzhia, city_only: true}]
+      - region: Kherson Oblast
+        places: [Skadovsk, Henichesk, Chaplynka, Kalanchak, Novotroitske, Nyzhni Sirohozy, Ivanivka, Lazurne]
+      - region: Kherson Oblast
+        reach_km: 10
+        places: [Nova Kakhovka, Oleshky, Kakhovka, Hola Prystan, Velyka Lepetykha, Hornostaivka, Beryslav, {name: Kherson, city_only: true}]
+      - region: Kharkiv Oblast
+        reach_km: 10
+        places: [Kupiansk/Kupyansk, Vovchansk, Izium/Izyum, Balakliia/Balakleya, Borova, Velykyi Burluk, Chuhuiv, {name: Kharkiv, city_only: true}]
+      - region: Dnipropetrovsk Oblast
+        reach_km: 10
+        places: [Nikopol, Marhanets, Pavlohrad, Mezhova, Pokrovske]
+      - region: Sumy Oblast
+        reach_km: 10
+        places: [{name: Sumy, city_only: true}, Okhtyrka, Bilopillia, Krasnopillia]
 
   - id: yemen
     name: Yemen
@@ -35,9 +93,21 @@ conflicts:
     center: [15.3, 45.0]
     radius_km: 900
     area_km: 10
+    reach_km: 35
     actors:
-      - {id: HOUTHI, name: the Houthis, color: "#e39b5b", sources: [YE], aka: "Houthis, Ansar Allah, the Sanaa-based authorities, Houthi media (Al-Masirah, Saba)"}
-      - {id: ROYG, name: Yemeni government-aligned forces, color: "#5aa9e6", sources: [SA, AE], aka: "the internationally recognized government, PLC, Giants Brigades, STC, National Resistance, Saudi-led coalition"}
+      - {id: HOUTHI, name: the Houthis, color: "#e39b5b", sources: [YE], aka: "Houthis, Ansar Allah, the Sanaa-based authorities, Houthi media (Al-Masirah, Saba)",
+         held_as: [Houthi, Houthis, Huthi, Houthi rebel, rebel, Iran-backed Houthi, Iran-aligned Houthi, Ansar Allah]}
+      - {id: ROYG, name: Yemeni government-aligned forces, color: "#5aa9e6", sources: [SA, AE], aka: "the internationally recognized government, PLC, Giants Brigades, STC, National Resistance, Saudi-led coalition",
+         held_as: [government, Yemeni government, Saudi-backed, Emirati-backed, UAE-backed, separatist, STC, Southern Transitional Council, coalition]}
+    standing:
+      - region: Houthi-held north
+        places: [Sanaa/Sana'a, Dhamar, Yarim, Amran, Rada'a/Rada, Ibb, Al Mahwit/Mahwit, Hodeidah/Hudaydah/Hodeida, Zabid, Bajil, Bayt al-Faqih,
+                 Salif/Al-Salif, Ras Isa, Saada/Sa'ada, Hajjah]
+      - region: south and east
+        places: [Aden, Mukalla, Seiyun/Sayun, Ataq, Lahij/Al Houta, Zinjibar, Al Ghaydah, Shabwa, Lawdar, Ash Shihr, Tarim, Hadibu, Nishtun, Al Abr]
+      - region: front lines
+        reach_km: 10
+        places: [Marib, {name: Taiz, city_only: true}, Al Dhale/Dhale, Hays, Al Khawkhah/Khokha, Mocha/Al-Mokha, Al Bayda, Haradh, Midi, Al Hazm/Al-Hazm, Bayhan]
 
   - id: sudan
     name: Sudan
@@ -45,9 +115,25 @@ conflicts:
     center: [14.5, 29.5]
     radius_km: 1300
     area_km: 25
+    reach_km: 90
     actors:
-      - {id: SAF, name: the Sudanese army, color: "#5aa9e6", sources: [], aka: "Sudanese Armed Forces, SAF, the army, Port Sudan authorities, joint forces allied with the army"}
-      - {id: RSF, name: the Rapid Support Forces, color: "#e39b5b", sources: [], aka: "RSF, Rapid Support Forces, Tasis/the parallel government"}
+      - {id: SAF, name: the Sudanese army, color: "#5aa9e6", sources: [], aka: "Sudanese Armed Forces, SAF, the army, Port Sudan authorities, joint forces allied with the army",
+         held_as: [army, Sudanese army, SAF, military, government, Sudanese government]}
+      - {id: RSF, name: the Rapid Support Forces, color: "#e39b5b", sources: [], aka: "RSF, Rapid Support Forces, Tasis/the parallel government",
+         held_as: [RSF, Rapid Support Forces, paramilitary, Sudanese paramilitary, paramilitary RSF]}
+    standing:
+      - region: Khartoum and the Nile
+        places: [Khartoum, Omdurman, Khartoum North/Bahri, Atbara, Shendi, Ad-Damir/Ed Damer, Dongola, Merowe, Wadi Halfa]
+      - region: east and centre
+        places: [Port Sudan, Kassala, Gedaref, Wad Madani, Sennar, Sinja, Kosti, Rabak, Ed Dueim, Ed Damazin, Al-Manaqil]
+      - region: Kordofan
+        reach_km: 25
+        places: [El Obeid, Kadugli, Dilling, Babanusa, Al-Fula/El Fula, Al-Nuhud/En Nahud, Bara, Um Rawaba, Abu Zabad, Al-Khuwei, Heglig]
+      - region: Darfur
+        places: [Nyala, El Geneina/Geneina, Zalingei, Ed Daein/El Daein, Mellit, Kutum, Kabkabiya, Um Kadada, Ed al-Fursan]
+      - region: Darfur
+        reach_km: 25
+        places: [El Fasher/Al-Fashir, Tawila]
 
   - id: ethiopia
     name: Ethiopia
@@ -55,10 +141,19 @@ conflicts:
     center: [12.0, 39.5]
     radius_km: 900
     area_km: 20
+    reach_km: 45
     actors:
-      - {id: ENDF, name: Ethiopian government forces, color: "#5aa9e6", sources: [], aka: "ENDF, the federal army, regional special forces allied with Addis Ababa"}
-      - {id: TPLF, name: Tigray forces, color: "#e39b5b", sources: [], aka: "TPLF, Tigray Defense Forces, TDF, Tigrayan fighters"}
-      - {id: FANO, name: Fano militias, color: "#c77dcc", sources: [], aka: "Fano, Amhara militias"}
+      - {id: ENDF, name: Ethiopian government forces, color: "#5aa9e6", sources: [], aka: "ENDF, the federal army, regional special forces allied with Addis Ababa",
+         held_as: [government, federal, army, military]}
+      - {id: TPLF, name: Tigray forces, color: "#e39b5b", sources: [], aka: "TPLF, Tigray Defense Forces, TDF, Tigrayan fighters",
+         held_as: [TPLF, Tigrayan, Tigray forces, TDF]}
+      - {id: FANO, name: Fano militias, color: "#c77dcc", sources: [], aka: "Fano, Amhara militias",
+         held_as: [Fano, Fano militia, militia]}
+    standing:
+      - region: Tigray
+        places: [Mekelle/Mek'ele, Adigrat, Shire/Inda Selassie, Axum/Aksum, Adwa, Alamata, Korem, Humera, Maychew]
+      - region: Amhara
+        places: [Gondar, Bahir Dar, Lalibela, Debre Markos, Debre Tabor, Woldiya, Dessie, Debre Birhan, Kobo, Merawi, Debark, Finote Selam, Kombolcha]
 
   - id: drc
     name: Eastern DR Congo
@@ -66,9 +161,23 @@ conflicts:
     center: [-1.5, 28.8]
     radius_km: 700
     area_km: 12
+    reach_km: 30
     actors:
-      - {id: M23, name: AFC/M23, color: "#e39b5b", sources: [RW], aka: "M23, AFC, Alliance Fleuve Congo, Congo River Alliance"}
-      - {id: FARDC, name: Congolese government forces, color: "#5aa9e6", sources: [CD], aka: "FARDC, the Congolese army, Wazalendo militias allied with the army"}
+      - {id: M23, name: AFC/M23, color: "#e39b5b", sources: [RW], aka: "M23, AFC, Alliance Fleuve Congo, Congo River Alliance",
+         held_as: [M23, AFC/M23, M23 rebel, rebel, Rwanda-backed, Rwanda-backed M23, Rwandan-backed]}
+      - {id: FARDC, name: Congolese government forces, color: "#5aa9e6", sources: [CD], aka: "FARDC, the Congolese army, Wazalendo militias allied with the army",
+         held_as: [government, Congolese government, army, Congolese army, FARDC, Kinshasa]}
+    standing:
+      - region: North Kivu
+        places: [Goma, Rutshuru, Kiwanja, Sake, Masisi, Kitshanga/Kitchanga, Bunagana, Rubaya, Mushaki, Butembo, Beni]
+      - region: North Kivu
+        reach_km: 12
+        places: [Nyanzale, Kanyabayonga, Lubero, Walikale, Pinga, Kirumba]
+      - region: South Kivu
+        places: [Bukavu, Kavumu, Kalehe, Minova, Nyabibwe, Kamanyola, Nyangezi, Walungu]
+      - region: South Kivu
+        reach_km: 12
+        places: [Mwenga, Uvira, Fizi, Shabunda, Kamituga, Mulenge]
 
   - id: myanmar
     name: Myanmar
@@ -76,9 +185,21 @@ conflicts:
     center: [20.5, 96.0]
     radius_km: 1100
     area_km: 15
+    reach_km: 30
     actors:
-      - {id: JUNTA, name: the military junta, color: "#e39b5b", sources: [MM], aka: "Tatmadaw, the junta, the military regime, SAC, the military government"}
-      - {id: RESIST, name: resistance forces, color: "#5aa9e6", sources: [], aka: "People's Defence Forces, PDF, NUG, Arakan Army, MNDAA, TNLA, KIA, KNU, Karenni forces, ethnic armed organizations, the Three Brotherhood Alliance"}
+      - {id: JUNTA, name: the military junta, color: "#e39b5b", sources: [MM], aka: "Tatmadaw, the junta, the military regime, SAC, the military government",
+         held_as: [junta, military, regime, military junta, Tatmadaw]}
+      - {id: RESIST, name: resistance forces, color: "#5aa9e6", sources: [], aka: "People's Defence Forces, PDF, NUG, Arakan Army, MNDAA, TNLA, KIA, KNU, Karenni forces, ethnic armed organizations, the Three Brotherhood Alliance",
+         held_as: [rebel, resistance, Arakan Army, MNDAA, TNLA, KIA, Kachin Independence Army, KNU, Karen, PDF, ethnic armed group, ethnic army, insurgent]}
+    standing:
+      - region: Rakhine
+        places: [Sittwe, Kyaukphyu, Mrauk-U/Mrauk U, Thandwe, Toungup, Maungdaw, Buthidaung, Kyauktaw, Ann, Minbya, Ponnagyun, Rathedaung, Gwa, Ramree, Paletwa]
+      - region: Shan and Kachin
+        places: [Lashio, Laukkai/Laukkaing, Kunlong, Chinshwehaw, Hsenwi, Kutkai, Muse, Namhkam, Kyaukme, Hsipaw, Nawnghkio, Mogok, Namhsan, Momeik,
+                 Myitkyina, Bhamo, Hpakant, Waingmaw, Mansi, Momauk, Sumprabum, Chipwi, Taunggyi]
+      - region: centre and southeast
+        places: [{name: Mandalay, city_only: true}, Naypyidaw/Naypyitaw, Yangon, Monywa, Magway, Pyay, Mawlamyine, Dawei, Hpa-an, Myawaddy,
+                 Loikaw, Demoso, Mese, Falam, Hakha, Tedim, Kale/Kalay, Mindat]
 
   - id: sahel
     name: Sahel
@@ -86,9 +207,22 @@ conflicts:
     center: [15.0, 0.0]
     radius_km: 1500
     area_km: 30
+    reach_km: 60
     actors:
-      - {id: JIHADI, name: jihadist groups, color: "#e39b5b", sources: [], aka: "JNIM, al-Qaeda's Sahel branch, Islamic State Sahel, ISGS"}
-      - {id: STATE, name: Sahel governments' forces, color: "#5aa9e6", sources: [], aka: "the Malian, Burkinabe or Nigerien army, FAMa, Africa Corps or Wagner alongside them, VDP"}
+      - {id: JIHADI, name: jihadist groups, color: "#e39b5b", sources: [], aka: "JNIM, al-Qaeda's Sahel branch, Islamic State Sahel, ISGS",
+         held_as: [jihadist, JNIM, Islamist, militant, al-Qaeda, Islamic State]}
+      - {id: STATE, name: Sahel governments' forces, color: "#5aa9e6", sources: [], aka: "the Malian, Burkinabe or Nigerien army, FAMa, Africa Corps or Wagner alongside them, VDP",
+         held_as: [government, army, junta, military]}
+    standing:
+      - region: Mali
+        country: ML
+        places: [Gao, Timbuktu, Mopti, Kidal, Menaka, Tessalit, Ansongo, Bourem, Djenne, Douentza, Boni, Hombori, Niono, Nioro du Sahel, Kayes, Segou, Sevare, Leré/Lere]
+      - region: Burkina Faso
+        country: BF
+        places: [Djibo, Dori, Fada N'Gourma, Kaya, Ouahigouya, Diapaga, Arbinda, Gorom-Gorom, Sebba, Titao, Bourzanga, Kantchari, Pama, Solenzo, Nouna, Tougan, Barsalogho]
+      - region: Niger
+        country: NE
+        places: [Tillaberi/Tillabéri, Ouallam, Banibangou, Ayorou, Tera/Téra, Torodi, Makalondi, Diffa, Tahoua, Tassara, Tchintabaraden, Abala, Agadez, Bosso]
 
   - id: somalia
     name: Somalia
@@ -96,6 +230,15 @@ conflicts:
     center: [3.5, 45.5]
     radius_km: 900
     area_km: 25
+    reach_km: 50
     actors:
-      - {id: SHABAAB, name: al-Shabaab, color: "#e39b5b", sources: [], aka: "al-Shabaab, Harakat al-Shabaab al-Mujahideen"}
-      - {id: SFG, name: Somali government forces, color: "#5aa9e6", sources: [], aka: "Somali National Army, SNA, federal forces, AUSSOM, clan militias (macawisley) allied with the government, Jubaland or Puntland forces"}
+      - {id: SHABAAB, name: al-Shabaab, color: "#e39b5b", sources: [], aka: "al-Shabaab, Harakat al-Shabaab al-Mujahideen",
+         held_as: [al-Shabaab, al Shabaab, Al-Shabab, Shabaab, Shabab, militant, Islamist, jihadist, extremist]}
+      - {id: SFG, name: Somali government forces, color: "#5aa9e6", sources: [], aka: "Somali National Army, SNA, federal forces, AUSSOM, clan militias (macawisley) allied with the government, Jubaland or Puntland forces",
+         held_as: [government, Somali government, federal government, army, Somali army, SNA, Jubaland, Puntland]}
+    standing:
+      - region: southern and central Somalia
+        places: [Mogadishu, Baidoa, Beledweyne/Beledweyn, Kismayo, Dhusamareb, Jowhar, Afgoye, Marka/Merca, Barawe/Brava,
+                 Adale, Balcad/Balad, Wanlaweyn, Bulo Burde, Galkayo, Hobyo, Harardhere, El Buur/Elbur, Adan Yabaal, Moqokori, Mahas,
+                 Jilib, Jamame, Bu'aale/Buale, Saakow/Saco, Bardhere/Bardera, Dinsoor/Diinsoor, Qansax Dheere, Burhakaba, Luuq, Garbaharey,
+                 Tiyeglow/Tiyeeglow, Xuddur/Hudur, Wajid, Afmadow, Badhaadhe, Kudha, Sablaale, Kurtunwarey, Awdheegle, Bariire, Janaale]

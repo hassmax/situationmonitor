@@ -27,9 +27,10 @@ EVIDENCE = 8
 PROMPT = """You check proposed changes to a front-line map before they are published. Each item is a settlement, what the map shows for it now, the proposed change, published places nearby, and the evidence (short report summaries). Reply with one JSON object and nothing else.
 
 For each item decide:
-- "confirm": the evidence says what the proposal says about this specific settlement, and the strength fits. Status "assessed" needs more than one side's word: verified or geolocated footage, reporting from the scene, both sides agreeing, an independent analyst, or two independent sources. Status "claimed" is one side's claim. Status "contested" is fighting inside the settlement.
+- "confirm": the evidence says what the proposal says about this specific settlement, and the strength fits. Status "assessed" needs more than one side's word: verified or geolocated footage, reporting from the scene, both sides agreeing, an independent analyst, or two independent sources (including two independent outlets that describe the town as held as settled fact, basis "described": "Russian-occupied Melitopol", "Houthi-held Hodeidah"). Status "claimed" is one side's claim. Status "contested" is fighting inside the settlement.
 - "downgrade": the change is supported, but every piece of evidence traces back to one side's own statement; it will be shown as "claimed". Use the tally: several independent outlets, or reporting from the scene, are not one side's statement, even if a side also made a claim.
 - "reject": the evidence does not say this (it is about fighting near the settlement, a strike on it, a facility such as its airport or a base rather than the town, a different place with a similar name, or an old event), or the settlement's position does not fit the region named or the nearby front.
+Evidence with basis "described" quotes the few words an outlet wrote. Reject it when the words are about a region, district or province of the same name rather than the town (in Ukraine "occupied Kherson" usually means the Kherson region, whose capital Ukraine holds), or the position does not fit what the map shows nearby.
 Give a short reason (max 20 words).
 
 JSON: {"items": [{"n": <n>, "verdict": "confirm" | "downgrade" | "reject", "reason": "..."}]}"""
