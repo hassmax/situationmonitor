@@ -308,7 +308,7 @@
   // updates wait until the gesture ends (the camera keeps easing briefly after release).
   let moving = false, settleTimer = null;
   controls.addEventListener("start", () => {
-    if (typeof hideTip === "function") hideTip();
+    if (typeof hideTip === "function") { hideTip(); closeFly(); }
     clearTimeout(settleTimer);
     moving = true;
     document.body.classList.add("moving");
@@ -610,7 +610,9 @@
     .arcAltitudeAutoScale(0.36)
     .arcLabel((a) => (a.carrier ? tipCarrier(a.carrier) : a.flow ? tipFlow(a.flow) : a.ref ? tipEvent(a.ref) : ""))
     .onArcHover((a) => { globeEl.style.cursor = a ? "pointer" : ""; })
-    .onArcClick((a) => { if (a.carrier) selectCarrier(a.carrier.hull, true); else if (a.flow) selectFlow(a.flow.key); else if (a.ref) select(a.ref.id, true); });
+    .onArcClick((a) => { if (a.carrier) selectCarrier(a.carrier.hull, true); else if (a.flow) selectFlow(a.flow.key); else if (a.ref) select(a.ref.id, true); })
+    // a click on bare globe (no marker, line or dot) ends the focus on an opened event, carrier or route
+    .onGlobeClick(() => { if (focused()) closeDetail(); });
 
   // Dot and ring sizes follow the zoom, but are only rebuilt once a gesture ends.
   function applyZoomScale() {
@@ -723,17 +725,20 @@
     btn.setAttribute("aria-label", `${typeLabel(e)}, ${metaLine(e)}. ${STATUS[e.status].label}.`);
     btn.onclick = (ev) => {
       ev.stopPropagation();
+      closeFly();
       if (el.classList.contains("cluster-lead")) zoomTo(e.lat, e.lon, 0.35); // a count bubble zooms in to show its events
       else select(e.id, true);
     };
-    // pointing at a marker shows a quick look (a count bubble lists what it holds) and lights its row in the feed
+    // pointing at a marker slides a card open beside it (a count bubble's lists every event it holds)
+    // and lights its row in the feed
     btn.onmouseenter = () => {
       const members = el.classList.contains("cluster-lead") && el._members;
-      showTip(el, members ? tipCluster(members) : tipEvent(e, true));
+      if (members) showFly(el, tipCluster(members, e), true);
+      else showFly(el, tipEvent(e, true), placesOf(e).length > 1);
       hotRow(e.id);
       if (!members) prefetchReports(e.id);
     };
-    btn.onmouseleave = () => { hideTip(); hotRow(null); };
+    btn.onmouseleave = () => { hideFly(); hotRow(null); };
     return markerDatum(`ev:${e.id}`, { key: `ev:${e.id}`, ev: e, el, lat: e.lat, lon: e.lon, hAlt: 0.014, isEvent: true, prio: e.severity * 10 + (isNew(e) ? 5 : 0) + Math.log10(1 + magnitude(e)) + (e._t / 1e13) });
   }
 
@@ -744,9 +749,9 @@
     const btn = el.firstChild;
     setHtml(el, `${svgIcon("carrier")}<span class="mk-label">${esc(c.short || c.hull)}</span>`);
     btn.setAttribute("aria-label", `${c.name}, ${carrierStatus(c)}${c.place ? ", " + c.place : ""}`);
-    btn.onclick = (ev) => { ev.stopPropagation(); selectCarrier(c.hull, true); };
-    btn.onmouseenter = () => showTip(el, tipCarrier(c));
-    btn.onmouseleave = hideTip;
+    btn.onclick = (ev) => { ev.stopPropagation(); closeFly(); selectCarrier(c.hull, true); };
+    btn.onmouseenter = () => showFly(el, tipCarrier(c));
+    btn.onmouseleave = () => hideFly();
     c.el = el; c.key = `cvn:${c.hull}`; c.hAlt = 0.012; c.prio = 1;
     return c;
   }
@@ -757,15 +762,77 @@
   tipBox.hidden = true;
   document.body.appendChild(tipBox);
   const setTip = (html) => { if (tipBox._html !== html || tipBox.hidden) { tipBox.innerHTML = html; tipBox._html = html; } tipBox.hidden = false; };
-  function showTip(el, html) {
-    if (isMobile()) return;
-    const r = el.firstChild.getBoundingClientRect();
-    setTip(html);
-    const w = tipBox.offsetWidth;
-    tipBox.style.left = `${clamp(r.left + r.width / 2 - w / 2, 8, window.innerWidth - w - 8)}px`;
-    tipBox.style.top = `${Math.max(8, r.top - tipBox.offsetHeight - 8)}px`;
-  }
   function hideTip() { tipBox.hidden = true; }
+
+  // Pointing at a marker (desktop) slides a card open from its side, toward the open map (away
+  // from the list). Moving to a neighbouring marker glides the open card over instead of opening a
+  // new one. A count bubble's card lists every event it holds, and an alert group's or attack
+  // wave's the places it names; those cards can be pointed at (a place rings on the globe) and
+  // clicked, so they stay open while the pointer crosses into them.
+  const fly = document.createElement("div");
+  fly.className = "mk-fly";
+  fly.hidden = true;
+  document.body.appendChild(fly);
+  let flyFor = null, flyTimer = 0, flyRing = null;
+  function showFly(el, html, live = false) {
+    if (isMobile()) return;
+    clearTimeout(flyTimer);
+    hideTip();
+    const over = !fly.hidden && flyFor && flyFor !== el;
+    flyFor = el;
+    if (fly._html !== html) { fly.innerHTML = `<span class="fly-tail" aria-hidden="true"></span>${html}`; fly._html = html; fly.scrollTop = 0; }
+    fly.classList.toggle("is-live", live);
+    if (!over) fly.classList.remove("glide", "open");
+    fly.hidden = false;
+    const r = el.firstChild.getBoundingClientRect();
+    const w = fly.offsetWidth, h = fly.offsetHeight;
+    const list = $("#feed").getBoundingClientRect();
+    const edge = list.width && list.left > r.right ? list.left : window.innerWidth;
+    const right = r.right + 12 + w <= edge - 8 || r.left - 12 - w < 8;
+    const cy = r.top + r.height / 2;
+    const y = clamp(cy - 26, 8, Math.max(8, window.innerHeight - h - 8));
+    fly.classList.toggle("to-left", !right);
+    fly.style.left = `${right ? r.right + 12 : r.left - 12 - w}px`;
+    fly.style.top = `${y}px`;
+    fly.style.setProperty("--tail", `${clamp(cy - y, 14, h - 14)}px`);
+    if (over) fly.classList.add("glide");
+    else { void fly.offsetWidth; fly.classList.add("open"); }
+  }
+  function placeRing(t) {
+    if (flyRing) { extraRings.delete(flyRing); flyRing = null; }
+    if (t && !reduceMotion) { flyRing = { lat: t.lat, lon: t.lon, rgb: ACCENT, alpha: 0.85, max: 2.4, speed: 2.6, period: 1000 }; extraRings.add(flyRing); }
+    pushRings();
+  }
+  function closeFly() {
+    clearTimeout(flyTimer);
+    if (fly.hidden) return;
+    fly.hidden = true;
+    fly.classList.remove("glide", "open");
+    flyFor = null;
+    if (flyRing) placeRing(null);
+    if (fly.classList.contains("is-live")) hotEvent(null);
+  }
+  // a short wait, so the pointer can reach a list card, or the next marker can take the card over
+  function hideFly() { clearTimeout(flyTimer); flyTimer = setTimeout(closeFly, fly.classList.contains("is-live") ? 350 : 90); }
+  fly.addEventListener("mouseenter", () => { if (fly.classList.contains("is-live")) clearTimeout(flyTimer); });
+  fly.addEventListener("mouseleave", () => { placeRing(null); hideFly(); });
+  fly.addEventListener("mouseover", (ev) => {
+    const row = ev.target.closest("[data-id], [data-place]");
+    if (!row || row._lit) return;
+    fly.querySelectorAll(".is-lit").forEach((x) => { x.classList.remove("is-lit"); x._lit = false; });
+    row.classList.add("is-lit");
+    row._lit = true;
+    if (row.dataset.id) hotEvent(row.dataset.id);
+    else { const [lat, lon] = row.dataset.place.split(",").map(Number); placeRing({ lat, lon }); }
+  });
+  fly.addEventListener("click", (ev) => {
+    const b = ev.target.closest("[data-id], [data-zoom], [data-open]");
+    if (!b) return;
+    const id = b.dataset.id || b.dataset.open;
+    if (b.dataset.zoom) { const [lat, lon] = b.dataset.zoom.split(",").map(Number); zoomTo(lat, lon, 0.35); }
+    closeFly();
+    if (id) select(id, true);
+  });
 
   // Map and feed answer each other (desktop): pointing at an event in the feed lights its marker
   // and rings its spot on the globe; pointing at a marker lights its row, scrolled into view if the
@@ -887,22 +954,25 @@
   }
 
   // ------------------------------------------------------------------ tooltips
+  // The places an alert group names, or an attack wave hit, latest first.
+  const placesOf = (e) => ((e.alert || e.wave) && e.targets ? e.targets.filter((t) => t.lat != null && t.lon != null) : []);
   function tipEvent(e, quick = false) {
     const extra = e.alert ? `<span>${alertsText(e)}</span>`
       : e.wave && e.targets && e.targets.length > 1 ? `<span>${e.targets.length} locations</span>` : "";
     const n = e.sources_count || (e.reports || []).length;
+    const places = quick ? placesOf(e) : [];
+    // the quick look breaks an alert group or wave out into the places it names
+    const list = places.length > 1 ? `<div class="fly-sub">${e.alert ? "Places named" : "Places hit"}</div>
+      <ul class="fly-rows">${[...places].sort((a, b) => (b.time || "").localeCompare(a.time || "")).map((t, i) => `<li style="--i:${Math.min(i, 10)}"><button type="button" data-open="${esc(e.id)}" data-place="${t.lat},${t.lon}"><span><b>${esc(t.place)}</b>${t.reports > 1 ? ` ${t.reports} ${e.alert ? "alerts" : "reports"}` : ""}</span><time>${t.time ? esc(agoShort(Date.parse(t.time))) : ""}</time></button></li>`).join("")}</ul>` : "";
     return `<div class="tip"><div class="tip-meta">${eventIcon(e)}<b>${esc(typeLabel(e))}</b><span>${esc(metaLine(e))}</span></div>
       <div class="tip-sum">${esc(e.summary)}</div>
       <div class="tip-foot"><span class="conf-text conf-${STATUS[e.status].conf}">${esc(STATUS[e.status].label)}</span>${e.possibly_old ? "<span>Possibly an old story</span>" : ""}${extra}${quick && n ? `<span>${n} ${n === 1 ? "source" : "sources"}</span>` : ""}<span>${esc(ago(e._t))}</span></div>
-      ${quick ? '<div class="tip-hint">Click for details</div>' : ""}</div>`;
+      ${list}${quick ? '<div class="tip-hint">Click for details</div>' : ""}</div>`;
   }
-  // A count bubble: the events it holds, most important first.
-  function tipCluster(evs) {
-    const top = evs.filter(Boolean).slice(0, 4);
-    const more = evs.length - top.length;
-    return `<div class="tip tip-list"><div class="tip-meta"><b>${evs.length} events here</b></div>
-      <ul>${top.map((e) => `<li>${eventIcon(e)}<span><b>${esc(typeLabel(e))}</b> ${esc(e.place || metaLine(e))}</span><time>${esc(agoShort(e._t))}</time></li>`).join("")}</ul>
-      <div class="tip-hint">${more > 0 ? `and ${more} more. ` : ""}Click to zoom in</div></div>`;
+  // A count bubble: every event it holds, most important first, each one a button that opens it.
+  function tipCluster(evs, lead) {
+    return `<div class="tip tip-list"><div class="tip-meta"><b>${evs.length} events here</b><button type="button" class="fly-zoom" data-zoom="${lead.lat},${lead.lon}">Zoom in</button></div>
+      <ul class="fly-rows">${evs.filter(Boolean).map((e, i) => `<li style="--i:${Math.min(i, 10)}"><button type="button" data-id="${esc(e.id)}">${eventIcon(e)}<span><b>${esc(typeLabel(e))}</b> ${esc(e.place || metaLine(e))}</span><time>${esc(agoShort(e._t))}</time></button></li>`).join("")}</ul></div>`;
   }
   function tipCarrier(c) {
     return `<div class="tip"><div class="tip-meta">${iconBadge("carrier", "fleet")}<b>${esc(c.name)}</b><span>${esc(c.hull)}</span></div>
@@ -1001,11 +1071,14 @@
   });
   globeCanvas.addEventListener("pointerleave", hideControlTip);
   // a tap (not a drag) on held ground shows its name for a few seconds
-  globeCanvas.addEventListener("pointerdown", (ev) => { if (ev.pointerType !== "mouse") ctlDown = { x: ev.clientX, y: ev.clientY, t: performance.now() }; });
+  globeCanvas.addEventListener("pointerdown", (ev) => { ctlDown = { x: ev.clientX, y: ev.clientY, t: performance.now() }; });
   globeCanvas.addEventListener("pointerup", (ev) => {
     const d = ctlDown;
     ctlDown = null;
     if (!d || Math.hypot(ev.clientX - d.x, ev.clientY - d.y) > 8 || performance.now() - d.t > 500) return;
+    // a click away from everything (empty space, or bare globe: onGlobeClick) ends the focus on an opened event
+    if (focused() && !world.toGlobeCoords(ev.clientX - globeCanvas.getBoundingClientRect().left, ev.clientY - globeCanvas.getBoundingClientRect().top)) closeDetail();
+    if (ev.pointerType === "mouse") return;
     const hit = controlUnder(ev.clientX, ev.clientY);
     clearTimeout(ctlTimer);
     if (!hit) return hideControlTip();
@@ -2339,6 +2412,7 @@
     document.addEventListener("keydown", (ev) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
       if (ev.key === "Escape") {
+        closeFly();
         if (!$("#detail").hidden) closeDetail();
         else if ($("#filters").classList.contains("open")) toggleFilters(false);
       }
