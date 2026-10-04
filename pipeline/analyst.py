@@ -12,8 +12,9 @@ events it rests on.
 
 What keeps it honest (the old per-theater lines were removed because they folded single-source
 reports into statements of fact):
-- every judgment must cite at least MIN_CITED events of that region (a trend, not one event's news),
-  and judgments citing anything else are dropped;
+- every judgment must cite at least MIN_CITED events or tracked flights of that region (a trend, not
+  one event's news; one flight of a notable kind, SINGLE_FLIGHT_ROLES, may stand alone), and
+  judgments citing anything else are dropped;
 - the confidence shown is worked out here from the cited events, never by the model: "higher" with
   CORROBORATED_HIGH or more corroborated events, "moderate" with one, "low" with none;
 - a judgment citing any event that isn't corroborated must say so in its words ("reports suggest",
@@ -50,6 +51,9 @@ REACH_KM = 2500           # carriers and aircraft counted for a region: this far
 CORROBORATED_HIGH = 2
 MIN_CITED = 2
 MAX_FLIGHTS_PER_REGION = 15
+# A single tracked flight of these kinds may be a line of its own ("KC-135 tanker left Al Udeid and
+# landed at Incirlik", the owner's example, 2026-10-04); transports only in groups.
+SINGLE_FLIGHT_ROLES = {"bomber", "tanker", "surveillance", "command", "government"}
 VERSION = 1
 TRENDS = ("escalating", "de-escalating", "shifting", "steady")
 # Who is asked, in order (providers.py): the free outside providers first, whose models write better
@@ -91,7 +95,7 @@ What to look for: force posture (deployments, forces moved, carriers, tankers an
 Rules:
 - Use only what you are given. No outside knowledge, no background, no predictions of what will happen next.
 - Every judgment cites at least two events of its region (ids from that region only) that point the same way. Never combine unrelated events into one judgment.
-- "flight_movements" are military aircraft tracked by their own transponders (public ADS-B data, adsb.lol) taking off from or landing at watched bases, each with an id you may cite like an event. They show where aircraft went and when, never why. Several aircraft of one kind leaving or reaching a base can be a force-posture judgment ("US tankers leaving Al Udeid", "US bombers arriving at Diego Garcia"). Write a movement as the data shows it ("KC-135 tankers took off from Al Udeid and were last seen 400 km to the northwest"); give a destination only where a landing was seen. Never infer a mission, target or intent from flights.
+- "flight_movements" are military aircraft tracked by their own transponders (public ADS-B data, adsb.lol) taking off from or landing at watched bases, each with an id you may cite like an event. They show where aircraft went and when, never why. Several aircraft of one kind leaving or reaching a base can be a force-posture judgment ("US tankers leaving Al Udeid", "US bombers arriving at Diego Garcia"). Write a movement as the data shows it ("KC-135 tankers took off from Al Udeid and were last seen 400 km to the northwest"); give a destination only where a landing was seen. Never infer a mission, target or intent from flights. One flight of a bomber, tanker, surveillance aircraft, airborne command post or government VIP flight may be a line of its own ("KC-135 tanker left Al Udeid and landed at Incirlik", trend "shifting"); transports only when several move together.
 - Carriers and the count of aircraft broadcasting now are context only: mention them together with cited events or flights, never as the only basis.
 - Weigh confidence: events marked single-source or one side's claim are weaker. When a judgment cites any of them, say so in the words ("reports suggest", "Russia claims", "unconfirmed reports"). Keep each event's own attribution. Never state a single-source report or a claim as fact. Corroborated events are stated plainly, without "unconfirmed".
 - The cited events must be separate incidents showing a pattern (several strikes, several deployments). One incident and the reactions to it (an arrest and the protest about it) is news, not a trend: leave it out.
@@ -251,7 +255,8 @@ def validate(reply, shown: list[dict], events: list[dict], flights: dict | None 
             ids = [i for i in dict.fromkeys(j.get("ids") or []) if isinstance(i, str)]
             headline, text = _clean(j.get("headline"), 120, ids), _clean(j.get("text"), 400, ids)
             trend = str(j.get("trend") or "").lower()
-            if len(ids) < MIN_CITED or not headline or trend not in TRENDS or not all(i in allowed[rid] for i in ids):
+            single_flight = len(ids) == 1 and ids[0] in moves and moves[ids[0]].get("role") in SINGLE_FLIGHT_ROLES
+            if (len(ids) < MIN_CITED and not single_flight) or not headline or trend not in TRENDS or not all(i in allowed[rid] for i in ids):
                 continue
             t = tally(ids, by_id)
             if (t["single_source"] or t["claimed"]) and not _HEDGE.search(f"{headline} {text}"):

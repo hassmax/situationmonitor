@@ -174,3 +174,18 @@ def test_tracked_flights_can_be_cited_and_carry_their_own_links():
     j = out[0]["judgments"]
     assert len(j) == 1 and j[0]["ids"] == [] and [f["url"] for f in j[0]["flights"]] == ["https://adsb.lol/?icao=k1", "https://adsb.lol/?icao=k2"]
     assert j[0]["tally"]["tracked"] == 2 and j[0]["confidence"] == "higher"
+
+
+def test_one_notable_flight_can_stand_alone_but_not_one_transport():
+    moves = {"aircraft": [], "movements": [
+        {"id": "fk1", "role": "tanker", "time": "2026-10-04T17:00:00Z", "places": [(25.117, 51.315), (37.0, 35.4)], "url": "u1",
+         "label": "KC-135 tanker · Al Udeid Air Base", "text": "KC-135 tanker took off from Al Udeid Air Base and landed at Incirlik Air Base."},
+        {"id": "fc1", "role": "airlift", "time": "2026-10-04T17:00:00Z", "places": [(25.117, 51.315)], "url": "u2",
+         "label": "C-17 transport · Al Udeid Air Base", "text": "C-17 took off from Al Udeid Air Base."}]}
+    shown = analyst.regions(EVENTS, THEATERS, CARRIERS, moves, NOW)
+    reply = {"regions": [{"region": "mideast", "judgments": [
+        {"headline": "KC-135 tanker left Al Udeid for Incirlik", "trend": "shifting", "text": "A KC-135 tanker took off from Al Udeid and landed at Incirlik.", "ids": ["fk1"]},
+        {"headline": "C-17 left Al Udeid", "trend": "shifting", "text": "A C-17 took off from Al Udeid.", "ids": ["fc1"]}]}]}
+    out = analyst.validate(reply, shown, EVENTS, moves)
+    assert [j["headline"] for j in out[0]["judgments"]] == ["KC-135 tanker left Al Udeid for Incirlik"]
+    assert out[0]["judgments"][0]["confidence"] == "moderate"
