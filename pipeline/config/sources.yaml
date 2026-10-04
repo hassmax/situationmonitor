@@ -30,7 +30,7 @@ settings:
   daily_llm_calls: 470
   max_calls_per_run: 6
   # Every model call counts against daily_llm_calls. Extraction stops when fewer than
-  # extraction_reserve calls are left for the day; the situation brief (one call, at most
+  # extraction_reserve calls are left for the day; the regional analysis (one call, at most
   # hourly) is skipped when fewer than brief_min_calls are left, and the same-story check
   # (one call, at most hourly) when fewer than dedupe_min_calls are left.
   extraction_reserve: 30

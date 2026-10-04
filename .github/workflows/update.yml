@@ -71,6 +71,8 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           DASHBOARD_URL: ${{ vars.DASHBOARD_URL }}
           FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: python pipeline/run.py --state state --out out
 
       - name: Save state and archive to the data branch

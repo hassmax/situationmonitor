@@ -284,9 +284,10 @@ def used_today(state: dict, purpose: str) -> int:
 # waiting. Each share is paced over the day: by noon, about half of it (plus SHARE_BURST).
 SHARES = {"dedupe": "dedupe_daily_max", "recency": "recency_daily_max", "maproom": "maproom_daily_max",
           "frontline": "frontline_daily_max", "frontline_review": "frontline_review_daily_max",
-          "frontline_isw": "frontline_isw_daily_max"}
+          "frontline_isw": "frontline_isw_daily_max", "analysis": "analysis_daily_max"}
 SHARE_DEFAULTS = {"dedupe_daily_max": 140, "recency_daily_max": 48, "maproom_daily_max": 16,
-                  "frontline_daily_max": 40, "frontline_review_daily_max": 60, "frontline_isw_daily_max": 60}
+                  "frontline_daily_max": 40, "frontline_review_daily_max": 60, "frontline_isw_daily_max": 60,
+                  "analysis_daily_max": 24}
 SHARE_BURST = 4
 # Not paced over the day: ISW's maps come out together, around 01:00 UTC, and are read as they come;
 # ISW's written reports are read up front (two weeks' backlog first), then as they come.
@@ -307,7 +308,7 @@ def share_left(state: dict, settings: dict, now: datetime, purpose: str) -> int:
 
 def calls_allowed(state: dict, settings: dict, now: datetime, reserve: int = 0) -> int:
     """Calls this run may make, spreading what is left over the day's remaining runs.
-    `reserve` calls are held back (extraction leaves room for the situation brief)."""
+    `reserve` calls are held back (extraction leaves room for the regional analysis)."""
     remaining = calls_remaining(state, settings, now) - reserve
     if remaining <= 0:
         return 0
@@ -778,16 +779,20 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
 
 def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, now: datetime,
              max_tokens: int = 4000, _retry: bool = True, purpose: str = "other",
-             images: list[str] | None = None) -> dict | None:
+             images: list[str] | None = None, model: str | None = None) -> dict | None:
     """One budgeted model call outside the batch loop. Returns parsed JSON or None. If the model
     is busy, another model (a backup if need be) is tried once. `purpose` names what the call is
     for in the day's tally (state["llm_calls"]["by"]) and is checked against its share (share_left).
-    `images` (data: URLs) are shown to the model after the text."""
+    `images` (data: URLs) are shown to the model after the text. `model` asks a named model at the
+    chosen model's address instead (the analyst prefers regular Flash); a failure returns None."""
     token = os.environ.get("LLM_API_KEY", "").strip()
     chosen = state.get("llm_model")
     if (not token or not chosen or _paused(state, now) or calls_allowed(state, settings, now) <= 0
             or share_left(state, settings, now, purpose) <= 0):
         return None
+    if model:
+        chosen = {**chosen, "model": model}
+        _retry = False  # a busy named model is not swapped for another here; the caller falls back
     body = {
         "model": chosen["model"], "temperature": 0, "max_tokens": max_tokens, "stream": False,
         "messages": [{"role": "system", "content": system_prompt},

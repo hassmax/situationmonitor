@@ -26,7 +26,7 @@ DEFAULT_SETTINGS = {
     "daily_llm_calls": 470,
     "max_calls_per_run": 6,
     # Extraction stops when fewer than this many calls are left today, keeping room for the
-    # situation brief (which is skipped when fewer than brief_min_calls are left).
+    # regional analyst (which is skipped when fewer than brief_min_calls are left).
     "extraction_reserve": 30,
     "brief_min_calls": 5,
     # The same-story check (at most one call an hour) is skipped below this.

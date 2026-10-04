@@ -19,8 +19,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import alerts  # noqa: E402
+import analyst  # noqa: E402
 import archive  # noqa: E402
-import brief  # noqa: E402
 import config as config_mod  # noqa: E402
 import corrections  # noqa: E402
 import datecheck  # noqa: E402
@@ -260,7 +260,7 @@ def main() -> int:
         if same:
             merge.apply_status(events, cells)
 
-    # 7. Situation brief: at most one model call an hour, from the same daily budget
+    # 7. Regional analyst: what is changing in each region, at most one model call an hour
     # Hidden events are left out and edits applied; everything below uses this published list.
     # Single-source stories that look like old news stay on the map but are flagged "possibly an
     # old story" (recency.held): faded, not animated, left out of alerts, until a second source joins.
@@ -277,8 +277,12 @@ def main() -> int:
                                          extract.calls_allowed(state, settings, t0, reserve=reserve)),
                      disabled=args.no_llm, session=session)
     if not args.no_llm:
-        brief.update(state, published, {t["id"]: t["name"] for t in cfg.theaters}, settings, t0,
-                     extract.ask_json, extract.calls_remaining(state, settings, t0))
+        analyst.update(state, published, cfg.theaters, fleet.public(state, t0), flights.public(state, t0), settings, t0,
+                       extract.ask_json, extract.calls_remaining(state, settings, t0),
+                       extract.share_left(state, settings, t0, "analysis"))
+    state.pop("brief", None)  # the old "what changed" bullets, replaced by the analyst
+    state.pop("brief_fp", None)
+    state.pop("brief_attempt", None)
 
     # 8. Telegram alerts (skipped unless TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set)
     alerts.run(state, published, fleet.public(state, t0), cfg.alerts, {t["id"]: t["name"] for t in cfg.theaters},
@@ -322,7 +326,7 @@ def main() -> int:
         "build": (os.environ.get("GITHUB_SHA") or "")[:12],
         "theaters": theaters_meta(cfg.theaters),
         "events": published,
-        "brief": state.get("brief"),
+        "analysis": state.get("analysis"),
         "heat": public_cells(cells),
         "control": control.public(state, control_layers, t0),
         "frontline": frontline.public(state, cfg.frontlines, t0),

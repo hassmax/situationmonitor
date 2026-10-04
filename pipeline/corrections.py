@@ -1,6 +1,6 @@
 """Corrections made by hand in config/corrections.yaml, applied on every run.
 
-  hide         take an event off the dashboard (and the brief, alerts, and archive)
+  hide         take an event off the dashboard (and the regional analysis, alerts, and archive)
   edit         change summary, place, lat, lon, type, or severity
   drop_report  remove one report (by its URL) from an event; its confidence is recomputed
 
