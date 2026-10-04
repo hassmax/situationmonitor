@@ -187,6 +187,9 @@ def main() -> int:
 
     # 3. Extract with the model (budgeted); the rest waits in the queue
     fresh = extract.skip_rejected(fresh, state, t0)
+    # Once: reports filed under an old arms transfer days after it began (the old merge rule) are
+    # read again so they become their own events (B-1s leaving Fairford, 2026-10-04).
+    fresh += merge.split_overgrown_transfers(events, state, t0)
     queue = extract.build_queue(state["pending"], fresh, t0, settings)
     records, leftover, calls, carrier_reports = extract.run(queue, state, settings, t0, disabled=args.no_llm)
     state["pending"] = leftover
