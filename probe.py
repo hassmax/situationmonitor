@@ -1,55 +1,35 @@
-"""Temporary: free AI providers from GitHub's servers: GitHub Models for real, the others' published limits."""
-import json, os, re, time, requests
+"""Temporary: GitHub Models in detail (what really answers), plus OpenRouter's free-model list."""
+import json, os, time, requests
 tok = os.environ.get("GITHUB_MODELS_TOKEN", "")
-GH = "https://models.github.ai/inference/chat/completions"
-
-def call(model, text, max_tokens=200, json_mode=True):
-    body = {"model": model, "max_tokens": max_tokens, "temperature": 0,
-            "messages": [{"role": "user", "content": text}]}
-    if json_mode:
-        body["response_format"] = {"type": "json_object"}
-    t = time.time()
-    r = requests.post(GH, headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"}, json=body, timeout=120)
-    hdr = {k: v for k, v in r.headers.items() if "ratelimit" in k.lower() or "limit" in k.lower()}
-    return r.status_code, round(time.time() - t, 1), r.text[:300].replace("\n", " "), hdr
-
-print("== GitHub Models catalog")
-r = requests.get("https://models.github.ai/catalog/models", headers={"Authorization": f"Bearer {tok}"}, timeout=30)
-print(r.status_code)
+print("token present:", bool(tok), "length class:", len(tok) > 20)
+for url in ["https://models.github.ai/inference/chat/completions", "https://models.inference.ai.azure.com/chat/completions"]:
+    for model in ["openai/gpt-4.1", "gpt-4.1", "openai/gpt-4o-mini"]:
+        body = {"model": model, "max_tokens": 50, "temperature": 0, "messages": [{"role": "user", "content": 'Reply with {"ok": true}'}]}
+        try:
+            r = requests.post(url, headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json", "Accept": "application/json"},
+                              json=body, timeout=60, allow_redirects=False)
+            print(url, model, r.status_code, r.headers.get("content-type"), repr(r.text[:250]), {k: v for k, v in r.headers.items() if k.lower().startswith(("x-ratelimit", "x-ms", "location", "server"))})
+        except Exception as e:
+            print(url, model, "ERR", e)
+        time.sleep(2)
+big = "Count the words. " + ("lorem ipsum dolor sit amet " * 3200)
+r = requests.post("https://models.github.ai/inference/chat/completions", headers={"Authorization": f"Bearer {tok}", "Content-Type": "application/json"},
+                  json={"model": "openai/gpt-4.1", "max_tokens": 50, "messages": [{"role": "user", "content": big}]}, timeout=120)
+print("big:", r.status_code, repr(r.text[:300]))
+r = requests.get("https://models.github.ai/catalog/models", headers={"Authorization": f"Bearer {tok}", "Accept": "application/vnd.github+json"}, timeout=30)
+print("catalog:", r.status_code, r.headers.get("content-type"), repr(r.text[:300]))
 try:
-    cat = r.json()
-    for m in cat:
-        lim = m.get("limits") or {}
-        print(f"  {m.get('id'):45} tier={m.get('rate_limit_tier')} in={lim.get('max_input_tokens')} out={lim.get('max_output_tokens')}")
+    for m in r.json():
+        if any(k in m.get("id", "") for k in ("gpt-4.1", "gpt-5", "gpt-4o", "deepseek", "grok", "llama")):
+            print("  ", m.get("id"), m.get("rate_limit_tier"), m.get("limits"))
+except Exception:
+    pass
+r = requests.get("https://openrouter.ai/api/v1/models", timeout=30)
+try:
+    free = [m for m in r.json()["data"] if m["id"].endswith(":free")]
+    print("openrouter free models:", len(free))
+    for m in sorted(free, key=lambda m: -(m.get("context_length") or 0))[:25]:
+        print("  ", m["id"], m.get("context_length"))
 except Exception as e:
-    print("  catalog not json", r.text[:200])
-
-print("== GitHub Models small calls")
-for m in ["openai/gpt-4.1", "openai/gpt-4o", "openai/gpt-5", "openai/gpt-5-mini", "openai/gpt-4.1-mini", "deepseek/deepseek-r1", "meta/llama-4-maverick-17b-128e-instruct-fp8", "xai/grok-3"]:
-    print(m, call(m, 'Reply with the JSON object {"ok": true} and nothing else.'))
-    time.sleep(1)
-big = "Count the words. " + ("lorem ipsum dolor sit amet " * 3200) + ' Reply with {"ok": true}.'
-print("== big request (~20k tokens)")
-for m in ["openai/gpt-4.1", "openai/gpt-4.1-mini"]:
-    print(m, call(m, big))
-    time.sleep(1)
-
-print("== Published limits")
-for name, url, pat in [
-    ("github models", "https://docs.github.com/en/github-models/use-github-models/prototyping-with-ai-models", r"(?:Requests per (?:day|minute)|Tokens per request|Concurrent)[^.]{0,200}"),
-    ("groq", "https://console.groq.com/docs/rate-limits", r"(?:gpt-oss-120b|llama-3\.3-70b-versatile|qwen[\w./-]*|kimi[\w./-]*)[^<]{0,160}"),
-    ("cerebras", "https://inference-docs.cerebras.ai/support/rate-limits", r"(?:gpt-oss-120b|llama-3\.3-70b|qwen-3-235b[\w-]*|llama3\.1-8b)[^<]{0,200}"),
-    ("cerebras pricing", "https://www.cerebras.ai/pricing", r"(?:[Ff]ree[^<]{0,200})"),
-    ("openrouter limits", "https://openrouter.ai/docs/api-reference/limits", r"(?:free[^<]{0,240})"),
-    ("mistral", "https://docs.mistral.ai/deployment/laplateforme/tier/", r"(?:[Ff]ree|[Ee]xperiment)[^<]{0,200}"),
-]:
-    try:
-        r = requests.get(url, timeout=30, headers={"User-Agent": "Mozilla/5.0"})
-        text = re.sub(r"\s+", " ", re.sub(r"<(script|style)[^>]*>.*?</\1>", " ", r.text, flags=re.S))
-        text = re.sub(r"<[^>]+>", " | ", text)
-        hits = re.findall(pat, text)
-        print(f"-- {name}: HTTP {r.status_code}, {len(hits)} hits")
-        for h in hits[:10]:
-            print("   ", re.sub(r"(\s*\|\s*)+", " | ", h)[:240])
-    except Exception as e:
-        print(f"-- {name}: {e}")
+    print("openrouter:", r.status_code, e)
+# r2
