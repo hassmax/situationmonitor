@@ -115,9 +115,9 @@ def main() -> int:
     items += bluesky.search(cfg.sources.get("bluesky_search"), cfg.sources["bluesky"], session, health, t0)
     items += rss.fetch(cfg.sources["rss"], session, health, lookback_h // 24, cfg.outlets)
     items += telegram.fetch(cfg.sources["telegram"], state, health)
-    # Flight agent: notable military aircraft from open ADS-B data (no model); group take-offs and
-    # landings at watched bases become reports in the queue.
-    items += flights.update(state, session, health, t0, cfg.flight_bases)
+    # Flight agent: notable military aircraft from open ADS-B data (no model). Not drawn on the map:
+    # its take-offs and landings at watched bases go to the regional analyst.
+    flights.update(state, session, health, t0, cfg.flight_bases)
     log(f"[fetch] {len(items)} items")
     # Google News reports stored before outlets were told apart carry only the search's name;
     # credit them to the outlet that published them (once over the past week, then as seen).
@@ -277,7 +277,7 @@ def main() -> int:
                                          extract.calls_allowed(state, settings, t0, reserve=reserve)),
                      disabled=args.no_llm, session=session)
     if not args.no_llm:
-        analyst.update(state, published, cfg.theaters, fleet.public(state, t0), flights.public(state, t0), settings, t0,
+        analyst.update(state, published, cfg.theaters, fleet.public(state, t0), flights.for_analyst(state, t0), settings, t0,
                        extract.ask_json, extract.calls_remaining(state, settings, t0),
                        extract.share_left(state, settings, t0, "analysis"))
     state.pop("brief", None)  # the old "what changed" bullets, replaced by the analyst
@@ -331,7 +331,6 @@ def main() -> int:
         "control": control.public(state, control_layers, t0),
         "frontline": frontline.public(state, cfg.frontlines, t0),
         "fleet": fleet.public(state, t0),
-        "flights": flights.public(state, t0),
         "fleet_meta": {k: (state.get("fleet_meta") or {}).get(k) for k in ("tracker_time", "tracker_url")},
         "sources": [dict(id=k, **v) for k, v in sorted(state["health"].items(), key=lambda kv: kv[1]["name"].lower())],
         "run": state["last_run"],

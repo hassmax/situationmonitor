@@ -425,6 +425,7 @@ h2 {
 .cites { display: inline-flex; flex-wrap: wrap; gap: 4px; margin-left: 6px; vertical-align: 1px; }
 .cite { border: 1px solid var(--line); background: rgba(255, 255, 255, 0.04); color: var(--ink-2); border-radius: 999px; padding: 0 7px; font-size: 11.5px; line-height: 18px; cursor: pointer; }
 .cite:hover { color: var(--ink); border-color: var(--line-strong); }
+.cite-flight { text-decoration: none; border-style: dashed; }
 .brief-note { margin: 8px 0 0; font-size: 11.5px; color: var(--ink-3); }
 .an-sub { margin: 2px 0 4px; font-size: 12px; color: var(--ink-3); }
 .an-region { margin-top: 9px; padding-top: 8px; border-top: 1px solid var(--line); }
@@ -888,8 +889,6 @@ h2 {
 .cat-supply { --c: 63, 193, 201; }
 .cat-aid { --c: 96, 214, 122; }
 .cat-fleet, .mk-cvn { --c: 205, 228, 255; }
-.cat-flight, .mk-fl { --c: 255, 214, 102; }
-.mk-fl.role-emergency { --c: var(--accent-rgb); }
 
 /* the globe positions .mk; .mk-in can shift sideways when markers overlap */
 .mk { position: absolute; width: 0; height: 0; --fade: 1; --s: 24px; }
@@ -972,27 +971,6 @@ h2 {
 .mk-cvn .mk-label { position: static; transform: none; background: none; padding: 0; font-size: 11px; color: rgb(var(--c)); }
 .cvn-port .mk-in { opacity: 0.75; }
 
-/* military flights: a small plane pointing where the aircraft was heading, no disc */
-.mk-fl .mk-in {
-  width: 18px;
-  height: 18px;
-  background: none;
-  border: 0;
-  box-shadow: none;
-  color: rgb(var(--c));
-}
-.mk-fl .mk-in svg {
-  width: 100%;
-  height: 100%;
-  transform: rotate(var(--hdg, 0deg));
-  filter: drop-shadow(0 0 1.5px rgba(6, 17, 32, 0.95)) drop-shadow(0 1px 3px rgba(0, 0, 0, 0.5));
-}
-.mk-fl.is-selected .mk-in, .mk-fl.is-hot .mk-in { box-shadow: none; }
-.mk-fl.is-selected .mk-in svg { filter: drop-shadow(0 0 2px #eaf0f6) drop-shadow(0 0 6px rgba(var(--accent-rgb), 0.7)); }
-.mk-fl.spread::before, .mk-fl.spread::after { opacity: 0.6; }
-.flight-facts { display: grid; grid-template-columns: max-content 1fr; gap: 4px 14px; margin: 0 0 14px; font-size: 13px; }
-.flight-facts dt { color: var(--ink-3); }
-.flight-facts dd { margin: 0; color: var(--ink); }
 .cvn-underway .mk-in { box-shadow: 0 0 0 3px rgba(205, 228, 255, 0.16), 0 2px 8px rgba(0, 0, 0, 0.35); }
 
 /* ------------------------------------------------------------------ animations by type (recent events only) */
@@ -1094,7 +1072,6 @@ h2 {
 .ico.cat-supply { --c: 63, 193, 201; }
 .ico.cat-aid { --c: 96, 214, 122; }
 .ico.cat-fleet { --c: 205, 228, 255; }
-.ico.cat-flight { --c: 255, 214, 102; }
 .ico svg { width: 62%; height: 62%; }
 .ico.conf-outline { background: transparent; color: rgb(var(--c)); }
 .ico.conf-dashed { background: transparent; color: rgb(var(--c)); border-style: dashed; }

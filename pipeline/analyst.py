@@ -12,8 +12,9 @@ events it rests on.
 
 What keeps it honest (the old per-theater lines were removed because they folded single-source
 reports into statements of fact):
-- every judgment must cite at least MIN_CITED events of that region (a trend, not one event's news),
-  and judgments citing anything else are dropped;
+- every judgment must cite at least MIN_CITED events or tracked flights of that region (a trend, not
+  one event's news; one flight of a notable kind, SINGLE_FLIGHT_ROLES, may stand alone), and
+  judgments citing anything else are dropped;
 - the confidence shown is worked out here from the cited events, never by the model: "higher" with
   CORROBORATED_HIGH or more corroborated events, "moderate" with one, "low" with none;
 - a judgment citing any event that isn't corroborated must say so in its words ("reports suggest",
@@ -36,6 +37,7 @@ import json
 import re
 from datetime import timedelta
 
+import flights as flights_mod
 import providers
 from common import haversine_km, iso, log, parse_time
 
@@ -48,6 +50,10 @@ MAX_JUDGMENTS = 14
 REACH_KM = 2500           # carriers and aircraft counted for a region: this far from its camera point
 CORROBORATED_HIGH = 2
 MIN_CITED = 2
+MAX_FLIGHTS_PER_REGION = 15
+# A single tracked flight of these kinds may be a line of its own ("KC-135 tanker left Al Udeid and
+# landed at Incirlik", the owner's example, 2026-10-04); transports only in groups.
+SINGLE_FLIGHT_ROLES = {"bomber", "tanker", "surveillance", "command", "government"}
 VERSION = 1
 TRENDS = ("escalating", "de-escalating", "shifting", "steady")
 # Who is asked, in order (providers.py): the free outside providers first, whose models write better
@@ -89,7 +95,8 @@ What to look for: force posture (deployments, forces moved, carriers, tankers an
 Rules:
 - Use only what you are given. No outside knowledge, no background, no predictions of what will happen next.
 - Every judgment cites at least two events of its region (ids from that region only) that point the same way. Never combine unrelated events into one judgment.
-- Carriers and aircraft are context: mention them only together with events, never as the only basis.
+- "flight_movements" are military aircraft tracked by their own transponders (public ADS-B data, adsb.lol) taking off from or landing at watched bases, each with an id you may cite like an event. They show where aircraft went and when, never why. Several aircraft of one kind leaving or reaching a base can be a force-posture judgment ("US tankers leaving Al Udeid", "US bombers arriving at Diego Garcia"). Write a movement as the data shows it ("KC-135 tankers took off from Al Udeid and were last seen 400 km to the northwest"); give a destination only where a landing was seen. Never infer a mission, target or intent from flights. One flight of a bomber, tanker, surveillance aircraft, airborne command post or government VIP flight may be a line of its own ("KC-135 tanker left Al Udeid and landed at Incirlik", trend "shifting"); transports only when several move together.
+- Carriers and the count of aircraft broadcasting now are context only: mention them together with cited events or flights, never as the only basis.
 - Weigh confidence: events marked single-source or one side's claim are weaker. When a judgment cites any of them, say so in the words ("reports suggest", "Russia claims", "unconfirmed reports"). Keep each event's own attribution. Never state a single-source report or a claim as fact. Corroborated events are stated plainly, without "unconfirmed".
 - The cited events must be separate incidents showing a pattern (several strikes, several deployments). One incident and the reactions to it (an arrest and the protest about it) is news, not a trend: leave it out.
 - Name actors only as the events name them. Don't assign blame or intent the events don't state.
@@ -164,7 +171,8 @@ def regions(events: list[dict], theaters: list[dict], carriers: list[dict], flig
             continue
         mine = [e for e in events if e.get("theater") == th["id"]]
         recent = [e for e in mine if _hours_ago(e, now) <= ANALYSIS_DAYS * 24]
-        if not recent:
+        moves = [m for m in (flights or {}).get("movements") or [] if any(_near(th, lat, lon) for lat, lon in m["places"])]
+        if not recent and not moves:
             continue
         recent.sort(key=lambda e: (_hours_ago(e, now) > WINDOW_HOURS, -(e.get("severity") or 1), _hours_ago(e, now)))
         r = {"region": th["id"], "name": th["name"], "activity": _counts(mine, now),
@@ -179,13 +187,18 @@ def regions(events: list[dict], theaters: list[dict], carriers: list[dict], flig
             for f in planes:
                 by_role[f["role"]] = by_role.get(f["role"], 0) + 1
             r["military_aircraft_broadcasting_now"] = by_role
+        if moves:
+            moves.sort(key=lambda m: (-flights_mod.IMPORTANCE.get(m["role"], 0), -(parse_time(m.get("time")) or now).timestamp()))
+            r["flight_movements"] = [{"id": m["id"], "role": m["role"], "what": m["text"]} for m in moves[:MAX_FLIGHTS_PER_REGION]]
         out.append(r)
     return out
 
 
-def fingerprint(events: list[dict], now) -> str:
+def fingerprint(events: list[dict], now, flights: dict | None = None) -> str:
     rows = sorted((e["id"], e.get("updated"), e.get("status"), e.get("summary"), e.get("severity"))
                   for e in events if _hours_ago(e, now) <= WINDOW_HOURS)
+    rows += sorted((m["id"], m["text"]) for m in (flights or {}).get("movements") or []
+                   if m.get("time") and _hours_ago({"time": m["time"]}, now) <= WINDOW_HOURS)
     return hashlib.sha1(json.dumps(rows, ensure_ascii=False).encode("utf-8")).hexdigest()
 
 
@@ -208,23 +221,27 @@ def _clean(text: str, limit: int, ids=()) -> str:
 
 
 def tally(ids: list[str], by_id: dict) -> dict:
-    t = {"corroborated": 0, "single_source": 0, "claimed": 0}
+    """Cited evidence by kind. Tracked flights (the aircraft's own transponder data) count as
+    tracked, which weighs like a corroborated event: they show where aircraft went, not why."""
+    t = {"corroborated": 0, "single_source": 0, "claimed": 0, "tracked": 0}
     for i in ids:
         s = by_id[i].get("status")
-        t["corroborated" if s == "corroborated" else "claimed" if s == "claimed" else "single_source"] += 1
+        t["tracked" if s == "tracked" else "corroborated" if s == "corroborated" else "claimed" if s == "claimed" else "single_source"] += 1
     return t
 
 
 def confidence(t: dict) -> str:
-    return "higher" if t["corroborated"] >= CORROBORATED_HIGH else "moderate" if t["corroborated"] else "low"
+    strong = t["corroborated"] + t.get("tracked", 0)
+    return "higher" if strong >= CORROBORATED_HIGH else "moderate" if strong else "low"
 
 
-def validate(reply, shown: list[dict], events: list[dict]) -> list[dict] | None:
+def validate(reply, shown: list[dict], events: list[dict], flights: dict | None = None) -> list[dict] | None:
     """Regions with their checked judgments, in the order the regions were shown."""
     if not isinstance(reply, dict) or not isinstance(reply.get("regions"), list):
         return None
-    by_id = {e["id"]: e for e in events}
-    allowed = {r["region"]: {f["id"] for f in r["events"]} for r in shown}
+    moves = {m["id"]: m for m in (flights or {}).get("movements") or []}
+    by_id = {e["id"]: e for e in events} | {i: {"status": "tracked"} for i in moves}
+    allowed = {r["region"]: {f["id"] for f in r["events"]} | {m["id"] for m in r.get("flight_movements") or []} for r in shown}
     names = {r["region"]: r["name"] for r in shown}
     got: dict[str, list] = {}
     total = 0
@@ -238,14 +255,17 @@ def validate(reply, shown: list[dict], events: list[dict]) -> list[dict] | None:
             ids = [i for i in dict.fromkeys(j.get("ids") or []) if isinstance(i, str)]
             headline, text = _clean(j.get("headline"), 120, ids), _clean(j.get("text"), 400, ids)
             trend = str(j.get("trend") or "").lower()
-            if len(ids) < MIN_CITED or not headline or trend not in TRENDS or not all(i in allowed[rid] for i in ids):
+            single_flight = len(ids) == 1 and ids[0] in moves and moves[ids[0]].get("role") in SINGLE_FLIGHT_ROLES
+            if (len(ids) < MIN_CITED and not single_flight) or not headline or trend not in TRENDS or not all(i in allowed[rid] for i in ids):
                 continue
             t = tally(ids, by_id)
             if (t["single_source"] or t["claimed"]) and not _HEDGE.search(f"{headline} {text}"):
                 continue  # single-source reports or claims, stated as fact
             if (t["single_source"] or t["claimed"]) and _CONFIRMED.search(f"{headline} {text}"):
                 continue  # "Corroborated reports indicate..." over a one-sided claim (Cerebras trial, 2026-10-04)
-            got.setdefault(rid, []).append({"headline": headline, "trend": trend, "text": text, "ids": ids[:12],
+            flown = [{"label": moves[i]["label"], "url": moves[i]["url"], "what": moves[i]["text"]} for i in ids if i in moves]
+            got.setdefault(rid, []).append({"headline": headline, "trend": trend, "text": text,
+                                            "ids": [i for i in ids if i not in moves][:12], "flights": flown[:12],
                                             "tally": t, "confidence": confidence(t)})
             total += 1
     if not got:
@@ -259,7 +279,7 @@ def update(state: dict, events: list[dict], theaters: list[dict], carriers: list
     tried = parse_time(state.get("analysis_attempt"))
     if tried and now - tried < MIN_INTERVAL:
         return
-    fp = fingerprint(events, now)
+    fp = fingerprint(events, now, flights)
     if state.get("analysis") and state.get("analysis_fp") == fp:
         return
     shown = regions(events, theaters, carriers, flights, now)
@@ -297,7 +317,7 @@ def update(state: dict, events: list[dict], theaters: list[dict], carriers: list
                 continue
             reply, model = providers.ask_json(p, PROMPT, text, state, now, max_tokens=8000)
             label = p.get("label") or step
-        out = validate(reply, shown, events)
+        out = validate(reply, shown, events, flights)
         if out is not None:
             by = f"{model} ({label})" if model else label
             break
@@ -308,5 +328,7 @@ def update(state: dict, events: list[dict], theaters: list[dict], carriers: list
         return
     state["analysis"] = {"generated_at": iso(now), "window_hours": WINDOW_HOURS, "context_days": ANALYSIS_DAYS,
                          "version": VERSION, "by": by, "regions": out}
+    if any(j.get("flights") for r in out for j in r["judgments"]):
+        state["analysis"]["flight_credit"] = {"text": (flights or {}).get("attribution"), "url": (flights or {}).get("license_url")}
     state["analysis_fp"] = fp
     log(f"[analyst] written by {by}: {sum(len(r['judgments']) for r in out)} judgments for {len(out)} regions")

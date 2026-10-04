@@ -14,17 +14,20 @@ Each run (one request, plus one for the hijack code 7500) the agent keeps the ai
 or callsign makes them notable (ROLES, CALLSIGNS): bombers, tankers, surveillance, airlift,
 airborne command posts, government VIP flights, and any aircraft squawking 7500. Aircraft over the
 contiguous United States are left out (training, domestic airlift and VIP jets between US cities
-would bury everything else), except airborne command posts and hijack-code flights (US_KEEP). Each aircraft's reported positions are kept for
-TRACK_HOURS (`state["flights"]`); the map shows aircraft seen in the last LIVE_MINUTES at their last
-reported position with its time, never a position estimated between reports.
+would bury everything else), except airborne command posts and hijack-code flights (US_KEEP). Each
+aircraft's reported positions are kept for TRACK_HOURS (`state["flights"]`).
 
-Movements: when MIN_GROUP aircraft of one role take off from, or land at, a watched base
-(`pipeline/config/flights.yaml`, within BASE_KM, below LOW_FT) within GROUP_HOURS, the agent writes a
-plain report of what the transponders showed ("3 KC-135 tankers took off from Al Udeid Air Base
-between 09:12 and 10:40 UTC") into the extraction queue, credited to "Flight tracking (adsb.lol)",
-its own unaligned source group. A group that grows by another MIN_GROUP is reported again. The
-model then files it like any other report (a deployment, or forces moved), so these use the
-ordinary extraction budget: a few posts a day.
+Flights are not drawn on the map (the owner, 2026-10-04: "Remove flights and only report
+analysis"). What the agent hands on is a log of movements at watched bases
+(`pipeline/config/flights.yaml`), one per aircraft and flight, kept for LOG_HOURS
+(`state["flights"]["log"]`), for the regional analyst (analyst.py) to read and cite:
+- took off: first seen within BASE_KM of a base below LOW_FT, or first seen climbing within
+  CLIMB_KM below CLIMB_FT (the agent looks every 15 minutes, so a jet is often first seen well
+  after take-off), then seen away from it;
+- landed: last seen within BASE_KM of a base below LOW_FT, after being seen away from it;
+- for a take-off without a landing, the last reported position as a distance and compass direction
+  from the base, with the time. Nothing is said about where an aircraft is going unless it was
+  seen landing there.
 """
 from __future__ import annotations
 
@@ -32,28 +35,29 @@ import re
 import time
 from datetime import datetime, timedelta
 
-from common import UTC, haversine_km, health_fail, health_ok, iso, log, make_item, parse_time
+import math
+
+from common import UTC, haversine_km, health_fail, health_ok, iso, log, parse_time, short_hash
 
 API = "https://api.adsb.lol/v2/mil"
 HIJACK = "https://api.adsb.lol/v2/sqk/7500"
 MAP_LINK = "https://adsb.lol/?icao={hexes}"
-SOURCE = {"name": "Flight tracking (adsb.lol)", "kind": "osint", "group": "adsb", "weight": 3, "prefilter": False}
+SOURCE_NAME = "Flight tracking (adsb.lol)"
 SOURCE_ID = "flights"
 ATTRIBUTION = "Flight data: adsb.lol contributors, open data under the ODbL 1.0 licence"
 LICENSE_URL = "https://opendatacommons.org/licenses/odbl/1-0/"
 
 TRACK_HOURS = 12          # positions kept per aircraft
-LIVE_MINUTES = 90         # shown on the map while seen this recently
+LIVE_MINUTES = 90         # counted as in the air now while seen this recently
 SORTIE_GAP = timedelta(hours=2)   # a longer silence starts a new flight
 MAX_POSITION_AGE = 120    # seconds: older positions in a reply are not used
 MIN_STEP_KM = 3           # a new position is kept when it moved this far (or 10 minutes passed)
-MAX_PUBLISHED = 120
-TRACK_POINTS = 40         # positions published per aircraft (thinned)
 BASE_KM = 40              # "at" a watched base
 LOW_FT = 12000            # below this near a base: taking off or landing
-GROUP_HOURS = 3
-MIN_GROUP = {"bomber": 2, "command": 1, "government": 1}   # other roles: DEFAULT_GROUP
-DEFAULT_GROUP = 3
+CLIMB_KM = 150            # first seen this close to a base, below CLIMB_FT and climbing: took off there
+CLIMB_FT = 25000
+LOG_HOURS = 72            # movements kept for the analyst (its 3 days of context)
+REJOIN_HOURS = 8          # a flight lost from view, then seen landing at a base this soon after, landed there
 
 # ICAO type designators (as adsb.lol gives them) -> (role, label). Types not listed (trainers,
 # helicopters, light aircraft) are not shown.
@@ -104,8 +108,7 @@ TYPE_NAMES = {
 # Over the contiguous United States only these are kept (the rest is training and domestic travel).
 US_KEEP = {"command", "emergency"}
 IMPORTANCE = {"emergency": 7, "command": 6, "bomber": 5, "government": 4, "surveillance": 3, "tanker": 2, "airlift": 1}
-ROLE_WORDS = {"bomber": "bombers", "tanker": "tankers", "surveillance": "surveillance aircraft", "airlift": "transport aircraft",
-              "command": "airborne command posts", "government": "government aircraft"}
+COMPASS = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"]
 
 
 def _contiguous_us(lat: float, lon: float) -> bool:
@@ -150,16 +153,17 @@ def _fetch(session, url: str) -> tuple[list[dict], float]:
     return j.get("ac") or [], float(j.get("now") or time.time() * 1000) / 1000
 
 
-def update(state: dict, session, health: dict, now: datetime, bases: list[dict]) -> list[dict]:
+def update(state: dict, session, health: dict, now: datetime, bases: list[dict]) -> int:
     """Read the current military aircraft and the hijack code, keep the notable ones' positions,
-    and return reports of group departures and arrivals at watched bases."""
-    st = state.setdefault("flights", {"aircraft": {}, "moves": {}})
+    and log their take-offs and landings at watched bases. Returns how many movements are logged."""
+    st = state.setdefault("flights", {"aircraft": {}, "log": {}})
+    st.pop("moves", None)  # group reports for the extraction queue, until flights left the map
     try:
         mil, stamp = _fetch(session, API)
     except Exception as exc:  # noqa: BLE001 - positions stay as they were; tried again next run
         log(f"[flights] adsb.lol failed: {exc}")
-        health[SOURCE_ID] = health_fail(SOURCE["name"], "adsb", exc, health.get(SOURCE_ID))
-        return []
+        health[SOURCE_ID] = health_fail(SOURCE_NAME, "adsb", exc, health.get(SOURCE_ID))
+        return 0
     try:
         time.sleep(2)  # adsb.lol answers quick repeats with 429
         hijack, _ = _fetch(session, HIJACK)
@@ -193,26 +197,31 @@ def update(state: dict, session, health: dict, now: datetime, bases: list[dict])
         if not rec["pts"]:
             del st["aircraft"][hexid]
     st["checked"] = iso(now)
-    items = movements(st, now, bases)
+    logged = movements(st, now, bases)
     latest = datetime.fromtimestamp(stamp, UTC)
-    health[SOURCE_ID] = health_ok(SOURCE["name"], "adsb", latest, kept, health.get(SOURCE_ID))
+    health[SOURCE_ID] = health_ok(SOURCE_NAME, "adsb", latest, kept, health.get(SOURCE_ID))
     log(f"[flights] {len(mil)} military aircraft listed, {len(hijack)} on the hijack code; {kept} notable kept, "
-        f"{len(st['aircraft'])} tracked; {len(items)} group movement reports")
-    return items
+        f"{len(st['aircraft'])} tracked; {logged} take-offs and landings at watched bases in the last {LOG_HOURS} h")
+    return logged
+
+
+def _sorties(pts: list) -> list[list]:
+    """The flights in a track: split at silences longer than SORTIE_GAP."""
+    out: list[list] = []
+    for p in pts:
+        if not out or p[3] - out[-1][-1][3] > SORTIE_GAP.total_seconds():
+            out.append([])
+        out[-1].append(p)
+    return out
 
 
 def _sortie(pts: list) -> list:
     """The current flight: positions since the last silence longer than SORTIE_GAP."""
-    out = []
-    for p in pts:
-        if out and p[3] - out[-1][3] > SORTIE_GAP.total_seconds():
-            out = []
-        out.append(p)
-    return out
+    return (_sorties(pts) or [[]])[-1]
 
 
-def _nearest_base(lat: float, lon: float, bases: list[dict]) -> dict | None:
-    best, best_km = None, BASE_KM
+def _nearest_base(lat: float, lon: float, bases: list[dict], within: float = BASE_KM) -> dict | None:
+    best, best_km = None, within
     for b in bases:
         d = haversine_km(lat, lon, b["lat"], b["lon"])
         if d <= best_km:
@@ -224,86 +233,135 @@ def _low(p) -> bool:
     return p[2] is not None and p[2] < LOW_FT
 
 
-def movements(st: dict, now: datetime, bases: list[dict]) -> list[dict]:
-    """Group departures and arrivals at watched bases, as reports for the extraction queue."""
-    seen: dict[tuple, list] = {}
+def _took_off(pts: list, bases: list[dict]) -> tuple[dict, float] | None:
+    """(base, km from it when first seen) if this flight was first seen taking off from a watched base."""
+    first = pts[0]
+    if first[2] is None:
+        return None
+    b = _nearest_base(first[0], first[1], bases, CLIMB_KM)
+    if not b:
+        return None
+    km = haversine_km(first[0], first[1], b["lat"], b["lon"])
+    later = pts[1:]
+    away = any(haversine_km(p[0], p[1], b["lat"], b["lon"]) > max(BASE_KM, km + 20) for p in later)
+    if km <= BASE_KM and first[2] < LOW_FT and away:
+        return b, km
+    climbing = any(p[2] is not None and p[2] > first[2] + 2000 for p in later)
+    if first[2] < CLIMB_FT and climbing and away:
+        return b, km
+    return None
+
+
+def _landed(pts: list, bases: list[dict]) -> dict | None:
+    last = pts[-1]
+    b = _low(last) and _nearest_base(last[0], last[1], bases)
+    if b and any(haversine_km(p[0], p[1], b["lat"], b["lon"]) > BASE_KM for p in pts[:-1]):
+        return b
+    return None
+
+
+def _bearing(lat1, lon1, lat2, lon2) -> str:
+    y = math.sin(math.radians(lon2 - lon1)) * math.cos(math.radians(lat2))
+    x = (math.cos(math.radians(lat1)) * math.sin(math.radians(lat2))
+         - math.sin(math.radians(lat1)) * math.cos(math.radians(lat2)) * math.cos(math.radians(lon2 - lon1)))
+    deg = (math.degrees(math.atan2(y, x)) + 360) % 360
+    return COMPASS[int((deg + 22.5) // 45) % 8]
+
+
+def movements(st: dict, now: datetime, bases: list[dict]) -> int:
+    """Log each tracked flight's take-off from and landing at watched bases (`st["log"]`). A flight
+    keeps one entry, filled in as it is seen: a take-off, then its last position, then a landing."""
+    flog = st.setdefault("log", {})
     for hexid, rec in st["aircraft"].items():
         if rec.get("role") in (None, "emergency"):
             continue
-        pts = _sortie(rec["pts"])
-        if len(pts) < 2:
-            continue
-        first, last = pts[0], pts[-1]
-        # took off: first seen low at a base, and later seen away from it
-        b = _low(first) and _nearest_base(first[0], first[1], bases)
-        if b and any(haversine_km(p[0], p[1], b["lat"], b["lon"]) > BASE_KM for p in pts[1:]):
-            seen.setdefault((b["name"], rec["role"], "took off from"), []).append((first[3], hexid, rec, last))
-        # landed: last seen low at a base, after being seen away from it
-        b = _low(last) and _nearest_base(last[0], last[1], bases)
-        if b and any(haversine_km(p[0], p[1], b["lat"], b["lon"]) > BASE_KM for p in pts[:-1]):
-            seen.setdefault((b["name"], rec["role"], "landed at"), []).append((last[3], hexid, rec, last))
-    items, moves = [], st.setdefault("moves", {})
-    by_name = {b["name"]: b for b in bases}
-    for (base, role, verb), group in seen.items():
-        group.sort()
-        # aircraft within GROUP_HOURS of the latest one
-        group = [g for g in group if group[-1][0] - g[0] <= GROUP_HOURS * 3600]
-        need = MIN_GROUP.get(role, DEFAULT_GROUP)
-        key = f"{base}|{role}|{verb}|{group[0][0] // (GROUP_HOURS * 3600)}"
-        reported = moves.get(key, {}).get("n", 0)
-        if len(group) < need or len(group) < reported + need:
-            continue
-        moves[key] = {"n": len(group), "at": iso(now)}
-        items.append(_report(by_name[base], role, verb, group))
-    cutoff = iso(now - timedelta(days=2))
-    st["moves"] = {k: v for k, v in moves.items() if v.get("at", "") >= cutoff}
-    return items
+        flown = _sorties(rec["pts"])
+        for n, pts in enumerate(flown):
+            nxt = flown[n + 1] if n + 1 < len(flown) else None
+            _log_flight(flog, hexid, rec, pts, nxt, bases, now)
+    cutoff = iso(now - timedelta(hours=LOG_HOURS))
+    st["log"] = {k: v for k, v in flog.items() if (v.get("last") or {}).get("time", "") >= cutoff}
+    return len(st["log"])
 
 
-def _hhmm(ts: int) -> str:
-    return datetime.fromtimestamp(ts, UTC).strftime("%H:%M")
+def _log_flight(flog: dict, hexid: str, rec: dict, pts: list, nxt: list | None, bases: list[dict], now) -> None:
+    """One flight's entry. A flight lost from view (receivers don't cover deserts and open sea) and
+    then seen low at a base within REJOIN_HOURS landed there, unseen."""
+    dep, arr = (_took_off(pts, bases), _landed(pts, bases)) if len(pts) >= 2 else (None, None)
+    rejoined = False
+    if not arr and nxt and nxt[0][3] - pts[-1][3] <= REJOIN_HOURS * 3600 and _low(nxt[0]):
+        b = _nearest_base(nxt[0][0], nxt[0][1], bases)
+        if b and haversine_km(pts[-1][0], pts[-1][1], b["lat"], b["lon"]) > BASE_KM:
+            arr, pts, rejoined = b, pts + [nxt[0]], True
+    if len(pts) < 2 or (not dep and not arr):
+        return
+    key = f"{hexid}|{pts[0][3]}"
+    entry = flog.setdefault(key, {"id": "f" + short_hash(hexid, pts[0][3])[:9], "hex": hexid})
+    entry.update({k: rec.get(k) for k in ("role", "label", "op", "callsign", "reg", "type")})
+    if dep:
+        b, km = dep
+        entry["from"] = {"base": b["name"], "country": b["country_name"], "lat": b["lat"], "lon": b["lon"],
+                         "time": iso(datetime.fromtimestamp(pts[0][3], UTC)), "first_seen_km": round(km)}
+    if arr:
+        entry["to"] = {"base": arr["name"], "country": arr["country_name"], "lat": arr["lat"], "lon": arr["lon"],
+                       "time": iso(datetime.fromtimestamp(pts[-1][3], UTC)), "next_seen": rejoined}
+    last = pts[-1]
+    entry["last"] = {"lat": last[0], "lon": last[1], "alt": last[2], "time": iso(datetime.fromtimestamp(last[3], UTC))}
+    entry["first"] = {"lat": pts[0][0], "lon": pts[0][1], "time": iso(datetime.fromtimestamp(pts[0][3], UTC))}
+    entry["updated"] = iso(now)
 
 
-def _report(base: dict, role: str, verb: str, group: list) -> dict:
-    labels = sorted({g[2]["label"] for g in group})
-    kind = labels[0].split(" (")[0] if len(labels) == 1 else None
-    what = f"{len(group)} {kind + 's' if kind and len(group) > 1 else kind or ROLE_WORDS.get(role, 'military aircraft')}"
-    ops = sorted({g[2]["op"] for g in group if g[2].get("op")})
-    signs = ", ".join(sorted(g[2]["callsign"] or g[2]["reg"] or g[1] for g in group))
-    t0, t1 = group[0][0], group[-1][0]
-    when = f"at {_hhmm(t0)} UTC" if t0 == t1 else f"between {_hhmm(t0)} and {_hhmm(t1)} UTC"
-    text = (f"Flight tracking (ADS-B transponder data, adsb.lol): {what} {verb} {base['name']}, {base['country_name']}, {when}"
-            f"{' (' + ', '.join(ops) + ')' if ops else ''}. Callsigns or registrations: {signs}.")
-    if verb == "took off from":
-        far = [g[3] for g in group if haversine_km(g[3][0], g[3][1], base["lat"], base["lon"]) > BASE_KM]
-        if far:
-            text += f" Last reported {len(far)} of them {round(sum(haversine_km(p[0], p[1], base['lat'], base['lon']) for p in far) / len(far))} km from the base on average."
-    url = MAP_LINK.format(hexes=",".join(g[1] for g in group))
-    when_dt = datetime.fromtimestamp(t1, UTC)
-    return make_item(SOURCE, "adsb", SOURCE_ID, url, text, when_dt, uid=f"{base['name']}|{role}|{verb}|{t0}|{len(group)}")
+def _hhmm(value: str) -> str:
+    t = parse_time(value)
+    return t.strftime("%d %b %H:%M UTC").lstrip("0") if t else ""
 
 
-def public(state: dict, now: datetime) -> dict:
-    """Aircraft seen in the last LIVE_MINUTES, most notable first, with their current flight's track."""
+def describe(entry: dict) -> str:
+    """One plain sentence of what the transponder showed."""
+    who = [entry.get("callsign"), entry.get("reg")]
+    who = ", ".join(w for w in who if w)
+    op = f", {entry['op']}" if entry.get("op") else ""
+    text = f"{entry.get('label') or 'Military aircraft'}{' (' + who + op + ')' if who or op else ''}"
+    dep, arr, last = entry.get("from"), entry.get("to"), entry.get("last") or {}
+    if dep:
+        seen = "" if dep.get("first_seen_km", 0) <= BASE_KM else f" (first seen climbing {dep['first_seen_km']} km away)"
+        text += f" took off from {dep['base']}, {dep['country']}, at {_hhmm(dep['time'])}{seen}"
+        if arr and arr.get("next_seen"):
+            text += f"; it was next seen low at {arr['base']}, {arr['country']}, at {_hhmm(arr['time'])}, having landed there unseen"
+        elif arr and arr["base"] != dep["base"]:
+            text += f" and landed at {arr['base']}, {arr['country']}, at {_hhmm(arr['time'])}"
+        elif arr:
+            text += f" and landed back there at {_hhmm(arr['time'])}"
+        elif last:
+            km = round(haversine_km(dep["lat"], dep["lon"], last["lat"], last["lon"]))
+            alt = f" at {last['alt']:,} ft" if last.get("alt") else ""
+            text += (f"; last reported at {_hhmm(last['time'])}, {km} km {_bearing(dep['lat'], dep['lon'], last['lat'], last['lon'])}"
+                     f" of the base{alt}, no landing seen yet")
+    elif arr:
+        first = entry.get("first") or {}
+        landed = "was next seen low at" if arr.get("next_seen") else "landed at"
+        text += f" {landed} {arr['base']}, {arr['country']}, at {_hhmm(arr['time'])}"
+        if first:
+            km = round(haversine_km(arr["lat"], arr["lon"], first["lat"], first["lon"]))
+            text += f", arriving from the {_bearing(arr['lat'], arr['lon'], first['lat'], first['lon'])} (first seen {km} km away at {_hhmm(first['time'])})"
+    return text + "."
+
+
+def for_analyst(state: dict, now: datetime) -> dict:
+    """What the regional analyst is given: aircraft in the air now (role and position), and the
+    logged movements with a sentence each."""
     st = state.get("flights") or {}
     live = now.timestamp() - LIVE_MINUTES * 60
-    out = []
-    for hexid, rec in (st.get("aircraft") or {}).items():
-        pts = _sortie(rec.get("pts") or [])
-        if not pts or pts[-1][3] < live:
-            continue
-        step = max(1, len(pts) // TRACK_POINTS + (1 if len(pts) % TRACK_POINTS else 0))
-        track = pts[::step]
-        if track[-1] is not pts[-1]:
-            track.append(pts[-1])
-        lat, lon, alt, ts = pts[-1]
-        out.append({"hex": hexid, "callsign": rec.get("callsign") or "", "reg": rec.get("reg") or "", "type": rec.get("type") or "",
-                    "role": rec.get("role"), "label": rec.get("label"), "op": rec.get("op"),
-                    "lat": lat, "lon": lon, "alt": alt, "gs": rec.get("gs"), "heading": rec.get("heading"),
-                    "seen": iso(datetime.fromtimestamp(ts, UTC)), "since": iso(datetime.fromtimestamp(pts[0][3], UTC)),
-                    "track": [[p[0], p[1]] for p in track]})
-    out.sort(key=lambda f: (-IMPORTANCE.get(f["role"], 0), -parse_time(f["seen"]).timestamp()))
-    out = out[:MAX_PUBLISHED]
-    checked = parse_time(st.get("checked"))
-    return {"as_of": iso(checked) if checked else None, "attribution": ATTRIBUTION, "license_url": LICENSE_URL,
-            "link": "https://adsb.lol/", "aircraft": out}
+    aircraft = []
+    for rec in (st.get("aircraft") or {}).values():
+        pts = rec.get("pts") or []
+        if pts and pts[-1][3] >= live:
+            aircraft.append({"role": rec.get("role"), "lat": pts[-1][0], "lon": pts[-1][1]})
+    moves = []
+    for e in (st.get("log") or {}).values():
+        ends = [x for x in (e.get("from"), e.get("to")) if x]
+        moves.append({"id": e["id"], "role": e.get("role"), "text": describe(e), "time": (e.get("last") or {}).get("time"),
+                      "places": [(x["lat"], x["lon"]) for x in ends], "url": MAP_LINK.format(hexes=e["hex"]),
+                      "label": f"{(e.get('label') or 'Aircraft').split(' (')[0]} · {(ends[0]['base'])}"})
+    moves.sort(key=lambda m: m["time"] or "", reverse=True)
+    return {"aircraft": aircraft, "movements": moves, "attribution": ATTRIBUTION, "license_url": LICENSE_URL}
