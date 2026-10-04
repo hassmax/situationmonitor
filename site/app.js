@@ -216,6 +216,7 @@
     query: "",
     feedLimit: 250,
     selectedId: null,
+    replayT: null,      // during a replay: the moment the replay has reached (later events wait)
     arrived: null,      // ids of events that just arrived (they slide into the feed once)
     selectedHull: null,
     selectedFlow: null,
@@ -230,6 +231,8 @@
     lastFocus: null,
     sheet: 1,
   };
+
+  let replay = null;  // a replay in progress (startReplay)
 
   // ------------------------------------------------------------------ globe
   const globeEl = $("#globe");
@@ -269,32 +272,6 @@
     }, 350);
   });
 
-  // Map icons sway a little and settle with a soft bounce when the globe turns: they trail the
-  // surface's motion (a spring toward an offset against its velocity), so when the globe stops
-  // they overshoot and settle. One offset on the globe (--jx/--jy); each icon follows by its --jk.
-  if (!reduceMotion) {
-    let jx = 0, jy = 0, vx = 0, vy = 0, last = null, raf = 0, still = 0;
-    const step = () => {
-      raf = 0;
-      let ux = 0, uy = 0;
-      if (last) {
-        const p = world.getScreenCoords(last.lat, last.lng, 0);  // where last frame's center point is now
-        if (p && isFinite(p.x)) { ux = p.x - last.x; uy = p.y - last.y; }
-      }
-      const pov = world.pointOfView(), here = world.getScreenCoords(pov.lat, pov.lng, 0);
-      last = here && isFinite(here.x) ? { lat: pov.lat, lng: pov.lng, x: here.x, y: here.y } : null;
-      const tx = clamp(-ux * 0.55, -9, 9), ty = clamp(-uy * 0.55, -9, 9);   // trail behind the motion
-      vx = (vx + (tx - jx) * 0.14) * 0.8; vy = (vy + (ty - jy) * 0.14) * 0.8;  // underdamped: a soft bounce
-      jx += vx; jy += vy;
-      globeEl.style.setProperty("--jx", `${jx.toFixed(2)}px`);
-      globeEl.style.setProperty("--jy", `${jy.toFixed(2)}px`);
-      still = Math.abs(ux) + Math.abs(uy) < 0.05 && Math.abs(jx) + Math.abs(jy) + Math.abs(vx) + Math.abs(vy) < 0.05 ? still + 1 : 0;
-      if (still < 3) raf = requestAnimationFrame(step);
-      else { last = null; globeEl.style.setProperty("--jx", "0px"); globeEl.style.setProperty("--jy", "0px"); }
-    };
-    controls.addEventListener("change", () => { still = 0; if (!raf) raf = requestAnimationFrame(step); });
-  }
-
   // ------------------------------------------------------------------ land, borders, country centers
   const centers = new Map();
   function sanitize(f) {
@@ -324,7 +301,9 @@
   const pathColorOf = (p) => (p.control ? (p.color ? rgba(hexRgb(p.color), p.faint ? 0.45 : 0.85) : CONTROL_LINE) : borderColor(p.fid));
   const borderColor = (id) => (S.active.has(id) ? "rgba(255,120,82,0.9)" : S.hot.has(id) ? "rgba(120,190,245,0.45)" : "rgba(120,180,235,0.22)");
 
-  fetch("assets/countries-110m.json")
+  const landReq = window.__land || fetch("assets/countries-110m.json");  // started early in index.html
+  window.__land = null;
+  landReq
     .then((r) => r.json())
     .then((topo) => {
       const land = topojson.feature(topo, topo.objects.countries).features
@@ -459,23 +438,24 @@
     .ringLat("lat").ringLng("lon")
     .ringColor((r) => (t) => rgba(r.rgb, Math.max(0, 1 - t) * r.alpha))
     .ringMaxRadius((r) => r.max * zoomK)
-    .ringPropagationSpeed((r) => r.speed)
+    .ringPropagationSpeed((r) => (r.once ? r.speed * zoomK : r.speed))  // a one-off ring lasts the same time at any zoom
     .ringRepeatPeriod((r) => r.period)
     .ringAltitude(0.006);
   const ARC = {
     strike: { dash: 0.5, gap: 0.18 }, strikeApprox: { dash: 0.34, gap: 0.28 },
     flow: { dash: 1, gap: 0 }, flowDashed: { dash: 0.12, gap: 0.07 }, particles: { dash: 0.012, gap: 0.11 },
     track: { dash: 0.06, gap: 0.04 }, plan: { dash: 0.2, gap: 0.14 }, hit: { dash: 1, gap: 0 },
+    shot: { dash: 0.14, gap: 4 },  // one bright dash that runs a launch line once (playLaunches)
   };
   // Routes and carrier lines are thin, so hovering meant being exactly on them: each gets an
   // invisible, wider twin that answers hover and taps for it.
   const hitArcs = (arcs) => arcs.filter((a) => (a.flow || a.carrier) && a.kind !== "particles")
-    .map((a) => ({ ...a, kind: "hit", color: "rgba(0,0,0,0)", stroke: Math.max(2.8, a.stroke * 6), ms: 0, seed: 0 }));
+    .map((a) => keyed({ ...a, kind: "hit", color: "rgba(0,0,0,0)", stroke: Math.max(2.8, a.stroke * 6), ms: 0, seed: 0 }, a._k && `hit|${a._k}`));
   world
     .arcStartLat("sLat").arcStartLng("sLng").arcEndLat("eLat").arcEndLng("eLng")
     .arcColor((a) => a.color).arcStroke(arcStroke)
     .arcDashLength((a) => ARC[a.kind].dash).arcDashGap((a) => ARC[a.kind].gap)
-    .arcDashInitialGap((a) => (a.kind === "flow" ? 0 : a.seed))
+    .arcDashInitialGap((a) => (a.kind === "flow" ? 0 : a.kind === "shot" ? 1 : a.seed))
     .arcDashAnimateTime((a) => (reduceMotion ? 0 : a.ms || 0))
     .arcAltitude((a) => (a.alt === undefined ? null : a.alt))
     .arcAltitudeAutoScale(0.36)
@@ -498,6 +478,40 @@
     queueDeclutter();
   });
 
+  // Lines, dots and rings keep their identity from one render to the next (same key, same object),
+  // so ones already drawn don't rise from the ground again and rings don't restart; new ones still
+  // rise in, which is how a launch line appears during a replay.
+  const stableSets = { arcs: {}, dots: {}, rings: {} };
+  Object.values(stableSets).forEach((st) => { st.prev = new Map(); st.next = new Map(); });
+  function stable(kind, key, obj) {
+    const st = stableSets[kind];
+    if (st.next.has(key)) return obj;  // the same key twice in one render: a new object
+    const old = st.prev.get(key);
+    if (old) {
+      if ("seed" in old) obj.seed = old.seed;
+      if ("period" in old) obj.period = old.period;
+      Object.assign(old, obj);
+    }
+    st.next.set(key, old || obj);
+    return old || obj;
+  }
+  const keyed = (obj, key) => (key ? stable("arcs", key, obj) : obj);
+  const newFrame = () => Object.values(stableSets).forEach((st) => { st.prev = st.next; st.next = new Map(); });
+  // Short-lived extras drawn on top of what render() builds: arrival and impact rings, the ring
+  // under a hovered feed item, and the dashes that run a wave's launch lines once.
+  let baseRings = [], baseArcs = [];
+  const extraRings = new Set(), extraArcs = new Set();
+  const pushRings = () => world.ringsData(extraRings.size ? [...baseRings, ...extraRings] : baseRings);
+  const pushArcs = () => world.arcsData(extraArcs.size ? [...baseArcs, ...extraArcs] : baseArcs);
+  // One ring that spreads once from a spot (a new event landing, a launch line reaching its target).
+  function flashRing(lat, lon, rgb, max = 4.5, ms = 1800) {
+    if (reduceMotion) return;
+    const r = { lat, lon, rgb, alpha: 0.95, max, speed: max / (ms / 1000), period: 0, once: true };
+    extraRings.add(r);
+    pushRings();
+    setTimeout(() => { extraRings.delete(r); pushRings(); }, ms + 200);
+  }
+
   // ------------------------------------------------------------------ HTML markers
   // Each marker is an outer anchor (positioned by the globe) holding an inner button that can be
   // nudged sideways when markers overlap, with a thin line back to the true location.
@@ -517,7 +531,6 @@
       el = document.createElement("div");
       el.className = "mk";
       el.innerHTML = '<button type="button" class="mk-in"></button>';
-      el.firstChild.style.setProperty("--jk", (0.55 + Math.random() * 0.8).toFixed(2));  // how much it sways
       el.firstChild.addEventListener("pointerdown", (ev) => ev.stopPropagation());
       elCache.set(key, el);
     }
@@ -536,7 +549,7 @@
     const live = animate && !reduceMotion && !e.possibly_old;
     const size = e.alert ? "md" : e.severity >= 3 ? "lg" : e.severity === 2 ? "md" : "sm";
     el.style.setProperty("--s", `${markerPx(e, size).toFixed(1)}px`);
-    el.className = `mk cat-${cat} conf-${STATUS[e.status].conf} size-${size}${live && fx ? ` fx-${fx}` : ""}${e.id === S.selectedId ? " is-selected" : ""}${el.classList.contains("spread") ? " spread" : ""}`;
+    el.className = `mk cat-${cat} conf-${STATUS[e.status].conf} size-${size}${live && fx ? ` fx-${fx}` : ""}${e.id === S.selectedId ? " is-selected" : ""}${e.id === hotId ? " is-hot" : ""}${el.classList.contains("spread") ? " spread" : ""}`;
     el.style.setProperty("--fade", String(fade(e)));
     const label = labelIt ? (e.alert ? alertsText(e) : e.wave ? (e.launched ? `${e.launched} launched` : `${e.targets.length} places hit`) : e.place || "") : "";
     const btn = el.firstChild;
@@ -547,9 +560,14 @@
       if (el.classList.contains("cluster-lead")) zoomTo(e.lat, e.lon, 0.35); // a count bubble zooms in to show its events
       else select(e.id, true);
     };
-    btn.onmouseenter = () => showTip(el, tipEvent(e));
-    btn.onmouseleave = hideTip;
-    return { key: `ev:${e.id}`, el, lat: e.lat, lon: e.lon, hAlt: 0.014, isEvent: true, prio: e.severity * 10 + (isNew(e) ? 5 : 0) + Math.log10(1 + magnitude(e)) + (e._t / 1e13) };
+    // pointing at a marker shows a quick look (a count bubble lists what it holds) and lights its row in the feed
+    btn.onmouseenter = () => {
+      const members = el.classList.contains("cluster-lead") && el._members;
+      showTip(el, members ? tipCluster(members) : tipEvent(e, true));
+      hotRow(e.id);
+    };
+    btn.onmouseleave = () => { hideTip(); hotRow(null); };
+    return { key: `ev:${e.id}`, ev: e, el, lat: e.lat, lon: e.lon, hAlt: 0.014, isEvent: true, prio: e.severity * 10 + (isNew(e) ? 5 : 0) + Math.log10(1 + magnitude(e)) + (e._t / 1e13) };
   }
 
   function carrierMarker(c) {
@@ -571,16 +589,47 @@
   tipBox.className = "html-tip";
   tipBox.hidden = true;
   document.body.appendChild(tipBox);
+  const setTip = (html) => { if (tipBox._html !== html || tipBox.hidden) { tipBox.innerHTML = html; tipBox._html = html; } tipBox.hidden = false; };
   function showTip(el, html) {
     if (isMobile()) return;
     const r = el.firstChild.getBoundingClientRect();
-    tipBox.innerHTML = html;
-    tipBox.hidden = false;
+    setTip(html);
     const w = tipBox.offsetWidth;
     tipBox.style.left = `${clamp(r.left + r.width / 2 - w / 2, 8, window.innerWidth - w - 8)}px`;
     tipBox.style.top = `${Math.max(8, r.top - tipBox.offsetHeight - 8)}px`;
   }
   function hideTip() { tipBox.hidden = true; }
+
+  // Map and feed answer each other (desktop): pointing at an event in the feed lights its marker
+  // and rings its spot on the globe; pointing at a marker lights its row, scrolled into view if the
+  // pointer stays a moment.
+  let hotId = null, hotMarker = null, hotRing = null, hotRowEl = null, hotScroll = 0;
+  function hotEvent(id) {
+    hotId = id || null;
+    if (hotMarker) { hotMarker.classList.remove("is-hot"); hotMarker = null; }
+    if (hotRing) { extraRings.delete(hotRing); hotRing = null; }
+    const e = id && S.data && S.data.events.find((x) => x.id === id);
+    if (e) {
+      hotMarker = elCache.get(`ev:${id}`) || null;
+      // folded into a count bubble: light the bubble
+      if (hotMarker && hotMarker.classList.contains("clustered")) {
+        hotMarker = [...elCache.values()].find((el) => el.classList.contains("cluster-lead") && (el._members || []).includes(e)) || null;
+      }
+      if (hotMarker) hotMarker.classList.add("is-hot");
+      if (!reduceMotion) { hotRing = { lat: e.lat, lon: e.lon, rgb: ACCENT, alpha: 0.85, max: 3, speed: 3.2, period: 1100 }; extraRings.add(hotRing); }
+    }
+    pushRings();
+  }
+  function hotRow(id) {
+    clearTimeout(hotScroll);
+    if (hotRowEl) { hotRowEl.classList.remove("is-hot"); hotRowEl = null; }
+    if (!id || isMobile() || !$("#detail").hidden) return;
+    hotRowEl = document.querySelector(`#feedList .item[data-id="${CSS.escape(id)}"]`);
+    if (!hotRowEl) return;
+    hotRowEl.classList.add("is-hot");
+    const row = hotRowEl;
+    hotScroll = setTimeout(() => row.scrollIntoView({ block: "nearest", behavior: reduceMotion ? "auto" : "smooth" }), 350);
+  }
 
   // ------------------------------------------------------------------ declutter
   // Markers that land within ~20 px of each other fan out in a ring around the spot.
@@ -651,7 +700,7 @@
       // the selected event always stays visible
       for (const g of group(vis.filter((v) => v.d.isEvent && v.d.key !== `ev:${S.selectedId}`), R * 1.6)) {
         if (g.m.length < 3) continue;
-        g.m.forEach((v, i) => { if (i === 0) setCluster(v.d, g.m.length); else hidden.add(v); });
+        g.m.forEach((v, i) => { if (i === 0) { setCluster(v.d, g.m.length); v.d.el._members = g.m.map((x) => x.d.ev); } else hidden.add(v); });
       }
     }
     vis.forEach((v) => { if (v.d.isEvent) setHidden(v.d, hidden.has(v)); });
@@ -670,12 +719,22 @@
   }
 
   // ------------------------------------------------------------------ tooltips
-  function tipEvent(e) {
+  function tipEvent(e, quick = false) {
     const extra = e.alert ? `<span>${alertsText(e)}</span>`
       : e.wave && e.targets && e.targets.length > 1 ? `<span>${e.targets.length} locations</span>` : "";
+    const n = e.sources_count || (e.reports || []).length;
     return `<div class="tip"><div class="tip-meta">${eventIcon(e)}<b>${esc(typeLabel(e))}</b><span>${esc(metaLine(e))}</span></div>
       <div class="tip-sum">${esc(e.summary)}</div>
-      <div class="tip-foot"><span>${esc(STATUS[e.status].label)}</span>${e.possibly_old ? "<span>Possibly an old story</span>" : ""}${extra}<span>${esc(ago(e._t))}</span></div></div>`;
+      <div class="tip-foot"><span class="conf-text conf-${STATUS[e.status].conf}">${esc(STATUS[e.status].label)}</span>${e.possibly_old ? "<span>Possibly an old story</span>" : ""}${extra}${quick && n ? `<span>${n} ${n === 1 ? "source" : "sources"}</span>` : ""}<span>${esc(ago(e._t))}</span></div>
+      ${quick ? '<div class="tip-hint">Click for details</div>' : ""}</div>`;
+  }
+  // A count bubble: the events it holds, most important first.
+  function tipCluster(evs) {
+    const top = evs.filter(Boolean).slice(0, 4);
+    const more = evs.length - top.length;
+    return `<div class="tip tip-list"><div class="tip-meta"><b>${evs.length} events here</b></div>
+      <ul>${top.map((e) => `<li>${eventIcon(e)}<span><b>${esc(typeLabel(e))}</b> ${esc(e.place || metaLine(e))}</span><time>${esc(agoShort(e._t))}</time></li>`).join("")}</ul>
+      <div class="tip-hint">${more > 0 ? `and ${more} more. ` : ""}Click to zoom in</div></div>`;
   }
   function tipCarrier(c) {
     return `<div class="tip"><div class="tip-meta">${iconBadge("carrier", "fleet")}<b>${esc(c.name)}</b><span>${esc(c.hull)}</span></div>
@@ -746,8 +805,7 @@
       <div class="tip-foot"><span>${L.approx ? `Approximate: traced from the ${esc(L.source || "source")} map` : esc(L.source || "Source map")}${day ? `${L.approx ? " of" : ", as of"} ${esc(day)}` : ""}</span></div></div>`;
   }
   function showTipAt(x, y, html) {
-    tipBox.innerHTML = html;
-    tipBox.hidden = false;
+    setTip(html);
     const w = tipBox.offsetWidth;
     tipBox.style.left = `${clamp(x - w / 2, 8, window.innerWidth - w - 8)}px`;
     tipBox.style.top = `${Math.max(8, y - tipBox.offsetHeight - 14)}px`;
@@ -828,11 +886,15 @@
     const url = DEMO ? "data/demo-events.json" : `data/events.json?t=${Date.now()}`;
     let data;
     try {
-      const res = await fetch(url, { cache: "no-store" });
+      // the first load uses the download index.html already started (and may have previewed)
+      const early = window.__events;
+      window.__events = null;
+      const got = early ? await early : { res: await fetch(url, { cache: "no-store" }) };
+      const res = got.res;
       if (!res.ok) throw new Error(res.status === 404 ? "missing" : `HTTP ${res.status}`);
       dataStamp = stampOf(res);
       lastFull = Date.now();
-      data = await res.json();
+      data = got.data || await res.json();
     } catch (err) {
       showLoadError(err);
       return;
@@ -929,6 +991,8 @@
         // they slide into the feed; only on this render, so later redraws don't replay it
         S.arrived = new Set(fresh.map((e) => e.id));
         setTimeout(() => { S.arrived = null; }, 1500);
+        // a serious new event marks its arrival with one ring spreading from its spot on the globe
+        fresh.filter((e) => e.severity >= 2).slice(0, 8).forEach((e, i) => setTimeout(() => landRing(e), i * 250));
       }
     }
 
@@ -1011,6 +1075,7 @@
   const theaterShown = (id) => S.theaterOn.has(id) || unlisted().has(id);
   function passes(e, ignoreTheater = false) {
     if (e._t < Date.now() - S.windowH * HOUR) return false;
+    if (S.replayT !== null && e._t > S.replayT) return false;
     if (!ignoreTheater && !theaterShown(e.theater)) return false;
     if (!S.statusOn.has(e.status)) return false;
     if (S.off.has(legendKey(e))) return false;
@@ -1029,6 +1094,36 @@
     return doubt * clamp(1 - ((age - 6 * HOUR) / (S.windowH * HOUR - 6 * HOUR)) * 0.6, 0.4, 1);
   }
 
+  // One ring from an event's spot, in its own color: a new event arriving, or landing during a replay.
+  const landRing = (e, max = 4.5) => flashRing(e.lat, e.lon, CAT_RGB[catOf(e)[0]] || CAT_RGB.strike, max, 1800);
+
+  // Opening a drone or missile attack runs its launch lines once: a bright dash travels each line
+  // from the launch area to the place hit, one after another, and a small ring marks the arrival.
+  // Same lines as on the map (attackPaths), so faint assumed launch areas stay as faint as before.
+  let launchTimers = [];
+  function playLaunches(e, fly) {
+    launchTimers.forEach(clearTimeout);
+    launchTimers = [];
+    if (reduceMotion || !S.layers.paths) return;
+    const paths = attackPaths([e]).slice(0, 16);
+    if (!paths.length) return;
+    const lead = fly ? 1000 : 150;  // let the camera arrive first
+    paths.forEach((a, i) => {
+      const ms = clamp(700 + (a.dist || 500) * 0.8, 900, 2400);
+      launchTimers.push(setTimeout(() => {
+        const shot = { sLat: a.sLat, sLng: a.sLng, eLat: a.eLat, eLng: a.eLng, kind: "shot", ms, seed: 1,
+          color: rgba([255, 226, 204], a.kind === "strikeApprox" ? 0.75 : 1), stroke: a.kind === "strikeApprox" ? 0.9 : 1.3 };
+        extraArcs.add(shot);
+        pushArcs();
+        launchTimers.push(setTimeout(() => {
+          extraArcs.delete(shot);
+          pushArcs();
+          flashRing(a.eLat, a.eLng, CAT_RGB.strike, 1.8, 900);
+        }, ms * 1.04));
+      }, lead + i * 160));
+    });
+  }
+
   // ------------------------------------------------------------------ supply routes (the time window)
   // Routes follow the time filter like everything else: a route shows, and is active, when a
   // delivery on it falls in the selected window (6 hours to 7 days).
@@ -1041,7 +1136,7 @@
     const flows = new Map(), pledges = new Map();
     for (const e of S.data.events) {
       const t = e.transfer;
-      if (e.type !== "arms_transfer" || !t || e._t < since || !theaterShown(e.theater) || !S.statusOn.has(e.status)) continue;
+      if (e.type !== "arms_transfer" || !t || e._t < since || (S.replayT !== null && e._t > S.replayT) || !theaterShown(e.theater) || !S.statusOn.has(e.status)) continue;
       if (!matches(e)) continue;
       const kind = tkind(e);
       if (kind === "interdiction") continue;
@@ -1127,9 +1222,9 @@
       const dist = km(o.lat, o.lon, d.lat, d.lon);
       if (dist < 25 || (approx && dist > 1800)) return;
       const a = Math.min(1, STATUS[e.status].alpha * fade(e) * (approx ? 0.65 : 1.15));
-      arcs.push({ ref: e, sLat: o.lat, sLng: o.lon, eLat: d.lat, eLng: d.lon, kind: approx ? "strikeApprox" : "strike",
+      arcs.push(keyed({ ref: e, sLat: o.lat, sLng: o.lon, eLat: d.lat, eLng: d.lon, kind: approx ? "strikeApprox" : "strike",
         color: [rgba(CAT_RGB.strike, 0.12), rgba(CAT_RGB.strike, a)], stroke: approx ? 0.26 : 0.42,
-        ms: approx ? 3600 : 2200, seed: Math.random() });
+        ms: approx ? 3600 : 2200, seed: Math.random(), dist }, `atk|${e.id}|${o.lat},${o.lon}>${d.lat},${d.lon}`));
     };
     for (const e of events) {
       if (arcs.length >= 180) break;
@@ -1157,7 +1252,8 @@
     let prev = a;
     for (let i = 1; i <= n; i++) {
       const p = i === n ? b : slerp(a, b, i / n);
-      out.push({ ...base, sLat: prev.lat, sLng: prev.lon, eLat: p.lat, eLng: p.lon, alt: hugAlt(km(prev.lat, prev.lon, p.lat, p.lon)) + lift });
+      const k = base._k && `${base._k}|${i}`;
+      out.push(keyed({ ...base, _k: k, sLat: prev.lat, sLng: prev.lon, eLat: p.lat, eLng: p.lon, alt: hugAlt(km(prev.lat, prev.lon, p.lat, p.lon)) + lift }, k));
       prev = p;
     }
     return out;
@@ -1177,8 +1273,8 @@
         const a = pts[i], b = pts[i + 1];
         if (km(a.lat, a.lon, b.lat, b.lon) < 25) continue;
         const lift = sea ? 0.002 : 0.012;
-        arcs.push(...surfaceArcs(a, b, { flow: f, kind: f.status === "corroborated" ? "flow" : "flowDashed", color: rgba(f.money ? CAT_RGB.aid : CAT_RGB.supply, Math.min(1, alpha)), stroke, ms: 0, seed: 0 }, lift));
-        if (f.active) arcs.push(...surfaceArcs(a, b, { flow: f, kind: "particles", color: [rgba([220, 250, 252], 0.25), rgba([220, 250, 252], 0.95)], stroke: Math.max(0.3, stroke * 0.8), ms: 1800, seed: Math.random() }, lift + 0.001));
+        arcs.push(...surfaceArcs(a, b, { _k: `sup|${f.key}|${i}`, flow: f, kind: f.status === "corroborated" ? "flow" : "flowDashed", color: rgba(f.money ? CAT_RGB.aid : CAT_RGB.supply, Math.min(1, alpha)), stroke, ms: 0, seed: 0 }, lift));
+        if (f.active) arcs.push(...surfaceArcs(a, b, { _k: `sup|${f.key}|${i}|p`, flow: f, kind: "particles", color: [rgba([220, 250, 252], 0.25), rgba([220, 250, 252], 0.95)], stroke: Math.max(0.3, stroke * 0.8), ms: 1800, seed: Math.random() }, lift + 0.001));
       }
     }
     return arcs;
@@ -1288,7 +1384,7 @@
   }
   const alongSea = (a, b, base, lift) => {
     const pts = seaPath(a, b), out = [];
-    for (let i = 0; i < pts.length - 1; i++) out.push(...surfaceArcs(pts[i], pts[i + 1], base, lift));
+    for (let i = 0; i < pts.length - 1; i++) out.push(...surfaceArcs(pts[i], pts[i + 1], base._k ? { ...base, _k: `${base._k}|${i}` } : base, lift));
     return out;
   };
 
@@ -1299,12 +1395,12 @@
       // where it came from: faint and still
       if (c.prev && c._moved && Date.now() - c._moved < 14 * DAY && km(c.prev.lat, c.prev.lon, c._lat, c._lon) > 100) {
         arcs.push(...alongSea({ lat: c.prev.lat, lon: c.prev.lon }, { lat: c._lat, lon: c._lon },
-          { carrier: c, kind: "track", color: rgba(CAT_RGB.fleet, 0.28), stroke: 0.2, ms: 0, seed: 0 }, 0.002));
+          { _k: `cvn|${c.hull}|track`, carrier: c, kind: "track", color: rgba(CAT_RGB.fleet, 0.28), stroke: 0.2, ms: 0, seed: 0 }, 0.002));
       }
       // where it is headed: dashes flow from the last reported position toward the stated destination
       if (c.heading_to && km(c._lat, c._lon, c.heading_to.lat, c.heading_to.lon) > 100) {
         arcs.push(...alongSea({ lat: c._lat, lon: c._lon }, c.heading_to,
-          { carrier: c, kind: "plan", color: rgba(CAT_RGB.fleet, 0.7), stroke: 0.3, ms: 6000, seed: 0 }, 0.002));
+          { _k: `cvn|${c.hull}|plan`, carrier: c, kind: "plan", color: rgba(CAT_RGB.fleet, 0.7), stroke: 0.3, ms: 6000, seed: 0 }, 0.002));
       }
     }
     return arcs;
@@ -1329,6 +1425,7 @@
   // ------------------------------------------------------------------ render
   function render() {
     if (!S.data) return;
+    newFrame();
     const events = visibleEvents();
     const mapEvents = markerPick(events.filter(onMap));
     S.supply = buildSupply();
@@ -1347,9 +1444,9 @@
     for (const e of mapEvents) {
       const alert = !!e.alert && e.id === S.selectedId;
       if (!e.wave && !alert) continue;
-      e.targets.slice(0, 40).forEach((t) => {
+      e.targets.slice(0, 40).forEach((t, i) => {
         if (Math.abs(t.lat - e.lat) < 1e-4 && Math.abs(t.lon - e.lon) < 1e-4) return;
-        dots.push({ lat: t.lat, lon: t.lon, place: t.place, ref: e, alert });
+        dots.push(stable("dots", `${e.id}|${i}|${alert}`, { lat: t.lat, lon: t.lon, place: t.place, ref: e, alert }));
       });
     }
     world.pointsData(dots);
@@ -1359,20 +1456,22 @@
     if (!reduceMotion) {
       for (const e of mapEvents) {
         if (!e.wave || !isLive(e)) continue;
-        for (const t of e.targets.slice(0, 12)) {
-          if (rings.length >= 30) break;
-          rings.push({ lat: t.lat, lon: t.lon, rgb: CAT_RGB.strike, alpha: 0.55, max: 1.6, speed: 1.2, period: 1500 + Math.random() * 1500 });
-        }
+        e.targets.slice(0, 12).forEach((t, i) => {
+          if (rings.length >= 30) return;
+          rings.push(stable("rings", `wave|${e.id}|${i}`, { lat: t.lat, lon: t.lon, rgb: CAT_RGB.strike, alpha: 0.55, max: 1.6, speed: 1.2, period: 1500 + Math.random() * 1500 }));
+        });
       }
     }
     const sel = S.selectedId && events.find((e) => e.id === S.selectedId);
-    if (sel) rings.push({ lat: sel.lat, lon: sel.lon, rgb: ACCENT, alpha: 0.9, max: 4, speed: reduceMotion ? 0 : 2.2, period: 1200 });
+    if (sel) rings.push(stable("rings", `sel|${sel.id}`, { lat: sel.lat, lon: sel.lon, rgb: ACCENT, alpha: 0.9, max: 4, speed: reduceMotion ? 0 : 2.2, period: 1200 }));
     const selC = S.selectedHull && S.fleet.find((c) => c.hull === S.selectedHull);
-    if (selC) rings.push({ lat: selC._lat, lon: selC._lon, rgb: ACCENT, alpha: 0.9, max: 4, speed: reduceMotion ? 0 : 2.2, period: 1200 });
-    world.ringsData(rings);
+    if (selC) rings.push(stable("rings", `selc|${selC.hull}`, { lat: selC._lat, lon: selC._lon, rgb: ACCENT, alpha: 0.9, max: 4, speed: reduceMotion ? 0 : 2.2, period: 1200 }));
+    baseRings = rings;
+    pushRings();
 
     const routeArcs = [...supplyArcs(S.supply.flows), ...(S.layers.carriers ? fleetArcs() : [])];
-    world.arcsData([...attackPaths(mapEvents), ...routeArcs, ...hitArcs(routeArcs)]);
+    baseArcs = [...attackPaths(mapEvents), ...routeArcs, ...hitArcs(routeArcs)];
+    pushArcs();
     updateActive(mapEvents);
     renderCounts();
     renderTally(events);
@@ -1428,6 +1527,7 @@
 
   // The running UTC clock in the header.
   function tickClock() {
+    if (replay) return;  // the replay drives the clock
     const d = new Date(), p = (n) => String(n).padStart(2, "0");
     const el = document.getElementById("utcClock");
     if (el) el.textContent = `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())} UTC`;
@@ -1440,7 +1540,9 @@
     const span = { 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[S.windowH];
     const fighting = events.filter(onMap);
     const now = [fighting.length, fighting.filter((e) => e.status === "corroborated").length];
-    $("#tally").innerHTML = `<strong>${now[0]}</strong> events in the last ${span}, <strong>${now[1]}</strong> corroborated`;
+    $("#tally").innerHTML = S.replayT !== null
+      ? `<strong>${now[0]}</strong> events so far, <strong>${now[1]}</strong> corroborated`
+      : `<strong>${now[0]}</strong> events in the last ${span}, <strong>${now[1]}</strong> corroborated`;
     // counts tick up or down to their new values
     if (tallyWas && !reduceMotion && (tallyWas[0] !== now[0] || tallyWas[1] !== now[1])) {
       const els = [...$("#tally").querySelectorAll("strong")], from = tallyWas.slice(), t0 = performance.now();
@@ -1614,6 +1716,65 @@
     $("#freshText").textContent = age < 3 * HOUR ? `Updated ${ago(t)}` : `Updated ${ago(t)}. The update job may be paused.`;
   }
 
+  // ------------------------------------------------------------------ replay
+  // Plays the time window back: events land in the order they happened (time, not when they were
+  // reported), launch lines rise as their events land, and the header clock runs fast. Nothing is
+  // invented: the map simply holds back each event until the replay reaches its time.
+  const REPLAY_MS = { 6: 12000, 24: 18000, 72: 22000, 168: 26000 };
+  const utcStamp = (ms) => { const d = new Date(ms), p = (n) => String(n).padStart(2, "0");
+    return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC`; };
+  function replayButton() {
+    const b = $("#replayBtn");
+    b.setAttribute("aria-pressed", String(!!replay));
+    b.querySelector(".replay-label").textContent = replay ? "Stop" : "Replay";
+    b.title = replay ? "Stop the replay (Esc)" : `Replay the ${windowText()} on the map`;
+    if (!replay) b.style.setProperty("--p", "0");
+  }
+  function startReplay() {
+    if (!S.data) return;
+    if (!$("#detail").hidden) { S.selectedId = null; S.selectedHull = null; S.selectedFlow = null; hideDetail(); }
+    if (isMobile()) toggleFilters(false);
+    const to = Date.now();
+    replay = { start: performance.now(), dur: REPLAY_MS[S.windowH] || 20000, from: to - S.windowH * HOUR, to, last: 0, at: to - S.windowH * HOUR };
+    S.replayT = replay.from;
+    document.body.classList.add("replaying");
+    replayButton();
+    render();
+    replay.raf = requestAnimationFrame(tickReplay);
+  }
+  function tickReplay(now) {
+    if (!replay) return;
+    const k = clamp((now - replay.start) / replay.dur, 0, 1);
+    const T = replay.from + (replay.to - replay.from) * k;
+    $("#replayBtn").style.setProperty("--p", k.toFixed(3));
+    $("#utcClock").textContent = utcStamp(T);
+    if (now - replay.last > (PHONE ? 450 : 280) || k === 1) {
+      replay.last = now;
+      S.replayT = T;
+      const landed = S.data.events.filter((e) => e._t > replay.at && e._t <= T && onMap(e) && passes(e));
+      replay.at = T;
+      if (landed.length) {
+        S.arrived = new Set(landed.map((e) => e.id));
+        render();
+        S.arrived = null;
+        landed.filter((e) => e.severity >= 2 || e.wave).slice(0, 6).forEach((e) => landRing(e, 3.5));
+      }
+    }
+    if (k < 1) replay.raf = requestAnimationFrame(tickReplay);
+    else replay.raf = setTimeout(() => stopReplay(), 1200);  // a moment on the full picture, then live again
+  }
+  function stopReplay() {
+    if (!replay) return;
+    cancelAnimationFrame(replay.raf);
+    clearTimeout(replay.raf);
+    replay = null;
+    S.replayT = null;
+    document.body.classList.remove("replaying");
+    replayButton();
+    tickClock();
+    render();
+  }
+
   // ------------------------------------------------------------------ details
   function showDetail(html, refresh) {
     const keep = refresh ? $("#detail").scrollTop : 0;
@@ -1665,6 +1826,8 @@
   function select(id, fly) {
     const e = S.data && S.data.events.find((x) => x.id === id);
     if (!e) return;
+    hotEvent(null);
+    if (id !== S.selectedId) playLaunches(e, fly);
     S.selectedId = id; S.selectedHull = null; S.selectedFlow = null;
     markViewed(id);
     history.replaceState(null, "", "#" + encodeURIComponent(id));
@@ -1876,8 +2039,9 @@
   function wire() {
     $("#windowSeg").addEventListener("click", (ev) => {
       const b = ev.target.closest("[data-window]");
-      if (b) { setWindow(Number(b.dataset.window)); render(); }
+      if (b) { stopReplay(); setWindow(Number(b.dataset.window)); render(); replayButton(); }
     });
+    $("#replayBtn").addEventListener("click", () => (replay ? stopReplay() : startReplay()));
     $("#filters").addEventListener("change", (ev) => {
       const t = ev.target;
       if (t.dataset.theater) t.checked ? S.theaterOn.add(t.dataset.theater) : S.theaterOn.delete(t.dataset.theater);
@@ -1912,6 +2076,12 @@
       list.hidden = !list.hidden;
       $("#sourcesToggle").setAttribute("aria-expanded", String(!list.hidden));
     });
+    $("#feedList").addEventListener("pointerover", (ev) => {
+      if (ev.pointerType !== "mouse") return;
+      const b = ev.target.closest(".item[data-id]");
+      if (b && b.dataset.id !== hotId) hotEvent(b.dataset.id);
+    });
+    $("#feedList").addEventListener("pointerleave", () => hotEvent(null));
     $("#feedList").addEventListener("click", (ev) => {
       if (ev.target.closest("[data-more]")) { S.feedLimit += FEED_PAGE; render(); return; }
       const b = ev.target.closest("[data-id]");
@@ -1928,7 +2098,8 @@
     document.addEventListener("keydown", (ev) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
       if (ev.key === "Escape") {
-        if (!$("#detail").hidden) closeDetail();
+        if (replay) stopReplay();
+        else if (!$("#detail").hidden) closeDetail();
         else if ($("#filters").classList.contains("open")) toggleFilters(false);
       }
       if (typing) return;
@@ -1941,6 +2112,7 @@
   const markSeen = () => { try { localStorage.setItem("gsm_lastSeen", String(Date.now())); } catch (_) { /* ignore */ } };
   window.addEventListener("pagehide", markSeen);
   setInterval(markSeen, 10 * 60e3);
+  window.__appReady = true;  // the early preview in index.html stands down
   try {
     buildStaticControls();
     renderTheaters();

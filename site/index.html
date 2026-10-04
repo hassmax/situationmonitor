@@ -11,6 +11,37 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,300..800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="styles.css?v=__BUILD__">
+  <script>
+    // Start downloading the events and the country shapes now, alongside the globe library, and
+    // show the newest events in the feed as soon as they arrive, before the globe has loaded.
+    // app.js picks both up and replaces this preview with the full feed.
+    (function () {
+      try {
+        window.__land = fetch("assets/countries-110m.json");
+        if (/[?&]demo\b/.test(location.search)) return;
+        window.__events = fetch("data/events.json?t=" + Date.now(), { cache: "no-store" })
+          .then(function (res) { return res.ok ? res.json().then(function (data) { return { res: res, data: data }; }) : { res: res }; });
+        window.__events.then(function (r) {
+          if (!r.data) return;
+          var show = function () {
+            var list = document.getElementById("feedList");
+            if (!list || window.__appReady || !list.querySelector(".skel")) return;
+            var esc = function (t) { return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) { return "&#" + c.charCodeAt(0) + ";"; }); };
+            var now = Date.now(), ago = function (t) { var m = Math.max(0, (now - t) / 60000); return m < 60 ? Math.round(m) + "m" : m < 1440 ? Math.round(m / 60) + "h" : Math.round(m / 1440) + "d"; };
+            var evs = (r.data.events || []).map(function (e) { return { e: e, t: Date.parse(e.time || e.updated) }; })
+              .filter(function (x) { return x.t > now - 864e5; }).sort(function (a, b) { return b.t - a.t; }).slice(0, 30);
+            if (!evs.length) return;
+            list.innerHTML = evs.map(function (x) {
+              return '<li><div class="item item-pre"><span></span><span><span class="item-meta"><span class="item-place">' + esc(x.e.place) +
+                '</span><time>' + ago(x.t) + '</time></span><span class="item-summary">' + esc(x.e.summary) + '</span></span></div></li>';
+            }).join("");
+          };
+          // the list is already on the page by now, ahead of the (slower) globe scripts
+          if (document.getElementById("feedList")) show(); else document.addEventListener("DOMContentLoaded", show);
+        }, function () {});
+      } catch (e) { /* app.js fetches them itself */ }
+    })();
+  </script>
 </head>
 <body>
   <div id="globe" role="img" aria-label="Interactive globe showing recent armed-conflict events"></div>
@@ -43,7 +74,13 @@
         <p class="control-note" id="controlNote" hidden></p>
       </section>
       <section>
-        <h2>Time</h2>
+        <h2 class="with-note">Time
+          <button class="replay" id="replayBtn" type="button" aria-pressed="false" title="Replay the time window on the map">
+            <svg class="replay-play" viewBox="0 0 16 16" aria-hidden="true"><path d="M5 3.2v9.6L12.6 8z" fill="currentColor"/></svg>
+            <svg class="replay-stop" viewBox="0 0 16 16" aria-hidden="true"><rect x="4.2" y="4.2" width="7.6" height="7.6" rx="1.2" fill="currentColor"/></svg>
+            <span class="replay-label">Replay</span>
+          </button>
+        </h2>
         <div class="seg" role="group" aria-label="Time window" id="windowSeg"></div>
       </section>
       <section>
@@ -88,7 +125,13 @@
           <input type="search" id="search" placeholder="Search places, sources, text" autocomplete="off">
         </label>
       </div>
-      <ol class="feed-list" id="feedList" aria-labelledby="feedTitle"></ol>
+      <ol class="feed-list" id="feedList" aria-labelledby="feedTitle">
+        <li class="skel" aria-hidden="true"><span></span><span></span><span></span></li>
+        <li class="skel" aria-hidden="true"><span></span><span></span><span></span></li>
+        <li class="skel" aria-hidden="true"><span></span><span></span><span></span></li>
+        <li class="skel" aria-hidden="true"><span></span><span></span><span></span></li>
+        <li class="skel" aria-hidden="true"><span></span><span></span><span></span></li>
+      </ol>
       <article class="detail" id="detail" hidden aria-live="polite"></article>
     </main>
   </div>
@@ -96,7 +139,7 @@
 
   <div class="focus-toast" id="focusToast" role="status" hidden></div>
 
-  <script src="vendor/globe.gl.min.js?v=2.46.2"></script>
+  <script src="vendor/globe.gl.min.js?v=2.46.2" fetchpriority="low"></script>
   <script src="vendor/topojson-client.min.js?v=3.1.0"></script>
   <script src="app.js?v=__BUILD__"></script>
 </body>

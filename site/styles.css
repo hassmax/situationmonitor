@@ -1322,9 +1322,6 @@ body::after {
 @keyframes live-dot { 50% { box-shadow: 0 0 0 6px rgba(var(--accent-rgb), 0); } 0%, 100% { box-shadow: 0 0 0 0 rgba(var(--accent-rgb), 0.55); } }
 .focus-toast { background: rgba(11, 15, 21, 0.92); }
 
-/* map icons sway a little and settle with a soft bounce when the globe is turned: app.js springs
-   --jx/--jy on the globe from how fast the surface moves; each icon follows by its own --jk */
-.mk-in { translate: calc(var(--jx, 0px) * var(--jk, 1)) calc(var(--jy, 0px) * var(--jk, 1)); }
 /* everything you press gives a little */
 .seg button:active, .legend-item:active, .chip:active, .icon-btn:active, .item:active, .side-row:active, .filters-toggle:active { scale: 0.97; }
 
@@ -1336,6 +1333,57 @@ body::after {
 .tally strong { display: inline-block; transition: color 0.6s ease; }
 .tally strong.ticked { color: var(--accent); }
 
+/* map and feed answer each other: the event under the pointer is lit in both places */
+.mk.is-hot .mk-in { box-shadow: 0 0 0 2px var(--ink), 0 0 16px 3px rgba(var(--accent-rgb), 0.55); opacity: 1; }
+.item.is-hot { background: rgba(var(--accent-rgb), 0.08); box-shadow: inset 2px 0 0 var(--accent); }
+
+/* quick look: the card under the pointer fades up; a count bubble lists what it holds */
+.html-tip:not([hidden]) .tip { animation: tip-in 0.18s var(--ease-out) both; }
+@keyframes tip-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+.tip-hint { margin-top: 6px; font-size: 11.5px; color: var(--ink-3); }
+.tip-list ul { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 5px; }
+.tip-list li { display: grid; grid-template-columns: 16px 1fr auto; gap: 8px; align-items: center; font-size: 12.5px; color: var(--ink-2); }
+.tip-list li .ico { width: 16px; height: 16px; }
+.tip-list li span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tip-list li b { color: var(--ink); font-weight: 600; }
+.tip-list li time { color: var(--ink-3); font-variant-numeric: tabular-nums; }
+
+/* replay: a small button beside "Time"; it fills as the replay runs */
+.replay {
+  --p: 0;
+  position: relative; overflow: hidden;
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid rgba(var(--accent-rgb), 0.45);
+  background: rgba(var(--accent-rgb), 0.08);
+  color: var(--ink);
+  border-radius: 999px;
+  padding: 2px 10px 2px 7px;
+  font: inherit; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none;
+  cursor: pointer;
+  transition: background-color 0.25s ease, border-color 0.25s ease;
+}
+.replay::before {
+  content: ""; position: absolute; inset: 0; z-index: 0;
+  background: rgba(var(--accent-rgb), 0.32);
+  transform-origin: left; transform: scaleX(var(--p));
+}
+.replay > * { position: relative; z-index: 1; }
+.replay svg { width: 11px; height: 11px; color: var(--accent); }
+.replay:hover { background: rgba(var(--accent-rgb), 0.16); border-color: rgba(var(--accent-rgb), 0.7); }
+.replay:active { scale: 0.97; }
+.replay .replay-stop, .replay[aria-pressed="true"] .replay-play { display: none; }
+.replay[aria-pressed="true"] .replay-stop { display: block; }
+body.replaying .live-clock { color: var(--accent); }
+body.replaying .live-clock .live-tag { display: none; }
+
+/* before the events arrive, the feed shows the shape of what's coming */
+.skel { list-style: none; padding: 12px 10px; display: grid; gap: 7px; }
+.skel span { display: block; height: 10px; border-radius: 5px; background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 30%, rgba(255, 255, 255, 0.11) 50%, rgba(255, 255, 255, 0.05) 70%) 0 0 / 300% 100%; animation: skel 1.4s ease-in-out infinite; }
+.skel span:nth-child(1) { width: 42%; }
+.skel span:nth-child(2) { width: 92%; height: 12px; }
+.skel span:nth-child(3) { width: 70%; height: 12px; }
+@keyframes skel { from { background-position: 100% 0; } to { background-position: 0 0; } }
+
 @media (max-width: 859px) {
   /* phones: solid panels, same colors and motion */
   .panel, .focus-toast { backdrop-filter: none; -webkit-backdrop-filter: none; background: rgba(11, 15, 21, 0.97); }
@@ -1345,8 +1393,7 @@ body::after {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .brand, .filters, .feed, .feed-list, .detail:not([hidden]), .item.arrive, .beacon.ok, .live-note::before { animation: none; }
-  .mk-in { translate: none; }
+  .brand, .filters, .feed, .feed-list, .detail:not([hidden]), .item.arrive, .beacon.ok, .live-note::before, .html-tip:not([hidden]) .tip, .skel span { animation: none; }
   .live-clock .live-tag::before { animation: none; }
   .mk.is-selected .mk-in { animation: none; box-shadow: 0 0 0 2px var(--accent), 0 0 0 6px rgba(var(--accent-rgb), 0.25); }
   .seg::before, .seg button, .item, .legend-item, .chip, .icon-btn, .linkish, .side-row, .filters-toggle { transition: none; }
