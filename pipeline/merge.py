@@ -39,6 +39,7 @@ FAMILY = {
 RADIUS_KM = {"strike": 30, "ground": 30, "naval": 150, "deployment": 120, "diplomacy": 400,
              "hybrid": 50, "incursion": 150, "transfer": 0, "legal": 400, "production": 100}
 TRANSFER_WINDOW = timedelta(hours=72)  # repeated flights or sailings on one route become one "bridge"
+ROUTE_KM = 250  # the same route: both ends within this distance (a base and the town beside it)
 WINDOW = timedelta(hours=18)  # measured from when the event first happened, never from later reports
 BUILDUP_OVERLAP = 0.25  # share of words two deployment summaries need in common (see _same_buildup)
 # Families whose reports are often pinned to a whole country or sea ("England", "South China Sea")
@@ -127,16 +128,79 @@ def _is_alert(c: dict) -> bool:
             and _reads_like_alert(c.get("summary")))
 
 
+def _placed(end) -> bool:
+    return isinstance(end, dict) and end.get("lat") is not None and end.get("lon") is not None
+
+
+def _same_route(e: dict, cand: dict) -> bool:
+    """Both ends agree where both reports name them. A country moving its own forces (supplier =
+    recipient) must also name the same ends, or be pinned in the same place: "US forces moved" is
+    every American deployment, and on 2026-10-04 one such event had absorbed 23 reports, from the
+    Iraq withdrawal to B-1 bombers leaving RAF Fairford, under a date that kept them all off the map."""
+    et, t = e.get("transfer") or {}, cand.get("transfer") or {}
+    own = bool(t.get("supplier")) and t.get("supplier") == t.get("recipient")
+    named = 0
+    for end in ("from", "to"):
+        a, b = et.get(end), t.get(end)
+        if _placed(a) and _placed(b):
+            if haversine_km(a["lat"], a["lon"], b["lat"], b["lon"]) > ROUTE_KM:
+                return False
+            named += 1
+        elif own and (_placed(a) or _placed(b)):
+            return False  # one names an end the other doesn't: not shown to be the same move
+    if own and not named:
+        return haversine_km(e["lat"], e["lon"], cand["lat"], cand["lon"]) <= ROUTE_KM
+    return True
+
+
 def _find_transfer(events: list[dict], cand: dict) -> dict | None:
+    """The same supplier, recipient and kind, on the same route, within TRANSFER_WINDOW of when the
+    event began (never of its latest report, which let one event grow for days)."""
     t = cand.get("transfer") or {}
     ct = parse_time(cand["time"])
     for e in events:
         et = e.get("transfer") or {}
         if (e["type"] == "arms_transfer" and et.get("supplier") == t.get("supplier")
                 and et.get("recipient") == t.get("recipient") and et.get("kind") == t.get("kind")
-                and abs(ct - parse_time(e["updated"])) <= TRANSFER_WINDOW):
+                and abs(ct - parse_time(e["time"])) <= TRANSFER_WINDOW and _same_route(e, cand)):
             return e
     return None
+
+
+TRANSFER_SPLIT_VERSION = 1
+
+
+def split_overgrown_transfers(events: list[dict], state: dict, now) -> list[dict]:
+    """Once (per TRANSFER_SPLIT_VERSION): a stored arms transfer that grew past TRANSFER_WINDOW under
+    the old rule keeps its first report; the others are read again by the model, each from its own
+    summary, credited to its original source, so the fixed rule files them. Returns the items for
+    the extraction queue."""
+    if state.get("transfer_split_version", 0) >= TRANSFER_SPLIT_VERSION:
+        return []
+    state["transfer_split_version"] = TRANSFER_SPLIT_VERSION
+    items = []
+    for e in events:
+        if e.get("type") != "arms_transfer" or not e.get("reports"):
+            continue
+        start = parse_time(e["time"])
+        if all(parse_time(r["time"]) - start <= TRANSFER_WINDOW for r in e["reports"]):
+            continue
+        # grown under the old rule, so even its early reports may be other moves: keep the first,
+        # and let the fixed rule sort the rest
+        ordered = sorted(e["reports"], key=lambda r: r["time"])
+        keep, out = ordered[:1], ordered[1:]
+        e["reports"] = keep
+        e["updated"] = max(r["time"] for r in keep)
+        e.pop("headline", None)
+        for r in out:
+            items.append({"id": short_hash("resplit", r.get("url"), r.get("summary")), "source_id": r.get("source_id") or "resplit",
+                          "source": r.get("source"), "platform": r.get("platform"), "kind": r.get("kind", "news"),
+                          "side": r.get("side"), "group": r.get("group") or r.get("source"), "weight": int(r.get("weight", 2)),
+                          "prefilter": False, "url": r.get("url"), "text": r.get("summary") or "", "time": r["time"],
+                          "max_age_h": 24 * 30})
+    if items:
+        log(f"[merge] {len(items)} reports taken out of arms transfers they joined days late, to be read again")
+    return items
 
 
 _WORD_STOP = set("""a an the of in on at to for and or by with as is are was were be been its it this that
