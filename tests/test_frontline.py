@@ -208,7 +208,7 @@ def test_areas_shade_corroborated_control_only_and_split_halfway_between_sides()
                                  P("D", 50.3, 37.8, "claimed", "UA", previous="RU"),  # claimed back: stays Russian
                                  P("E", 50.05, 37.3, "contested", "UA")], conflict)   # fighting inside: stays Ukrainian
     by = {L["id"]: L for L in layers}
-    assert set(by) == {"fl-ukraine-assessed-RU", "fl-ukraine-assessed-UA"}
+    assert set(by) == {"fl-ukraine-assessed-RU", "fl-ukraine-assessed-UA", "fl-ukraine-contested"}
     ru, ua = by["fl-ukraine-assessed-RU"], by["fl-ukraine-assessed-UA"]
     assert (ru["label"], ru["color"], ru["assessment"]) == ("Russian-controlled", "#e39b5b", True)
     assert ua["label"] == "Held by Ukraine"                                                 # no `controlled` given
@@ -220,6 +220,9 @@ def test_areas_shade_corroborated_control_only_and_split_halfway_between_sides()
     assert not inside(ru["polygons"], 37.4, 50.3)                                           # C: only claimed
     assert inside(ru["polygons"], 37.8, 50.3)                                               # D: until corroborated
     assert inside(ua["polygons"], 37.3, 50.05)                                              # E
+    fought = by["fl-ukraine-contested"]                                                     # E, hatched on top
+    assert (fought["label"], fought["style"]) == ("Contested", "infiltration")
+    assert inside(fought["polygons"], 37.3, 50.05) and not inside(fought["polygons"], 37.0, 50.0)
 
 
 # ----------------------------------------------------------------------------- standing control
@@ -297,3 +300,31 @@ def test_standing_towns_reach_further_stay_on_land_and_home_ground_is_not_shaded
     # Ukrainian-held Sumy's zone stops at the border
     sumy = cartographer.areas([P("Sumy", 50.91, 34.80, "assessed", "UA", standing=True)], {**UA_STANDING, "reach_km": 45})[0]
     assert inside(sumy["polygons"], 34.80, 50.95) and not inside(sumy["polygons"], 35.1, 51.18)   # Russia, ~36 km
+
+
+def test_where_provinces_fill_a_held_town_shades_its_whole_province():
+    import mapshapes
+    from frontline import cartographer
+    yemen = {"id": "yemen", "name": "Yemen", "countries": ["YE"], "center": [15.3, 45.0], "radius_km": 900,
+             "area_km": 10, "reach_km": 35, "fill": "regions",
+             "actors": [{"id": "HOUTHI", "name": "the Houthis", "controlled": "Houthi-controlled", "color": "#e39b5b"},
+                        {"id": "ROYG", "name": "government forces", "controlled": "Government-controlled", "color": "#5aa9e6"}]}
+    P = lambda name, lat, lon, holder, standing=True, front=False, provinces=(): {
+        "name": name, "conflict": "yemen", "country": "YE", "lat": lat, "lon": lon, "status": "assessed",
+        "holder": holder, "standing": standing, "fills": standing and not front, "provinces": provinces,
+        "last": "2026-10-03T00:00:00Z"}
+    layers = cartographer.areas([P("Saada", 16.94, 43.76, "HOUTHI"), P("Ibb", 13.97, 44.18, "HOUTHI"),
+                                 P("Dhamar", 14.54, 44.40, "HOUTHI", provinces=["Raymah"]),
+                                 P("Marib", 15.46, 45.32, "ROYG", front=True),
+                                 P("Aden", 12.80, 45.03, "ROYG"), P("Ataq", 14.54, 46.83, "ROYG", standing=False)], yemen)
+    by = {L["label"]: L for L in layers}
+    inside = mapshapes._inside
+    houthi, gov = by["Houthi-controlled"], by["Government-controlled"]
+    assert inside(houthi["polygons"], 43.3, 17.3)        # ~60 km from Saada, still Sa'dah governorate
+    assert inside(houthi["polygons"], 44.4, 13.8)        # Ibb governorate
+    assert not inside(houthi["polygons"], 44.2, 15.35)   # Sanaa: no town there assessed
+    assert inside(gov["polygons"], 45.0, 12.9)           # Aden
+    assert not inside(gov["polygons"], 47.6, 14.4)       # Shabwah: Ataq isn't a listed town, so only its reach
+    assert inside(houthi["polygons"], 43.75, 14.65)      # Raymah: no town of its own, filled from Dhamar
+    assert inside(gov["polygons"], 45.32, 15.40)         # Marib, on the front: only its reach...
+    assert not inside(gov["polygons"], 46.3, 15.6)       # ...not the whole governorate

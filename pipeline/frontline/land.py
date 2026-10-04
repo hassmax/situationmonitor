@@ -12,6 +12,7 @@ from pathlib import Path
 import numpy as np
 
 SHAPES = Path(__file__).resolve().parents[2] / "site" / "assets" / "countries-110m.json"
+REGIONS = Path(__file__).resolve().parent / "regions.json"
 
 
 @lru_cache(maxsize=1)
@@ -39,8 +40,13 @@ def _rings() -> dict[str, list[np.ndarray]]:
 def mask(xs: np.ndarray, ys: np.ndarray, numeric_ids: list[str]) -> np.ndarray:
     """Boolean grid (len(ys), len(xs)): True on the land of the given countries (even-odd rule,
     so lakes and enclaves cut out of a country stay out)."""
-    rings = [r for i in numeric_ids for r in _rings().get(i, [])]
+    return rings_mask(xs, ys, [r for i in numeric_ids for r in _rings().get(i, [])])
+
+
+def rings_mask(xs: np.ndarray, ys: np.ndarray, rings: list) -> np.ndarray:
+    """Boolean grid: True inside the rings (lon, lat), even-odd rule."""
     out = np.zeros((len(ys), len(xs)), dtype=bool)
+    rings = [np.asarray(r, dtype=float) for r in rings if len(r) >= 3]
     if not rings:
         return out
     a = np.concatenate([r[:-1] for r in rings])
@@ -55,3 +61,25 @@ def mask(xs: np.ndarray, ys: np.ndarray, numeric_ids: list[str]) -> np.ndarray:
         x = np.sort(p[:, 0] + (y - p[:, 1]) * (q[:, 0] - p[:, 0]) / (q[:, 1] - p[:, 1]))
         out[j] = np.searchsorted(x, xs, side="right") % 2 == 1
     return out
+
+
+@lru_cache(maxsize=1)
+def _regions() -> dict:
+    return json.loads(REGIONS.read_text(encoding="utf-8"))["regions"]
+
+
+def regions(country: str) -> list[dict]:
+    """A country's provinces ({name, rings}), from regions.json (Natural Earth admin-1, public
+    domain): only the countries whose conflicts fill by province have any."""
+    return [{"name": r["name"], "rings": [ring for poly in r["polygons"] for ring in poly]}
+            for r in _regions().get(country, [])]
+
+
+def inside(rings: list, lon: float, lat: float) -> bool:
+    """Point in the rings (even-odd)."""
+    hit = False
+    for r in rings:
+        for (x1, y1), (x2, y2) in zip(r, r[1:]):
+            if (y1 <= lat) != (y2 <= lat) and lon < x1 + (lat - y1) * (x2 - x1) / (y2 - y1):
+                hit = not hit
+    return hit

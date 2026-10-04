@@ -32,7 +32,7 @@ from sources.rss import _entry_time, _outlet_src
 
 from . import ledger
 
-PER_RUN = 3
+PER_RUN = 4
 EVERY = timedelta(days=5)
 WHEN = "60d"
 RESULTS = 60
@@ -65,12 +65,14 @@ def towns(conflict: dict) -> list[dict]:
             names = [n.strip() for n in str(t["name"]).split("/") if n.strip()]
             members.append({"name": names[0], "names": names, "region": g.get("region"), "country": country,
                             "city_only": bool(t.get("city_only")), "key": ledger.key(names[0], country),
-                            "reach_km": t.get("reach_km") or g.get("reach_km")})
+                            "reach_km": t.get("reach_km") or g.get("reach_km"), "front": bool(g.get("front")),
+                            "provinces": list(t.get("provinces") or [])})
         out += members
         if g.get("whole"):
             names = [g["region"]] + list(g.get("aka") or [])
             out.append({"name": g["region"], "names": names, "region": g["region"], "country": country,
-                        "city_only": False, "key": None, "reach_km": None, "whole": members})
+                        "city_only": False, "key": None, "reach_km": None, "front": False, "provinces": [],
+                        "whole": members})
     return out
 
 
@@ -163,18 +165,34 @@ def _known(conflict: dict, fl: dict) -> list[dict]:
 
 
 def due(conflicts: list[dict], fl: dict, now) -> list[tuple[dict, dict]]:
-    """Listed towns (and whole regions) whose search is due, never searched first, then oldest."""
+    """Listed towns (and whole regions) whose search is due: never searched first, then oldest,
+    taking the conflicts in turn (`standing_turn`) so a long list (Ukraine's) can't hold the
+    others back."""
     last = fl.setdefault("standing", {})
-    out = []
+    queues = []
     for c in conflicts:
+        q = []
         for t in towns(c):
             k = t["key"] or ledger.key(t["name"], t["country"]) + ":region"
             when = parse_time(last.get(k))
             if when and now - when < EVERY:
                 continue
-            out.append((last.get(k) or "", k, c, t))
-    out.sort(key=lambda x: x[0])
-    return [(c, {**t, "search_key": k}) for _, k, c, t in out[:PER_RUN]]
+            q.append((last.get(k) or "", k, c, t))
+        q.sort(key=lambda x: x[0])
+        if q:
+            queues.append(q)
+    turn = fl.get("standing_turn", 0)   # which conflict goes first, moving on each run
+    out = []
+    while queues and len(out) < PER_RUN:
+        q = queues[turn % len(queues)]
+        _, k, c, t = q.pop(0)
+        out.append((c, {**t, "search_key": k}))
+        if not q:
+            queues.remove(q)
+        else:
+            turn += 1
+    fl["standing_turn"] = turn % 64
+    return out
 
 
 def run(conflicts: list[dict], state: dict, session, now, items: list[dict], outlets: dict | None = None) -> list[dict]:
