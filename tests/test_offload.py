@@ -141,3 +141,14 @@ def test_no_overflow_while_gemini_works(monkeypatch):
     state = gemini_state()
     extract.run([item(1)], state, SETTINGS, NOW)
     assert sent == ["https://gemini"]
+
+
+def test_a_call_bigger_than_the_minute_waits_for_a_clear_minute(monkeypatch):
+    clock = [1000.0]
+    monkeypatch.setattr(providers, "_clock", lambda: clock[0])
+    monkeypatch.setattr(providers, "_sleep", lambda s: clock.__setitem__(0, clock[0] + s))
+    p = providers.configured({})["cerebras"]
+    providers._recent["cerebras"] = [(990.0, 3000)]
+    assert providers._pace(p, 36000, max_wait=65) and clock[0] > 1050    # waited for the minute to clear
+    providers._recent["cerebras"] = [(clock[0] - 1, 3000)]
+    assert not providers._pace(p, 36000)                                 # 25 s is not enough

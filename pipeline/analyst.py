@@ -50,6 +50,7 @@ PER_REGION = 2
 MAX_JUDGMENTS = 14
 REACH_KM = 2500           # carriers and aircraft counted for a region: this far from its camera point
 CORROBORATED_HIGH = 2
+ANALYSIS_WAIT = 65  # seconds the analysis may wait for an outside provider's per-minute limit
 MIN_CITED = 2
 MAX_FLIGHTS_PER_REGION = 15
 # A single tracked flight of these kinds may be a line of its own ("KC-135 tanker left Al Udeid and
@@ -318,7 +319,9 @@ def update(state: dict, events: list[dict], theaters: list[dict], carriers: list
             need = extract_tokens(PROMPT + text) + 2000
             if not p or not providers.has_room(p, caps.get(step), state, now, "analysis", need):
                 continue
-            reply, model = providers.ask_json(p, PROMPT, text, state, now, max_tokens=8000, purpose="analysis")
+            # about 36,000 tokens (2026-10-04), more than Cerebras allows in a minute: it waits for a clear minute
+            reply, model = providers.ask_json(p, PROMPT, text, state, now, max_tokens=8000, purpose="analysis",
+                                              max_wait=ANALYSIS_WAIT)
             label = p.get("label") or step
         out = validate(reply, shown, events, flights)
         if out is not None:

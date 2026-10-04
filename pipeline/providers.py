@@ -142,6 +142,7 @@ def _pace(p: dict, need: int, max_wait: float = MAX_WAIT) -> bool:
     if not limit:
         return True
     name = p["name"]
+    need = min(need, limit)  # a call bigger than the minute's limit goes alone, once the minute is clear
     while True:
         now = _clock()
         recent = [(t, n) for t, n in _recent.get(name, []) if now - t < 60]
