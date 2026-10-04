@@ -21,6 +21,10 @@
   const MAX_MARKERS = PHONE ? 160 : 320;
   const MAX_ANIMATED_NOW = PHONE ? 8 : MAX_ANIMATED;
   const isMobile = () => window.innerWidth < 860;
+  // Phones and tablets have no pointer to hover with: a first tap on a marker shows the card that
+  // pointing shows on desktop, a second tap (or a tap on the card) opens it.
+  const hoverMq = window.matchMedia("(hover: hover) and (pointer: fine)");
+  const canHover = () => hoverMq.matches;
 
   // ------------------------------------------------------------------ vocabulary
   // Confidence is shown by the marker's style (solid, outline, dashed); color and icon show what happened.
@@ -612,7 +616,7 @@
     .onArcHover((a) => { globeEl.style.cursor = a ? "pointer" : ""; })
     .onArcClick((a) => { if (a.carrier) selectCarrier(a.carrier.hull, true); else if (a.flow) selectFlow(a.flow.key); else if (a.ref) select(a.ref.id, true); })
     // a click on bare globe (no marker, line or dot) ends the focus on an opened event, carrier or route
-    .onGlobeClick(() => { if (focused()) closeDetail(); });
+    .onGlobeClick(() => { if (focused() && performance.now() - lineTapAt > 600) closeDetail(); });
 
   // Dot and ring sizes follow the zoom, but are only rebuilt once a gesture ends.
   function applyZoomScale() {
@@ -723,22 +727,26 @@
     // the count bubble's number (set by declutter) is kept unless the marker itself changed
     setHtml(el, `${svgIcon(icon)}${label ? `<span class="mk-label">${esc(label)}</span>` : ""}<span class="mk-count" aria-hidden="true"></span>`);
     btn.setAttribute("aria-label", `${typeLabel(e)}, ${metaLine(e)}. ${STATUS[e.status].label}.`);
-    btn.onclick = (ev) => {
-      ev.stopPropagation();
-      closeFly();
+    const open = () => {
       if (el.classList.contains("cluster-lead")) zoomTo(e.lat, e.lon, 0.35); // a count bubble zooms in to show its events
       else select(e.id, true);
     };
     // pointing at a marker slides a card open beside it (a count bubble's lists every event it holds)
     // and lights its row in the feed
-    btn.onmouseenter = () => {
+    const peek = () => {
       const members = el.classList.contains("cluster-lead") && el._members;
       if (members) showFly(el, tipCluster(members, e), true);
-      else showFly(el, tipEvent(e, true), placesOf(e).length > 1);
-      hotRow(e.id);
+      else showFly(el, tipEvent(e, true), placesOf(e).length > 1, open);
       if (!members) prefetchReports(e.id);
     };
-    btn.onmouseleave = () => { hideFly(); hotRow(null); };
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      if (!canHover() && !(flyFor === el && !fly.hidden)) { peek(); return; }  // first tap on a phone: the card
+      closeFly();
+      open();
+    };
+    btn.onmouseenter = () => { if (!canHover()) return; peek(); hotRow(e.id); };
+    btn.onmouseleave = () => { if (!canHover()) return; hideFly(); hotRow(null); };
     return markerDatum(`ev:${e.id}`, { key: `ev:${e.id}`, ev: e, el, lat: e.lat, lon: e.lon, hAlt: 0.014, isEvent: true, prio: e.severity * 10 + (isNew(e) ? 5 : 0) + Math.log10(1 + magnitude(e)) + (e._t / 1e13) });
   }
 
@@ -749,9 +757,15 @@
     const btn = el.firstChild;
     setHtml(el, `${svgIcon("carrier")}<span class="mk-label">${esc(c.short || c.hull)}</span>`);
     btn.setAttribute("aria-label", `${c.name}, ${carrierStatus(c)}${c.place ? ", " + c.place : ""}`);
-    btn.onclick = (ev) => { ev.stopPropagation(); closeFly(); selectCarrier(c.hull, true); };
-    btn.onmouseenter = () => showFly(el, tipCarrier(c));
-    btn.onmouseleave = () => hideFly();
+    const open = () => selectCarrier(c.hull, true);
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      if (!canHover() && !(flyFor === el && !fly.hidden)) { showFly(el, tipCarrier(c, true), false, open); return; }
+      closeFly();
+      open();
+    };
+    btn.onmouseenter = () => { if (canHover()) showFly(el, tipCarrier(c)); };
+    btn.onmouseleave = () => { if (canHover()) hideFly(); };
     c.el = el; c.key = `cvn:${c.hull}`; c.hAlt = 0.012; c.prio = 1;
     return c;
   }
@@ -774,18 +788,36 @@
   fly.hidden = true;
   document.body.appendChild(fly);
   let flyFor = null, flyTimer = 0, flyRing = null;
-  function showFly(el, html, live = false) {
-    if (isMobile()) return;
+  // `act` opens what the card shows: on phones a tap on the card does that
+  function showFly(el, html, live = false, act = null) {
     clearTimeout(flyTimer);
     hideTip();
     const over = !fly.hidden && flyFor && flyFor !== el;
     flyFor = el;
+    fly._act = act;
     if (fly._html !== html) { fly.innerHTML = `<span class="fly-tail" aria-hidden="true"></span>${html}`; fly._html = html; fly.scrollTop = 0; }
-    fly.classList.toggle("is-live", live);
+    const touch = !canHover();
+    fly.classList.toggle("is-live", live || touch);
+    fly.classList.toggle("on-touch", touch);
     if (!over) fly.classList.remove("glide", "open");
     fly.hidden = false;
     const r = el.firstChild.getBoundingClientRect();
     const w = fly.offsetWidth, h = fly.offsetHeight;
+    if (touch) {
+      // a phone: above the marker if there is room under the header, else below it, and never
+      // under the list sheet; no side tail
+      const top = ($(".brand") || document.body).getBoundingClientRect().bottom + 8;
+      const sheet = isMobile() ? $("#feed").getBoundingClientRect().top - 8 : window.innerHeight - 8;
+      let y = r.top - h - 12;
+      if (y < top) y = r.bottom + 12;
+      y = clamp(y, top, Math.max(top, sheet - h));
+      fly.classList.remove("to-left");
+      fly.style.left = `${clamp(r.left + r.width / 2 - w / 2, 12, Math.max(12, window.innerWidth - w - 12))}px`;
+      fly.style.top = `${y}px`;
+      if (over) fly.classList.add("glide");
+      else { void fly.offsetWidth; fly.classList.add("open"); }
+      return;
+    }
     const list = $("#feed").getBoundingClientRect();
     const edge = list.width && list.left > r.right ? list.left : window.innerWidth;
     const right = r.right + 12 + w <= edge - 8 || r.left - 12 - w < 8;
@@ -814,6 +846,10 @@
   }
   // a short wait, so the pointer can reach a list card, or the next marker can take the card over
   function hideFly() { clearTimeout(flyTimer); flyTimer = setTimeout(closeFly, fly.classList.contains("is-live") ? 350 : 90); }
+  // a phone: touching anything but the card or a marker puts the card away
+  window.addEventListener("pointerdown", (ev) => {
+    if (!fly.hidden && !canHover() && !fly.contains(ev.target) && !(ev.target.closest && ev.target.closest(".mk"))) closeFly();
+  }, { capture: true, passive: true });
   fly.addEventListener("mouseenter", () => { if (fly.classList.contains("is-live")) clearTimeout(flyTimer); });
   fly.addEventListener("mouseleave", () => { placeRing(null); hideFly(); });
   fly.addEventListener("mouseover", (ev) => {
@@ -827,7 +863,11 @@
   });
   fly.addEventListener("click", (ev) => {
     const b = ev.target.closest("[data-id], [data-zoom], [data-open]");
-    if (!b) return;
+    if (!b) {
+      // a phone: the card itself opens what it shows
+      if (fly._act && fly.classList.contains("on-touch")) { const act = fly._act; closeFly(); act(); }
+      return;
+    }
     const id = b.dataset.id || b.dataset.open;
     if (b.dataset.zoom) { const [lat, lon] = b.dataset.zoom.split(",").map(Number); zoomTo(lat, lon, 0.35); }
     closeFly();
@@ -967,17 +1007,17 @@
     return `<div class="tip"><div class="tip-meta">${eventIcon(e)}<b>${esc(typeLabel(e))}</b><span>${esc(metaLine(e))}</span></div>
       <div class="tip-sum">${esc(e.summary)}</div>
       <div class="tip-foot"><span class="conf-text conf-${STATUS[e.status].conf}">${esc(STATUS[e.status].label)}</span>${e.possibly_old ? "<span>Possibly an old story</span>" : ""}${extra}${quick && n ? `<span>${n} ${n === 1 ? "source" : "sources"}</span>` : ""}<span>${esc(ago(e._t))}</span></div>
-      ${list}${quick ? '<div class="tip-hint">Click for details</div>' : ""}</div>`;
+      ${list}${quick ? `<div class="tip-hint">${canHover() ? "Click for details" : "Tap for details"}</div>` : ""}</div>`;
   }
   // A count bubble: every event it holds, most important first, each one a button that opens it.
   function tipCluster(evs, lead) {
     return `<div class="tip tip-list"><div class="tip-meta"><b>${evs.length} events here</b><button type="button" class="fly-zoom" data-zoom="${lead.lat},${lead.lon}">Zoom in</button></div>
       <ul class="fly-rows">${evs.filter(Boolean).map((e, i) => `<li style="--i:${Math.min(i, 10)}"><button type="button" data-id="${esc(e.id)}">${eventIcon(e)}<span><b>${esc(typeLabel(e))}</b> ${esc(e.place || metaLine(e))}</span><time>${esc(agoShort(e._t))}</time></button></li>`).join("")}</ul></div>`;
   }
-  function tipCarrier(c) {
+  function tipCarrier(c, quick = false) {
     return `<div class="tip"><div class="tip-meta">${iconBadge("carrier", "fleet")}<b>${esc(c.name)}</b><span>${esc(c.hull)}</span></div>
       <div class="tip-sum">${esc(carrierStatus(c))}${c.place ? `, ${esc(c.place)}` : ""}</div>
-      <div class="tip-foot"><span>${c._asOf ? `As of ${esc(fmtDay(c._asOf))}` : "No position reports yet"}</span>${c.heading_to ? `<span>heading to ${esc(c.heading_to.place || "a stated destination")}</span>` : ""}</div></div>`;
+      <div class="tip-foot"><span>${c._asOf ? `As of ${esc(fmtDay(c._asOf))}` : "No position reports yet"}</span>${c.heading_to ? `<span>heading to ${esc(c.heading_to.place || "a stated destination")}</span>` : ""}</div>${quick ? '<div class="tip-hint">Tap for details</div>' : ""}</div>`;
   }
   function tipFlow(f) {
     return `<div class="tip"><div class="tip-meta">${flowBadge(f)}<b>${esc(flowFrom(f))} → ${esc(flowTo(f))}</b></div>
@@ -1076,6 +1116,14 @@
     const d = ctlDown;
     ctlDown = null;
     if (!d || Math.hypot(ev.clientX - d.x, ev.clientY - d.y) > 8 || performance.now() - d.t > 500) return;
+    // a finger: a tap close to a supply route or carrier line opens it (the lines are thin to hit)
+    const line = ev.pointerType !== "mouse" ? lineNear(ev.clientX, ev.clientY) : null;
+    if (line) {
+      lineTapAt = performance.now();
+      hideControlTip();
+      if (line.carrier) selectCarrier(line.carrier.hull, true); else selectFlow(line.flow.key);
+      return;
+    }
     // a click away from everything (empty space, or bare globe: onGlobeClick) ends the focus on an opened event
     if (focused() && !world.toGlobeCoords(ev.clientX - globeCanvas.getBoundingClientRect().left, ev.clientY - globeCanvas.getBoundingClientRect().top)) closeDetail();
     if (ev.pointerType === "mouse") return;
@@ -1086,6 +1134,52 @@
     ctlTip = true;
     ctlTimer = setTimeout(hideControlTip, 3500);
   });
+
+  // Supply routes and carrier lines are thin and float a little above the ground, so a finger
+  // rarely lands on them: a tap within TAP_PX of one, on screen, counts as a tap on it. The curve
+  // is the globe library's own: a cubic from each end on the ground through points a quarter and
+  // three quarters along, raised to 1.5 times the line's height.
+  const TAP_PX = 24;
+  let lineTapAt = 0;
+  function arcOnScreen(a, cam, R) {
+    const lift = (a.alt == null ? 0 : a.alt) * 1.5;
+    const s = { lat: a.sLat, lon: a.sLng }, e = { lat: a.eLat, lon: a.eLng };
+    const m1 = slerp(s, e, 0.25), m2 = slerp(s, e, 0.75);
+    const P = [world.getCoords(s.lat, s.lon, 0), world.getCoords(m1.lat, m1.lon, lift), world.getCoords(m2.lat, m2.lon, lift), world.getCoords(e.lat, e.lon, 0)];
+    const out = [];
+    for (let i = 0; i <= 16; i++) {
+      const t = i / 16, u = 1 - t;
+      const k = [u * u * u, 3 * u * u * t, 3 * u * t * t, t * t * t];
+      const x = k[0] * P[0].x + k[1] * P[1].x + k[2] * P[2].x + k[3] * P[3].x;
+      const y = k[0] * P[0].y + k[1] * P[1].y + k[2] * P[2].y + k[3] * P[3].y;
+      const z = k[0] * P[0].z + k[1] * P[1].z + k[2] * P[2].z + k[3] * P[3].z;
+      if (x * cam.x + y * cam.y + z * cam.z < R * R) { out.push(null); continue; }  // behind the globe
+      const g = world.toGeoCoords({ x, y, z });
+      out.push(g ? world.getScreenCoords(g.lat, g.lng, g.altitude) : null);
+    }
+    return out;
+  }
+  function segDist(px, py, a, b) {
+    const dx = b.x - a.x, dy = b.y - a.y, len = dx * dx + dy * dy;
+    const t = len ? clamp(((px - a.x) * dx + (py - a.y) * dy) / len, 0, 1) : 0;
+    return Math.hypot(px - a.x - t * dx, py - a.y - t * dy);
+  }
+  function lineNear(x, y) {
+    const r = globeCanvas.getBoundingClientRect();
+    const px = x - r.left, py = y - r.top;
+    const cam = world.camera().position, R = world.getGlobeRadius();
+    let best = null, bestD = TAP_PX;
+    for (const a of baseArcs) {
+      if (!(a.flow || a.carrier) || a.kind === "hit" || a.kind === "particles") continue;
+      const pts = arcOnScreen(a, cam, R);
+      for (let i = 1; i < pts.length; i++) {
+        if (!pts[i - 1] || !pts[i]) continue;
+        const dd = segDist(px, py, pts[i - 1], pts[i]);
+        if (dd < bestD) { bestD = dd; best = a; }
+      }
+    }
+    return best;
+  }
 
   function layout() {
     world.width(window.innerWidth).height(window.innerHeight);
