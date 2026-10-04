@@ -92,6 +92,7 @@ jobs:
           mkdir -p _site/data
           cp -r site/. _site/
           cp out/events.json _site/data/events.json
+          cp -r out/reports _site/data/reports
 
       - uses: actions/configure-pages@v5
 

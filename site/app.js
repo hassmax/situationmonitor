@@ -231,6 +231,9 @@
     sheet: 1,
   };
 
+  const reportFiles = new Map();  // reports files by bucket, for the loaded copy of the data (reportsFor)
+  const shownReports = new Map();  // the reports last shown per opened event, kept through a data update
+
   // ------------------------------------------------------------------ globe
   const globeEl = $("#globe");
   const world = new Globe(globeEl, { animateIn: !reduceMotion });
@@ -250,6 +253,45 @@
   controls.minDistance = 106; // globe radius is 100: close to city scale (the painted land is coarse this close)
   controls.maxDistance = 650;
   if (PHONE) world.renderer().setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
+  // Hover testing: 20 times a second, even with the pointer still, the library tests the pointer
+  // against every object on the globe (and toGlobeCoords does on every pointer move), hidden ones
+  // included. The globe itself, a sphere of 8,000 triangles, was tested triangle by triangle: it
+  // gets an exact sphere test instead. Lines (country borders, control outlines, rings, the hidden
+  // grid), the atmosphere and the library's hidden map-tile sphere (32,000 triangles) never answer:
+  // nothing on the page listens for them. Runs after renders until the borders exist.
+  const noHit = () => {};
+  let linesQuiet = false, hoverLight = false;
+  function lightenHover() {
+    if (hoverLight) return;
+    const R = world.getGlobeRadius();
+    let globeDone = false;
+    world.scene().traverse((o) => {
+      if (o.isLine && !linesQuiet) { Object.getPrototypeOf(o).raycast = noHit; linesQuiet = o.type === "Line"; }
+      if (!o.isMesh) return;
+      const inGlobe = o.parent && o.parent.__globeObjType === "globe";
+      if (o._light) { globeDone = globeDone || inGlobe; return; }
+      let shown = true;
+      for (let x = o; x; x = x.parent) if (!x.visible) shown = false;
+      if (inGlobe && shown) {
+        o._light = true;
+        globeDone = true;
+        o.raycast = function (raycaster, hits) {
+          const { origin: p, direction: d } = raycaster.ray;  // direction has length 1
+          const b = p.x * d.x + p.y * d.y + p.z * d.z, c = p.x * p.x + p.y * p.y + p.z * p.z - R * R, disc = b * b - c;
+          if (disc < 0) return;
+          const t = -b - Math.sqrt(disc);
+          if (t < raycaster.near || t > raycaster.far) return;
+          hits.push({ distance: t, point: p.clone().addScaledVector(d, t), object: this });
+        };
+      } else if ((o.material && o.material.side === 1) || !shown) {  // the atmosphere (drawn on its inner side); hidden tiles
+        o._light = true;
+        o.raycast = noHit;
+      }
+    });
+    hoverLight = linesQuiet && globeDone;
+  }
+  setTimeout(lightenHover, 0);
+
   // While the globe is being dragged or pinched, markers stop sliding into place and heavier
   // updates wait until the gesture ends (the camera keeps easing briefly after release).
   let moving = false, settleTimer = null;
@@ -296,7 +338,62 @@
   const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(String(h || "#999999").slice(i, i + 2), 16));
   const AREA_ALPHA = { occupied: 0.5, claimed: 0.22 };
   const pathColorOf = (p) => (p.control ? (p.color ? rgba(hexRgb(p.color), p.faint ? 0.45 : 0.85) : CONTROL_LINE) : borderColor(p.fid));
-  const borderColor = (id) => (S.active.has(id) ? "rgba(255,120,82,0.9)" : S.hot.has(id) ? "rgba(120,190,245,0.45)" : "rgba(120,180,235,0.22)");
+  const BORDER_RGBA = { active: [255, 120, 82, 0.9], hot: [120, 190, 245, 0.45], base: [120, 180, 235, 0.22] };
+  const borderRgba = (id) => (S.active.has(id) ? BORDER_RGBA.active : S.hot.has(id) ? BORDER_RGBA.hot : BORDER_RGBA.base);
+  const borderColor = (id) => { const c = borderRgba(id); return `rgba(${c[0]},${c[1]},${c[2]},${c[3]})`; };
+
+  // Country borders: one object holding every border segment, drawn in a single go, instead of one
+  // line per ring (290 lines: 290 draws every frame, and all 290 redone on every filter change).
+  // Colors are per point, as the library's own lines have them; when the active countries change,
+  // only the color list is rewritten. Made from the library's own building blocks (it doesn't
+  // export them); if one can't be found, the borders stay one line per ring, as before.
+  let borderLines = null;
+  function makeBorderLines(land) {
+    let grid = null, globeMesh = null, shaderMat = null;
+    world.scene().traverse((o) => {
+      if (!grid && o.type === "LineSegments" && o.material) grid = o;
+      if (!globeMesh && o.isMesh && o.visible && o.parent && o.parent.__globeObjType === "globe" && o.geometry && o.geometry.getAttribute && o.geometry.getAttribute("position")) globeMesh = o;
+      if (!shaderMat && o.isMesh && o.material && o.material.type === "ShaderMaterial") shaderMat = o.material;
+    });
+    if (!grid || !globeMesh || !shaderMat) return null;
+    const Geometry = Object.getPrototypeOf(globeMesh.geometry.constructor), Attr = globeMesh.geometry.getAttribute("position").constructor;
+    if (typeof Geometry !== "function" || !Geometry.prototype || typeof Geometry.prototype.setAttribute !== "function") return null;
+    const pos = [], ranges = [];
+    const add = (p) => { const c = world.getCoords(p.lat, p.lon, 0.0045); pos.push(c.x, c.y, c.z); };
+    for (const f of land) {
+      const from = pos.length / 3;
+      for (const poly of f.geometry.coordinates) for (const ring of poly) for (let i = 0; i + 1 < ring.length; i++) {
+        const a = { lat: ring[i][1], lon: ring[i][0] }, b = { lat: ring[i + 1][1], lon: ring[i + 1][0] };
+        const n = Math.max(1, Math.ceil(km(a.lat, a.lon, b.lat, b.lon) / 110));  // about a degree a piece, so long sides follow the curve
+        let prev = a;
+        for (let k = 1; k <= n; k++) { const q = k === n ? b : slerp(a, b, k / n); add(prev); add(q); prev = q; }
+      }
+      ranges.push([f.id, from, pos.length / 3]);
+    }
+    const geom = new Geometry();
+    geom.setAttribute("position", new Attr(new Float32Array(pos), 3));
+    geom.setAttribute("color", new Attr(new Float32Array((pos.length / 3) * 4), 4));
+    const colors = geom.getAttribute("color").array;  // the attribute keeps its own copy
+    // the same shader as the library's lines (colors as given, no dashes)
+    const material = new shaderMat.constructor({
+      transparent: true,
+      vertexShader: "#include <common>\n#include <logdepthbuf_pars_vertex>\nattribute vec4 color;\nvarying vec4 vColor;\nvoid main() {\n  vColor = color;\n  gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);\n  #include <logdepthbuf_vertex>\n}",
+      fragmentShader: "#include <logdepthbuf_pars_fragment>\nvarying vec4 vColor;\nvoid main() {\n  gl_FragColor = vColor;\n  #include <logdepthbuf_fragment>\n}",
+    });
+    const obj = new grid.constructor(geom, material);
+    obj.raycast = noHit;
+    world.scene().add(obj);
+    return { obj, ranges, colors, attr: geom.getAttribute("color") };
+  }
+  function colorBorders() {
+    if (!borderLines) return;
+    const { ranges, colors, attr } = borderLines;
+    for (const [fid, from, to] of ranges) {
+      const c = borderRgba(fid);
+      for (let v = from; v < to; v++) { colors[v * 4] = c[0] / 255; colors[v * 4 + 1] = c[1] / 255; colors[v * 4 + 2] = c[2] / 255; colors[v * 4 + 3] = c[3]; }
+    }
+    attr.needsUpdate = true;
+  }
 
   const landReq = window.__land || fetch("assets/countries-110m.json");  // started early in index.html
   window.__land = null;
@@ -306,26 +403,36 @@
       const land = topojson.feature(topo, topo.objects.countries).features
         .filter((f) => f.properties.name !== "Antarctica").map(sanitize).filter(Boolean);
       land.forEach((f) => { if (f.id) centers.set(f.id, centerOf(f)); });
-      const borders = [];
-      for (const f of land) for (const poly of f.geometry.coordinates) for (const ring of poly) borders.push({ fid: f.id, pts: ring });
-      borderPaths = borders;
       landShapes = land;
-      paintLand();
+      // the line settings first: paintLand hands the lines over (borders, if not merged, and the
+      // control outlines), and they were lost when the event data had come in first
       world
-        .pathsData(borders).pathPoints("pts").pathPointLat((p) => p[1]).pathPointLng((p) => p[0]).pathPointAlt(0.0045)
+        .pathPoints("pts").pathPointLat((p) => p[1]).pathPointLng((p) => p[0]).pathPointAlt(0.0045)
         .pathTransitionDuration(0).pathColor(pathColorOf)
         // traced (approximate) areas get a dashed edge; dash sizes are fractions of the ring's length
         .pathDashLength((p) => (p.approx ? 0.006 : 1)).pathDashGap((p) => (p.approx ? 0.004 : 0))
         // front lines (the dashed edges of held ground) flow slowly along their length
         .pathDashAnimateTime((p) => (p.control && p.approx && !reduceMotion ? 90000 : 0));
+      paintLand();
       if (S.data) render();
+      // the borders, once the library has built its scene (a frame or two after it starts); if it
+      // never does, one line per ring as before
+      let tries = 0;
+      const setupBorders = () => {
+        try { borderLines = makeBorderLines(land); } catch (err) { console.error(err); borderLines = null; tries = 1e9; }
+        if (borderLines) { colorBorders(); return; }
+        if (++tries < 120) { requestAnimationFrame(setupBorders); return; }
+        for (const f of land) for (const poly of f.geometry.coordinates) for (const ring of poly) borderPaths.push({ fid: f.id, pts: ring });
+        world.pathsData([...borderPaths, ...controlOutlines]);
+      };
+      setupBorders();
     })
-    .catch(() => {});
+    .catch((err) => console.error(err));
 
   // Land is painted onto the globe's own surface (an ocean-and-countries picture), not drawn as a
   // separate layer floating just above it: phone graphics chips can't tell two surfaces that close
   // apart, and the ocean showed through the land in dark streaks while moving.
-  let landShapes = [], landKey = "", landUrl = null, borderPaths = [], hatch = null;
+  let landShapes = [], landUrl = null, borderPaths = [], controlOutlines = [], hatch = null;
   // always shown, not a filter: published control maps, then the site's own front-line areas
   const controlLayers = () => [...((S.data && S.data.control) || []), ...((S.data && S.data.frontline && S.data.frontline.areas) || [])];
   // Infiltration (forces present, not in control) is hatched rather than filled.
@@ -340,7 +447,7 @@
     for (let i = 0; i < 4; i++) h.fillRect(i, 3 - i, 1, 1);
     return (hatch = g.createPattern(c, "repeat"));
   }
-  function paintControl(g, X, Y) {
+  function paintControl(g, X, Y, outlinesToo = true) {
     // one path per style and colour, filled "nonzero", so overlapping layers of one kind don't double up
     const byStyle = new Map();
     for (const L of controlLayers()) {
@@ -359,54 +466,85 @@
       }
       g.fill("nonzero");
     }
+    if (!outlinesToo) return;
     // crisp outlines of held ground, drawn as lines like the borders
-    const outlines = [];
+    const outlines = controlOutlines = [];
     for (const L of controlLayers()) {
       if (L.style !== "occupied" && !(L.assessment && L.style === "claimed")) continue;
       for (const poly of L.polygons) for (const ring of poly) outlines.push({ control: true, approx: !!(L.approx || L.assessment), color: L.color, faint: L.style === "claimed", pts: ring });
     }
-    if (borderPaths.length) world.pathsData([...borderPaths, ...outlines]);
+    world.pathsData([...borderPaths, ...outlines]);
   }
   const landCanvas = document.createElement("canvas");
   landCanvas.width = PHONE ? 2048 : 4096;
   landCanvas.height = landCanvas.width / 2;
+  // A country's outline, unwrapped once so it stays continuous across the 180° line, added to the
+  // current path three times: in place and one turn left and right.
+  function countryPath(g, f, X, Y) {
+    if (!f._rings) {
+      f._rings = [];
+      for (const poly of f.geometry.coordinates) for (const ring of poly) {
+        let prev = ring[0][0];
+        f._rings.push(ring.map(([lon, lat]) => {
+          while (lon - prev > 180) lon -= 360;
+          while (lon - prev < -180) lon += 360;
+          prev = lon;
+          return [lon, lat];
+        }));
+      }
+    }
+    for (const pts of f._rings) for (const shift of [-360, 0, 360]) {
+      pts.forEach(([lon, lat], i) => (i ? g.lineTo(X(lon + shift), Y(lat)) : g.moveTo(X(lon + shift), Y(lat))));
+      g.closePath();
+    }
+  }
+  // The whole picture is painted when the control areas or the theaters' countries change (a data
+  // update at most). A filter or time-window change only changes which countries are lit as
+  // active: then just those countries are repainted (with the control areas over them), not the
+  // whole 4096 x 2048 picture, which made every filter click lag.
+  let paintedBase = "";
+  const paintedColor = new Map();
   function paintLand() {
-    const key = [...S.active].sort().join(",") + "|" + [...S.hot].sort().join(",") + "|" + controlLayers().map((l) => l.id + l.as_of + (l.settlements || "")).join(",");
-    if (!landShapes.length || key === landKey) return;
-    landKey = key;
+    if (!landShapes.length) return;
+    const base = [...S.hot].sort().join(",") + "|" + controlLayers().map((l) => l.id + l.as_of + (l.settlements || "")).join(",");
     const W = landCanvas.width, H = landCanvas.height, g = landCanvas.getContext("2d");
     const X = (lon) => ((lon + 180) / 360) * W, Y = (lat) => ((90 - lat) / 180) * H;
-    g.fillStyle = OCEAN;
-    g.fillRect(0, 0, W, H);
-    // a fine 10° grid on the ocean, painted into the same picture (no extra layer)
-    g.strokeStyle = "rgba(70, 130, 190, 0.16)";
-    g.lineWidth = W / 4096;
-    g.beginPath();
-    for (let lon = -180; lon <= 180; lon += 10) { g.moveTo(X(lon), 0); g.lineTo(X(lon), H); }
-    for (let lat = -80; lat <= 80; lat += 10) { g.moveTo(0, Y(lat)); g.lineTo(W, Y(lat)); }
-    g.stroke();
-    for (const f of landShapes) {
-      g.fillStyle = landColor(f);
+    if (base === paintedBase) {
+      const changed = landShapes.filter((f) => paintedColor.get(f) !== landColor(f));
+      if (!changed.length) return;
+      g.save();
       g.beginPath();
-      for (const poly of f.geometry.coordinates) {
-        for (const ring of poly) {
-          // keep each outline continuous across the 180° line, then draw it again one turn left and right
-          let prev = ring[0][0];
-          const pts = ring.map(([lon, lat]) => {
-            while (lon - prev > 180) lon -= 360;
-            while (lon - prev < -180) lon += 360;
-            prev = lon;
-            return [lon, lat];
-          });
-          for (const shift of [-360, 0, 360]) {
-            pts.forEach(([lon, lat], i) => (i ? g.lineTo(X(lon + shift), Y(lat)) : g.moveTo(X(lon + shift), Y(lat))));
-            g.closePath();
-          }
-        }
+      changed.forEach((f) => countryPath(g, f, X, Y));
+      g.clip("evenodd");
+      for (const f of changed) {
+        g.fillStyle = landColor(f);
+        g.beginPath();
+        countryPath(g, f, X, Y);
+        g.fill("evenodd");
+        paintedColor.set(f, landColor(f));
       }
-      g.fill("evenodd");
+      paintControl(g, X, Y, false);
+      g.restore();
+    } else {
+      paintedBase = base;
+      g.fillStyle = OCEAN;
+      g.fillRect(0, 0, W, H);
+      // a fine 10° grid on the ocean, painted into the same picture (no extra layer)
+      g.strokeStyle = "rgba(70, 130, 190, 0.16)";
+      g.lineWidth = W / 4096;
+      g.beginPath();
+      for (let lon = -180; lon <= 180; lon += 10) { g.moveTo(X(lon), 0); g.lineTo(X(lon), H); }
+      for (let lat = -80; lat <= 80; lat += 10) { g.moveTo(0, Y(lat)); g.lineTo(W, Y(lat)); }
+      g.stroke();
+      for (const f of landShapes) {
+        g.fillStyle = landColor(f);
+        g.beginPath();
+        countryPath(g, f, X, Y);
+        g.fill("evenodd");
+        paintedColor.set(f, landColor(f));
+      }
+      paintControl(g, X, Y);
     }
-    paintControl(g, X, Y);
     if (mat.map) { mat.map.image = landCanvas; mat.map.needsUpdate = true; return; }  // later repaints: no reload
     landCanvas.toBlob((blob) => {
       if (!blob) return;
@@ -517,6 +655,9 @@
     .htmlAltitude((d) => d.hAlt || 0.012)
     .htmlElement((d) => d.el)
     .htmlElementVisibilityModifier((el, visible) => {
+      // called for every marker whenever the camera moves: touch the page only when it changes
+      if (el._vis === visible) return;
+      el._vis = visible;
       el.style.opacity = visible ? "1" : "0";
       el.style.pointerEvents = visible ? "auto" : "none";
       el.dataset.visible = visible ? "1" : "0";
@@ -540,17 +681,31 @@
   const magnitude = (e) => (e.killed || 0) + 0.5 * (e.injured || 0) + 0.25 * (e.launched || 0);
   const markerPx = (e, size) => Math.min(PHONE ? 40 : 46, SIZE_PX[size] + 4 * Math.log10(1 + magnitude(e)));
 
+  // Marker classes set by the layout (declutter), kept when a render rewrites the others.
+  const layoutClasses = (el) => ["spread", "cluster-lead", "clustered"].filter((c) => el.classList.contains(c)).map((c) => ` ${c}`).join("");
+  // The same data object for a marker from one render to the next: the globe library binds its
+  // marker to that object, so a new object each render made it take every marker off the page and
+  // put it back (restarting their animations) on every filter change.
+  const markerData = new Map();
+  const markerDatum = (key, fields) => {
+    const d = markerData.get(key) || {};
+    markerData.set(key, Object.assign(d, fields));
+    return d;
+  };
+  const setHtml = (el, html) => { if (el._html !== html) { el._html = html; el.firstChild.innerHTML = html; } };
+
   function eventMarker(e, labelIt, animate) {
     const [cat, icon, fx] = catOf(e);
     const el = markerEl(`ev:${e.id}`);
     const live = animate && !reduceMotion && !e.possibly_old;
     const size = e.alert ? "md" : e.severity >= 3 ? "lg" : e.severity === 2 ? "md" : "sm";
     el.style.setProperty("--s", `${markerPx(e, size).toFixed(1)}px`);
-    el.className = `mk cat-${cat} conf-${STATUS[e.status].conf} size-${size}${live && fx ? ` fx-${fx}` : ""}${e.id === S.selectedId ? " is-selected" : ""}${e.id === hotId ? " is-hot" : ""}${el.classList.contains("spread") ? " spread" : ""}`;
+    el.className = `mk cat-${cat} conf-${STATUS[e.status].conf} size-${size}${live && fx ? ` fx-${fx}` : ""}${e.id === S.selectedId ? " is-selected" : ""}${e.id === hotId ? " is-hot" : ""}${layoutClasses(el)}`;
     el.style.setProperty("--fade", String(fade(e)));
     const label = labelIt ? (e.alert ? alertsText(e) : e.wave ? (e.launched ? `${e.launched} launched` : `${e.targets.length} places hit`) : e.place || "") : "";
     const btn = el.firstChild;
-    btn.innerHTML = `${svgIcon(icon)}${label ? `<span class="mk-label">${esc(label)}</span>` : ""}<span class="mk-count" aria-hidden="true"></span>`;
+    // the count bubble's number (set by declutter) is kept unless the marker itself changed
+    setHtml(el, `${svgIcon(icon)}${label ? `<span class="mk-label">${esc(label)}</span>` : ""}<span class="mk-count" aria-hidden="true"></span>`);
     btn.setAttribute("aria-label", `${typeLabel(e)}, ${metaLine(e)}. ${STATUS[e.status].label}.`);
     btn.onclick = (ev) => {
       ev.stopPropagation();
@@ -562,17 +717,18 @@
       const members = el.classList.contains("cluster-lead") && el._members;
       showTip(el, members ? tipCluster(members) : tipEvent(e, true));
       hotRow(e.id);
+      if (!members) prefetchReports(e.id);
     };
     btn.onmouseleave = () => { hideTip(); hotRow(null); };
-    return { key: `ev:${e.id}`, ev: e, el, lat: e.lat, lon: e.lon, hAlt: 0.014, isEvent: true, prio: e.severity * 10 + (isNew(e) ? 5 : 0) + Math.log10(1 + magnitude(e)) + (e._t / 1e13) };
+    return markerDatum(`ev:${e.id}`, { key: `ev:${e.id}`, ev: e, el, lat: e.lat, lon: e.lon, hAlt: 0.014, isEvent: true, prio: e.severity * 10 + (isNew(e) ? 5 : 0) + Math.log10(1 + magnitude(e)) + (e._t / 1e13) });
   }
 
   function carrierMarker(c) {
     const el = markerEl(`cvn:${c.hull}`);
     const tone = c.at_home ? "port" : c.status === "departed" || c.status === "underway" ? "underway" : "deployed";
-    el.className = `mk mk-cvn cvn-${tone}${c.hull === S.selectedHull ? " is-selected" : ""}${el.classList.contains("spread") ? " spread" : ""}`;
+    el.className = `mk mk-cvn cvn-${tone}${c.hull === S.selectedHull ? " is-selected" : ""}${layoutClasses(el)}`;
     const btn = el.firstChild;
-    btn.innerHTML = `${svgIcon("carrier")}<span class="mk-label">${esc(c.short || c.hull)}</span>`;
+    setHtml(el, `${svgIcon("carrier")}<span class="mk-label">${esc(c.short || c.hull)}</span>`);
     btn.setAttribute("aria-label", `${c.name}, ${carrierStatus(c)}${c.place ? ", " + c.place : ""}`);
     btn.onclick = (ev) => { ev.stopPropagation(); selectCarrier(c.hull, true); };
     btn.onmouseenter = () => showTip(el, tipCarrier(c));
@@ -603,6 +759,7 @@
   let hotId = null, hotMarker = null, hotRing = null, hotRowEl = null, hotScroll = 0;
   function hotEvent(id) {
     hotId = id || null;
+    prefetchReports(hotId);
     if (hotMarker) { hotMarker.classList.remove("is-hot"); hotMarker = null; }
     if (hotRing) { extraRings.delete(hotRing); hotRing = null; }
     const e = id && S.data && S.data.events.find((x) => x.id === id);
@@ -960,8 +1117,12 @@
       const t = e.transfer || {};
       e._search = [e.summary, e.place, e.targets.map((x) => x.place).join(" "), typeLabel(e), countryName(e.attacker),
         countryName(e.country), countryName(t.supplier), countryName(t.recipient), t.what,
-        regionWords(e), ...(e.reports || []).map((r) => r.source)].join(" ").toLowerCase();
+        regionWords(e), ...(e.src || (e.reports || []).map((r) => r.source))].join(" ").toLowerCase();
     }
+    // a new copy of the data: reports files are fetched afresh, and markers of events that are gone are let go
+    reportFiles.clear();
+    const ids = new Set(data.events.map((e) => `ev:${e.id}`));
+    for (const k of [...elCache.keys()]) if (k.startsWith("ev:") && !ids.has(k)) { elCache.delete(k); markerData.delete(k); }
     data.heat = (data.heat || []).map((c) => ({ ...c, _t: Date.parse(c.last) }));
     const byHull = new Map(S.fleet.map((c) => [c.hull, c]));
     S.fleet = (data.fleet || []).filter((c) => isFinite(c.lat) && isFinite(c.lon)).map((c) => {
@@ -1066,7 +1227,11 @@
   // ------------------------------------------------------------------ filtering
   // Search matches each word on its own, anywhere in the event ("hybrid attacks europe" finds a
   // sabotage or hybrid attack in Germany). A trailing "s" is dropped, so plurals match too.
-  const words = () => S.query.toLowerCase().split(/[^\p{L}\p{N}-]+/u).filter(Boolean).map((w) => (w.length > 3 ? w.replace(/s$/, "") : w));
+  let wordsFor = null, wordsList = [];
+  const words = () => {
+    if (wordsFor !== S.query) { wordsFor = S.query; wordsList = S.query.toLowerCase().split(/[^\p{L}\p{N}-]+/u).filter(Boolean).map((w) => (w.length > 3 ? w.replace(/s$/, "") : w)); }
+    return wordsList;
+  };
   const matches = (e) => words().every((w) => e._search.includes(w));
   const unlisted = () => new Set(S.theaters.filter((t) => t.listed === false).map((t) => t.id));
   const theaterShown = (id) => S.theaterOn.has(id) || unlisted().has(id);
@@ -1474,6 +1639,7 @@
     renderSideLists();
     if ($("#detail").hidden) renderFeed(events);
     queueDeclutter();
+    if (!hoverLight) requestAnimationFrame(() => setTimeout(lightenHover, 0));  // once the new objects exist
   }
 
   // Who drew the control shapes, and when: credited under the legend, with a link to the source's map.
@@ -1511,11 +1677,12 @@
       if (isDiplomacy(e) || e.type === "arms_transfer") continue;
       [e.country, e.attacker].forEach((c) => { const n = ISO_NUM.get(c); if (n) active.add(n); });
     }
-    const key = [...active].sort().join(",");
+    const key = [...active].sort().join(",") + "|" + [...S.hot].sort().join(",");
     if (key !== S.activeKey) {
       S.activeKey = key;
       S.active = active;
-      world.pathColor(pathColorOf);
+      if (borderLines) colorBorders();
+      else world.pathColor(pathColorOf);
     }
     paintLand();  // repaints only when active or highlighted countries changed (or the control layer)
     renderControlNote();
@@ -1752,6 +1919,48 @@
   }
   const zoomTo = (lat, lng, altitude) => world.pointOfView({ lat, lng, altitude }, reduceMotion ? 0 : 1100);
 
+  // The reports behind each event are published apart from the events (pipeline/publish.py), in
+  // REPORT_BUCKETS small files chosen by a hash of the event id, and fetched when an event is opened
+  // (or pointed at, so they are usually there by the click). Demo data carries them inline.
+  const REPORT_BUCKETS = 64;  // pipeline/publish.py: REPORT_BUCKETS
+  const bucketOf = (id) => { let h = 0; for (const c of String(id)) h = (Math.imul(h, 31) + c.codePointAt(0)) >>> 0; return h % REPORT_BUCKETS; };
+  function reportsFor(e) {
+    if (e.reports) return Promise.resolve(e.reports);
+    const b = bucketOf(e.id);
+    if (!reportFiles.has(b)) {
+      const v = encodeURIComponent((S.data && S.data.generated_at) || "");
+      reportFiles.set(b, fetch(`data/reports/${String(b).padStart(2, "0")}.json?v=${v}`)
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`HTTP ${r.status}`))))
+        .then((j) => j.reports || {})
+        .catch((err) => { reportFiles.delete(b); throw err; }));
+    }
+    return reportFiles.get(b).then((m) => m[e.id] || null);
+  }
+  let prefetchTimer = 0;
+  const prefetchReports = (id) => {  // once the pointer rests on an event, not for every row it crosses
+    clearTimeout(prefetchTimer);
+    if (!id || DEMO) return;
+    prefetchTimer = setTimeout(() => {
+      const e = S.data && S.data.events.find((x) => x.id === id);
+      if (e) reportsFor(e).catch(() => {});
+    }, 150);
+  };
+  // Fills the reports section of an open event once they are in.
+  function fillReports(e) {
+    const slot = $("#reportsSlot");
+    if (!slot) return;
+    reportsFor(e).then((reps) => {
+      if (reps) { if (shownReports.size > 40) shownReports.clear(); shownReports.set(e.id, reps); }
+      if (S.selectedId !== e.id || !document.body.contains(slot)) return;
+      slot.innerHTML = reps ? reportsHtml(reps.slice().sort((a, b) => Date.parse(b.time) - Date.parse(a.time)))
+        : '<p class="muted">The reports for this event were just updated. Close it and open it again in a moment.</p>';
+    }).catch(() => {
+      if (S.selectedId !== e.id || !document.body.contains(slot)) return;
+      slot.innerHTML = '<p class="muted">Couldn\u2019t load the reports. <button class="linkish" type="button" id="reportsRetry">Try again</button></p>';
+      $("#reportsRetry").addEventListener("click", () => { slot.innerHTML = '<p class="muted">Loading reports\u2026</p>'; fillReports(e); });
+    });
+  }
+
   const reportsHtml = (reports) => `<h2 class="reports-title">Reports (${reports.length})</h2><ul class="reports">${reports.map((r) => `
     <li class="report ${r.side ? "sided" : ""}"><div class="report-head"><span class="report-src">${esc(r.source)}</span><span>${esc(PLATFORM[r.platform] || r.platform)}</span>
       <span>${esc(KIND[r.kind] || r.kind)}${r.side ? `, aligned with ${esc(r.side)}` : ""}</span><span>${esc(ago(Date.parse(r.time)))}</span></div>
@@ -1787,7 +1996,6 @@
     const origins = originsOf(e);
     if (!e.wave && origins.length) facts.push(`<span>Launched from <b>${esc(origins.map((o) => o.place || "an unnamed site").join(", "))}</b></span>`);
     const news = S.data.heat.filter((c) => km(e.lat, e.lon, c.lat, c.lon) <= (e.approx ? 60 : 30)).flatMap((c) => c.urls || []).slice(0, 4);
-    const reports = (e.reports || []).slice().sort((a, b) => Date.parse(b.time) - Date.parse(a.time));
     const where = e.wave || e.alert ? `${esc(metaLine(e))}, ${esc(theaterName)}`
       : `${esc(e.place || "Unnamed location")}, ${esc(theaterName)} ${e.approx ? '<span class="approx">(approximate location)</span>' : ""}`;
     const waveBlock = e.wave ? `
@@ -1811,11 +2019,13 @@
       ${facts.length ? `<div class="facts">${facts.join("")}</div>` : ""}
       ${e.legal_basis ? `<div class="legal-basis"><span>Stated legal basis</span><strong>${esc(e.legal_basis)}</strong><p>As reported by the sources below. The dashboard records claimed justifications; it does not assess them.</p></div>` : ""}
       ${waveBlock}${alertBlock}
-      ${reportsHtml(reports)}
+      <div id="reportsSlot">${e.reports || shownReports.has(e.id) ? reportsHtml((e.reports || shownReports.get(e.id)).slice().sort((a, b) => Date.parse(b.time) - Date.parse(a.time)))
+        : '<h2 class="reports-title">Reports</h2><p class="muted">Loading reports\u2026</p>'}</div>
       ${news.length ? `<h2 class="reports-title">News coverage nearby (${e.news_nearby || news.length} outlets)</h2>
         <ul class="news-links">${news.map((u) => `<li><a href="${esc(safeUrl(u))}" target="_blank" rel="noopener noreferrer">${esc(u.replace(/^https?:\/\/(www\.)?/, "").slice(0, 80))}</a></li>`).join("")}</ul>` : ""}
       <p class="event-id">Event id <code>${esc(e.id)}</code></p>
     `, refresh);
+    if (!e.reports) fillReports(e);
   }
 
   function selectFlow(key, pledge = false) {

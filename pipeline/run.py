@@ -32,6 +32,7 @@ import geo  # noqa: E402
 import control  # noqa: E402
 import hunter  # noqa: E402
 import merge  # noqa: E402
+import publish  # noqa: E402
 import recency  # noqa: E402
 from common import hours_since, http_session, iso, load_json, log, now, save_json  # noqa: E402
 from sources import bluesky, gdelt, maproom, rss, telegram  # noqa: E402
@@ -320,8 +321,8 @@ def main() -> int:
         "sources": [dict(id=k, **v) for k, v in sorted(state["health"].items(), key=lambda kv: kv[1]["name"].lower())],
         "run": state["last_run"],
     }
-    save_json(out_dir / "events.json", public)
-    log(f"[done] {len(events)} events, {len(cells)} cells in {state['last_run']['seconds']}s")
+    size = publish.write(out_dir, public)  # events.json, and the reports apart (see publish.py)
+    log(f"[done] {len(events)} events, {len(cells)} cells, events.json {size // 1024} KB, in {state['last_run']['seconds']}s")
     return 0
 
 
