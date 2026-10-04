@@ -27,6 +27,7 @@ import datecheck  # noqa: E402
 import dedupe  # noqa: E402
 import extract  # noqa: E402
 import fleet  # noqa: E402
+import flights  # noqa: E402
 import frontline  # noqa: E402
 import geo  # noqa: E402
 import control  # noqa: E402
@@ -114,6 +115,9 @@ def main() -> int:
     items += bluesky.search(cfg.sources.get("bluesky_search"), cfg.sources["bluesky"], session, health, t0)
     items += rss.fetch(cfg.sources["rss"], session, health, lookback_h // 24, cfg.outlets)
     items += telegram.fetch(cfg.sources["telegram"], state, health)
+    # Flight agent: notable military aircraft from open ADS-B data (no model); group take-offs and
+    # landings at watched bases become reports in the queue.
+    items += flights.update(state, session, health, t0, cfg.flight_bases)
     log(f"[fetch] {len(items)} items")
     # Google News reports stored before outlets were told apart carry only the search's name;
     # credit them to the outlet that published them (once over the past week, then as seen).
@@ -287,6 +291,7 @@ def main() -> int:
     configured |= {f"rss:{s.get('id') or s['url']}" for s in cfg.sources["rss"]}
     configured |= {f"tg:{s['username'].lstrip('@')}" for s in cfg.sources["telegram"]}
     configured.add("gdelt")
+    configured.add(flights.SOURCE_ID)
     configured.add(bluesky.SEARCH_ID)
     configured.add("maproom")
     configured |= {f"control:{l['id']}" for l in control_layers}
@@ -322,6 +327,7 @@ def main() -> int:
         "control": control.public(state, control_layers, t0),
         "frontline": frontline.public(state, cfg.frontlines, t0),
         "fleet": fleet.public(state, t0),
+        "flights": flights.public(state, t0),
         "fleet_meta": {k: (state.get("fleet_meta") or {}).get(k) for k in ("tracker_time", "tracker_url")},
         "sources": [dict(id=k, **v) for k, v in sorted(state["health"].items(), key=lambda kv: kv[1]["name"].lower())],
         "run": state["last_run"],

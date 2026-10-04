@@ -4673,5 +4673,103 @@
 }
 ],
 "theaters": []
+},
+"flights": {
+"as_of": "2026-09-26T17:50:00Z",
+"attribution": "Sample data, not real. Live flight data: adsb.lol contributors, open data under the ODbL 1.0 licence",
+"license_url": "https://opendatacommons.org/licenses/odbl/1-0/",
+"link": "https://adsb.lol/",
+"aircraft": [
+{
+"hex": "d00001",
+"callsign": "SAMPLE1",
+"reg": "",
+"type": "K35R",
+"role": "tanker",
+"label": "Sample KC-135 tanker (not real)",
+"op": null,
+"lat": 44.6,
+"lon": 33.0,
+"alt": 28000,
+"gs": 420,
+"heading": 95,
+"seen": "2026-09-26T17:48:00Z",
+"since": "2026-09-26T16:30:00Z",
+"track": [
+[
+44.2,
+30.5
+],
+[
+44.4,
+31.8
+],
+[
+44.6,
+33.0
+]
+]
+},
+{
+"hex": "d00002",
+"callsign": "SAMPLE2",
+"reg": "",
+"type": "R135",
+"role": "surveillance",
+"label": "Sample RC-135 reconnaissance (not real)",
+"op": null,
+"lat": 43.2,
+"lon": 35.4,
+"alt": 31000,
+"gs": 380,
+"heading": 80,
+"seen": "2026-09-26T17:48:00Z",
+"since": "2026-09-26T16:30:00Z",
+"track": [
+[
+42.8,
+32.9
+],
+[
+43.0,
+34.1
+],
+[
+43.2,
+35.4
+]
+]
+},
+{
+"hex": "d00003",
+"callsign": "SAMPLE3",
+"reg": "",
+"type": "C17",
+"role": "airlift",
+"label": "Sample C-17 transport (not real)",
+"op": "US Air Mobility Command",
+"lat": 50.1,
+"lon": 21.9,
+"alt": 12000,
+"gs": 300,
+"heading": 92,
+"seen": "2026-09-26T17:48:00Z",
+"since": "2026-09-26T16:30:00Z",
+"track": [
+[
+49.7,
+15.2
+],
+[
+49.9,
+18.6
+],
+[
+50.1,
+21.9
+]
+]
+}
+]
 }
 }
