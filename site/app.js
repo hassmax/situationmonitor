@@ -216,7 +216,6 @@
     query: "",
     feedLimit: 250,
     selectedId: null,
-    replayT: null,      // during a replay: the moment the replay has reached (later events wait)
     arrived: null,      // ids of events that just arrived (they slide into the feed once)
     selectedHull: null,
     selectedFlow: null,
@@ -231,8 +230,6 @@
     lastFocus: null,
     sheet: 1,
   };
-
-  let replay = null;  // a replay in progress (startReplay)
 
   // ------------------------------------------------------------------ globe
   const globeEl = $("#globe");
@@ -480,7 +477,7 @@
 
   // Lines, dots and rings keep their identity from one render to the next (same key, same object),
   // so ones already drawn don't rise from the ground again and rings don't restart; new ones still
-  // rise in, which is how a launch line appears during a replay.
+  // rise in.
   const stableSets = { arcs: {}, dots: {}, rings: {} };
   Object.values(stableSets).forEach((st) => { st.prev = new Map(); st.next = new Map(); });
   function stable(kind, key, obj) {
@@ -1075,7 +1072,6 @@
   const theaterShown = (id) => S.theaterOn.has(id) || unlisted().has(id);
   function passes(e, ignoreTheater = false) {
     if (e._t < Date.now() - S.windowH * HOUR) return false;
-    if (S.replayT !== null && e._t > S.replayT) return false;
     if (!ignoreTheater && !theaterShown(e.theater)) return false;
     if (!S.statusOn.has(e.status)) return false;
     if (S.off.has(legendKey(e))) return false;
@@ -1094,7 +1090,7 @@
     return doubt * clamp(1 - ((age - 6 * HOUR) / (S.windowH * HOUR - 6 * HOUR)) * 0.6, 0.4, 1);
   }
 
-  // One ring from an event's spot, in its own color: a new event arriving, or landing during a replay.
+  // One ring from an event's spot, in its own color: a new event arriving.
   const landRing = (e, max = 4.5) => flashRing(e.lat, e.lon, CAT_RGB[catOf(e)[0]] || CAT_RGB.strike, max, 1800);
 
   // Opening a drone or missile attack runs its launch lines once: a bright dash travels each line
@@ -1136,7 +1132,7 @@
     const flows = new Map(), pledges = new Map();
     for (const e of S.data.events) {
       const t = e.transfer;
-      if (e.type !== "arms_transfer" || !t || e._t < since || (S.replayT !== null && e._t > S.replayT) || !theaterShown(e.theater) || !S.statusOn.has(e.status)) continue;
+      if (e.type !== "arms_transfer" || !t || e._t < since || !theaterShown(e.theater) || !S.statusOn.has(e.status)) continue;
       if (!matches(e)) continue;
       const kind = tkind(e);
       if (kind === "interdiction") continue;
@@ -1527,7 +1523,6 @@
 
   // The running UTC clock in the header.
   function tickClock() {
-    if (replay) return;  // the replay drives the clock
     const d = new Date(), p = (n) => String(n).padStart(2, "0");
     const el = document.getElementById("utcClock");
     if (el) el.textContent = `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())} UTC`;
@@ -1540,9 +1535,7 @@
     const span = { 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[S.windowH];
     const fighting = events.filter(onMap);
     const now = [fighting.length, fighting.filter((e) => e.status === "corroborated").length];
-    $("#tally").innerHTML = S.replayT !== null
-      ? `<strong>${now[0]}</strong> events so far, <strong>${now[1]}</strong> corroborated`
-      : `<strong>${now[0]}</strong> events in the last ${span}, <strong>${now[1]}</strong> corroborated`;
+    $("#tally").innerHTML = `<strong>${now[0]}</strong> events in the last ${span}, <strong>${now[1]}</strong> corroborated`;
     // counts tick up or down to their new values
     if (tallyWas && !reduceMotion && (tallyWas[0] !== now[0] || tallyWas[1] !== now[1])) {
       const els = [...$("#tally").querySelectorAll("strong")], from = tallyWas.slice(), t0 = performance.now();
@@ -1714,65 +1707,6 @@
     $("#liveTag").hidden = age >= 45 * 60e3;   // "Live" only while the data is fresh
     $("#beacon").className = "beacon " + (age < 45 * 60e3 ? "ok" : age < 3 * HOUR ? "stale" : "dead");
     $("#freshText").textContent = age < 3 * HOUR ? `Updated ${ago(t)}` : `Updated ${ago(t)}. The update job may be paused.`;
-  }
-
-  // ------------------------------------------------------------------ replay
-  // Plays the time window back: events land in the order they happened (time, not when they were
-  // reported), launch lines rise as their events land, and the header clock runs fast. Nothing is
-  // invented: the map simply holds back each event until the replay reaches its time.
-  const REPLAY_MS = { 6: 12000, 24: 18000, 72: 22000, 168: 26000 };
-  const utcStamp = (ms) => { const d = new Date(ms), p = (n) => String(n).padStart(2, "0");
-    return `${d.toLocaleDateString(undefined, { month: "short", day: "numeric", timeZone: "UTC" })} ${p(d.getUTCHours())}:${p(d.getUTCMinutes())} UTC`; };
-  function replayButton() {
-    const b = $("#replayBtn");
-    b.setAttribute("aria-pressed", String(!!replay));
-    b.querySelector(".replay-label").textContent = replay ? "Stop" : "Replay";
-    b.title = replay ? "Stop the replay (Esc)" : `Replay the ${windowText()} on the map`;
-    if (!replay) b.style.setProperty("--p", "0");
-  }
-  function startReplay() {
-    if (!S.data) return;
-    if (!$("#detail").hidden) { S.selectedId = null; S.selectedHull = null; S.selectedFlow = null; hideDetail(); }
-    if (isMobile()) toggleFilters(false);
-    const to = Date.now();
-    replay = { start: performance.now(), dur: REPLAY_MS[S.windowH] || 20000, from: to - S.windowH * HOUR, to, last: 0, at: to - S.windowH * HOUR };
-    S.replayT = replay.from;
-    document.body.classList.add("replaying");
-    replayButton();
-    render();
-    replay.raf = requestAnimationFrame(tickReplay);
-  }
-  function tickReplay(now) {
-    if (!replay) return;
-    const k = clamp((now - replay.start) / replay.dur, 0, 1);
-    const T = replay.from + (replay.to - replay.from) * k;
-    $("#replayBtn").style.setProperty("--p", k.toFixed(3));
-    $("#utcClock").textContent = utcStamp(T);
-    if (now - replay.last > (PHONE ? 450 : 280) || k === 1) {
-      replay.last = now;
-      S.replayT = T;
-      const landed = S.data.events.filter((e) => e._t > replay.at && e._t <= T && onMap(e) && passes(e));
-      replay.at = T;
-      if (landed.length) {
-        S.arrived = new Set(landed.map((e) => e.id));
-        render();
-        S.arrived = null;
-        landed.filter((e) => e.severity >= 2 || e.wave).slice(0, 6).forEach((e) => landRing(e, 3.5));
-      }
-    }
-    if (k < 1) replay.raf = requestAnimationFrame(tickReplay);
-    else replay.raf = setTimeout(() => stopReplay(), 1200);  // a moment on the full picture, then live again
-  }
-  function stopReplay() {
-    if (!replay) return;
-    cancelAnimationFrame(replay.raf);
-    clearTimeout(replay.raf);
-    replay = null;
-    S.replayT = null;
-    document.body.classList.remove("replaying");
-    replayButton();
-    tickClock();
-    render();
   }
 
   // ------------------------------------------------------------------ details
@@ -2039,9 +1973,8 @@
   function wire() {
     $("#windowSeg").addEventListener("click", (ev) => {
       const b = ev.target.closest("[data-window]");
-      if (b) { stopReplay(); setWindow(Number(b.dataset.window)); render(); replayButton(); }
+      if (b) { setWindow(Number(b.dataset.window)); render(); }
     });
-    $("#replayBtn").addEventListener("click", () => (replay ? stopReplay() : startReplay()));
     $("#filters").addEventListener("change", (ev) => {
       const t = ev.target;
       if (t.dataset.theater) t.checked ? S.theaterOn.add(t.dataset.theater) : S.theaterOn.delete(t.dataset.theater);
@@ -2098,8 +2031,7 @@
     document.addEventListener("keydown", (ev) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
       if (ev.key === "Escape") {
-        if (replay) stopReplay();
-        else if (!$("#detail").hidden) closeDetail();
+        if (!$("#detail").hidden) closeDetail();
         else if ($("#filters").classList.contains("open")) toggleFilters(false);
       }
       if (typing) return;

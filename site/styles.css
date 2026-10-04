@@ -1348,34 +1348,6 @@ body::after {
 .tip-list li b { color: var(--ink); font-weight: 600; }
 .tip-list li time { color: var(--ink-3); font-variant-numeric: tabular-nums; }
 
-/* replay: a small button beside "Time"; it fills as the replay runs */
-.replay {
-  --p: 0;
-  position: relative; overflow: hidden;
-  display: inline-flex; align-items: center; gap: 5px;
-  border: 1px solid rgba(var(--accent-rgb), 0.45);
-  background: rgba(var(--accent-rgb), 0.08);
-  color: var(--ink);
-  border-radius: 999px;
-  padding: 2px 10px 2px 7px;
-  font: inherit; font-size: 12px; font-weight: 600; letter-spacing: 0; text-transform: none;
-  cursor: pointer;
-  transition: background-color 0.25s ease, border-color 0.25s ease;
-}
-.replay::before {
-  content: ""; position: absolute; inset: 0; z-index: 0;
-  background: rgba(var(--accent-rgb), 0.32);
-  transform-origin: left; transform: scaleX(var(--p));
-}
-.replay > * { position: relative; z-index: 1; }
-.replay svg { width: 11px; height: 11px; color: var(--accent); }
-.replay:hover { background: rgba(var(--accent-rgb), 0.16); border-color: rgba(var(--accent-rgb), 0.7); }
-.replay:active { scale: 0.97; }
-.replay .replay-stop, .replay[aria-pressed="true"] .replay-play { display: none; }
-.replay[aria-pressed="true"] .replay-stop { display: block; }
-body.replaying .live-clock { color: var(--accent); }
-body.replaying .live-clock .live-tag { display: none; }
-
 /* before the events arrive, the feed shows the shape of what's coming */
 .skel { list-style: none; padding: 12px 10px; display: grid; gap: 7px; }
 .skel span { display: block; height: 10px; border-radius: 5px; background: linear-gradient(90deg, rgba(255, 255, 255, 0.05) 30%, rgba(255, 255, 255, 0.11) 50%, rgba(255, 255, 255, 0.05) 70%) 0 0 / 300% 100%; animation: skel 1.4s ease-in-out infinite; }
