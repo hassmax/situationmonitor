@@ -75,6 +75,7 @@
   const PLATFORM = { bluesky: "Bluesky", telegram: "Telegram", rss: "News feed", gdelt: "GDELT", map: "Map data", maproom: "ISW map" };
   const KIND = { official: "Official", partisan: "Partisan", osint: "OSINT", news: "News", analysis: "Analysis" };
   const WINDOWS = [["6h", 6], ["24h", 24], ["3d", 72], ["7d", 168]];
+  const ACCENT = [255, 90, 54];  // live, new and selected (styles.css --accent)
   const FALLBACK_THEATERS = [
     { id: "ukraine", name: "Russia–Ukraine", camera: { lat: 48.5, lng: 34, altitude: 0.85 }, highlight: ["804"] },
     { id: "nato_east", name: "NATO flank and hybrid", camera: { lat: 56, lng: 22, altitude: 1.1 }, highlight: ["233", "428", "440", "246", "616"] },
@@ -215,6 +216,7 @@
     query: "",
     feedLimit: 250,
     selectedId: null,
+    arrived: null,      // ids of events that just arrived (they slide into the feed once)
     selectedHull: null,
     selectedFlow: null,
     hot: new Set(),
@@ -236,12 +238,12 @@
     .backgroundColor("rgba(0,0,0,0)")
     .showGraticules(false)
     .showAtmosphere(true)
-    .atmosphereColor("#5aaee6")
+    .atmosphereColor("#2f8fe0")
     .atmosphereAltitude(0.16)
     .pointOfView({ lat: 18, lng: 10, altitude: 3.1 });
   const mat = world.globeMaterial();
-  mat.color.set("#0b1f36");
-  if (mat.emissive) mat.emissive.set("#06121f");
+  mat.color.set("#05090f");
+  if (mat.emissive) mat.emissive.set("#04080d");
   mat.shininess = 5;
   const controls = world.controls();
   controls.autoRotate = false;
@@ -267,6 +269,32 @@
     }, 350);
   });
 
+  // Map icons sway a little and settle with a soft bounce when the globe turns: they trail the
+  // surface's motion (a spring toward an offset against its velocity), so when the globe stops
+  // they overshoot and settle. One offset on the globe (--jx/--jy); each icon follows by its --jk.
+  if (!reduceMotion) {
+    let jx = 0, jy = 0, vx = 0, vy = 0, last = null, raf = 0, still = 0;
+    const step = () => {
+      raf = 0;
+      let ux = 0, uy = 0;
+      if (last) {
+        const p = world.getScreenCoords(last.lat, last.lng, 0);  // where last frame's center point is now
+        if (p && isFinite(p.x)) { ux = p.x - last.x; uy = p.y - last.y; }
+      }
+      const pov = world.pointOfView(), here = world.getScreenCoords(pov.lat, pov.lng, 0);
+      last = here && isFinite(here.x) ? { lat: pov.lat, lng: pov.lng, x: here.x, y: here.y } : null;
+      const tx = clamp(-ux * 0.55, -9, 9), ty = clamp(-uy * 0.55, -9, 9);   // trail behind the motion
+      vx = (vx + (tx - jx) * 0.14) * 0.8; vy = (vy + (ty - jy) * 0.14) * 0.8;  // underdamped: a soft bounce
+      jx += vx; jy += vy;
+      globeEl.style.setProperty("--jx", `${jx.toFixed(2)}px`);
+      globeEl.style.setProperty("--jy", `${jy.toFixed(2)}px`);
+      still = Math.abs(ux) + Math.abs(uy) < 0.05 && Math.abs(jx) + Math.abs(jy) + Math.abs(vx) + Math.abs(vy) < 0.05 ? still + 1 : 0;
+      if (still < 3) raf = requestAnimationFrame(step);
+      else { last = null; globeEl.style.setProperty("--jx", "0px"); globeEl.style.setProperty("--jy", "0px"); }
+    };
+    controls.addEventListener("change", () => { still = 0; if (!raf) raf = requestAnimationFrame(step); });
+  }
+
   // ------------------------------------------------------------------ land, borders, country centers
   const centers = new Map();
   function sanitize(f) {
@@ -285,8 +313,8 @@
     return { lat: (Math.atan2(z, Math.hypot(x, y)) * 180) / Math.PI, lon: (Math.atan2(y, x) * 180) / Math.PI };
   }
   const countryCenter = (iso2) => REP_POINT[iso2] || centers.get(ISO_NUM.get(iso2)) || null;
-  const landColor = (f) => (S.active.has(f.id) ? "#3a6a98" : S.hot.has(f.id) ? "#2a4f75" : "#1e3a59");
-  const OCEAN = "#0b1f36";
+  const landColor = (f) => (S.active.has(f.id) ? "#1f3448" : S.hot.has(f.id) ? "#152536" : "#0e1620");
+  const OCEAN = "#05090f";
   // Territorial control (see controlNote): the source's shapes, painted onto the globe with the land.
   const CONTROL_FILL = { occupied: "rgba(214,174,110,0.55)", advance: "rgba(245,165,36,0.9)" };
   const CONTROL_LINE = "rgba(236,212,160,0.75)";
@@ -294,7 +322,7 @@
   const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(String(h || "#999999").slice(i, i + 2), 16));
   const AREA_ALPHA = { occupied: 0.5, claimed: 0.22 };
   const pathColorOf = (p) => (p.control ? (p.color ? rgba(hexRgb(p.color), p.faint ? 0.45 : 0.85) : CONTROL_LINE) : borderColor(p.fid));
-  const borderColor = (id) => (S.active.has(id) ? "rgba(255,166,122,0.8)" : S.hot.has(id) ? "rgba(150,195,235,0.3)" : "rgba(150,190,230,0.12)");
+  const borderColor = (id) => (S.active.has(id) ? "rgba(255,120,82,0.9)" : S.hot.has(id) ? "rgba(120,190,245,0.45)" : "rgba(120,180,235,0.22)");
 
   fetch("assets/countries-110m.json")
     .then((r) => r.json())
@@ -311,7 +339,9 @@
         .pathsData(borders).pathPoints("pts").pathPointLat((p) => p[1]).pathPointLng((p) => p[0]).pathPointAlt(0.0045)
         .pathTransitionDuration(0).pathColor(pathColorOf)
         // traced (approximate) areas get a dashed edge; dash sizes are fractions of the ring's length
-        .pathDashLength((p) => (p.approx ? 0.006 : 1)).pathDashGap((p) => (p.approx ? 0.004 : 0));
+        .pathDashLength((p) => (p.approx ? 0.006 : 1)).pathDashGap((p) => (p.approx ? 0.004 : 0))
+        // front lines (the dashed edges of held ground) flow slowly along their length
+        .pathDashAnimateTime((p) => (p.control && p.approx && !reduceMotion ? 90000 : 0));
       if (S.data) render();
     })
     .catch(() => {});
@@ -372,6 +402,13 @@
     const X = (lon) => ((lon + 180) / 360) * W, Y = (lat) => ((90 - lat) / 180) * H;
     g.fillStyle = OCEAN;
     g.fillRect(0, 0, W, H);
+    // a fine 10° grid on the ocean, painted into the same picture (no extra layer)
+    g.strokeStyle = "rgba(70, 130, 190, 0.16)";
+    g.lineWidth = W / 4096;
+    g.beginPath();
+    for (let lon = -180; lon <= 180; lon += 10) { g.moveTo(X(lon), 0); g.lineTo(X(lon), H); }
+    for (let lat = -80; lat <= 80; lat += 10) { g.moveTo(0, Y(lat)); g.lineTo(W, Y(lat)); }
+    g.stroke();
     for (const f of landShapes) {
       g.fillStyle = landColor(f);
       g.beginPath();
@@ -480,6 +517,7 @@
       el = document.createElement("div");
       el.className = "mk";
       el.innerHTML = '<button type="button" class="mk-in"></button>';
+      el.firstChild.style.setProperty("--jk", (0.55 + Math.random() * 0.8).toFixed(2));  // how much it sways
       el.firstChild.addEventListener("pointerdown", (ev) => ev.stopPropagation());
       elCache.set(key, el);
     }
@@ -886,7 +924,12 @@
     S.data = data;
     if (before) {
       const fresh = data.events.filter((e) => !before.has(e.id) && onMap(e) && passes(e));
-      if (fresh.length) announce(`${fresh.length} new ${fresh.length === 1 ? "event" : "events"} added`);
+      if (fresh.length) {
+        announce(`${fresh.length} new ${fresh.length === 1 ? "event" : "events"} added`);
+        // they slide into the feed; only on this render, so later redraws don't replay it
+        S.arrived = new Set(fresh.map((e) => e.id));
+        setTimeout(() => { S.arrived = null; }, 1500);
+      }
     }
 
     renderTheaters();
@@ -1323,9 +1366,9 @@
       }
     }
     const sel = S.selectedId && events.find((e) => e.id === S.selectedId);
-    if (sel) rings.push({ lat: sel.lat, lon: sel.lon, rgb: [234, 240, 246], alpha: 0.85, max: 4, speed: reduceMotion ? 0 : 2.2, period: 1200 });
+    if (sel) rings.push({ lat: sel.lat, lon: sel.lon, rgb: ACCENT, alpha: 0.9, max: 4, speed: reduceMotion ? 0 : 2.2, period: 1200 });
     const selC = S.selectedHull && S.fleet.find((c) => c.hull === S.selectedHull);
-    if (selC) rings.push({ lat: selC._lat, lon: selC._lon, rgb: [234, 240, 246], alpha: 0.85, max: 4, speed: reduceMotion ? 0 : 2.2, period: 1200 });
+    if (selC) rings.push({ lat: selC._lat, lon: selC._lon, rgb: ACCENT, alpha: 0.9, max: 4, speed: reduceMotion ? 0 : 2.2, period: 1200 });
     world.ringsData(rings);
 
     const routeArcs = [...supplyArcs(S.supply.flows), ...(S.layers.carriers ? fleetArcs() : [])];
@@ -1383,10 +1426,33 @@
     renderControlNote();
   }
 
+  // The running UTC clock in the header.
+  function tickClock() {
+    const d = new Date(), p = (n) => String(n).padStart(2, "0");
+    const el = document.getElementById("utcClock");
+    if (el) el.textContent = `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())} UTC`;
+  }
+  tickClock();
+  setInterval(tickClock, 1000);
+
+  let tallyWas = null;
   function renderTally(events) {
     const span = { 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[S.windowH];
     const fighting = events.filter(onMap);
-    $("#tally").innerHTML = `<strong>${fighting.length}</strong> events in the last ${span}, <strong>${fighting.filter((e) => e.status === "corroborated").length}</strong> corroborated`;
+    const now = [fighting.length, fighting.filter((e) => e.status === "corroborated").length];
+    $("#tally").innerHTML = `<strong>${now[0]}</strong> events in the last ${span}, <strong>${now[1]}</strong> corroborated`;
+    // counts tick up or down to their new values
+    if (tallyWas && !reduceMotion && (tallyWas[0] !== now[0] || tallyWas[1] !== now[1])) {
+      const els = [...$("#tally").querySelectorAll("strong")], from = tallyWas.slice(), t0 = performance.now();
+      els.forEach((el) => el.classList.add("ticked"));
+      const run = (t) => {
+        const k = Math.min(1, (t - t0) / 650), e = 1 - Math.pow(1 - k, 3);
+        els.forEach((el, i) => { el.textContent = String(Math.round(from[i] + (now[i] - from[i]) * e)); });
+        if (k < 1) requestAnimationFrame(run); else setTimeout(() => els.forEach((el) => el.classList.remove("ticked")), 300);
+      };
+      requestAnimationFrame(run);
+    }
+    tallyWas = now;
   }
 
   // ------------------------------------------------------------------ feed and side lists
@@ -1396,7 +1462,7 @@
     if ((e.wave || e.alert) && e.targets.length) extra.push(`${e.targets.length} ${e.targets.length === 1 ? "location" : "locations"}`);
     if (e.wave && e.launched) extra.push(`${e.launched} launched`);
     if (e.legal_basis) extra.push("Legal basis stated");
-    return `<li><button class="item sev-${e.severity}${isNew(e) ? " is-new" : ""}" type="button" data-id="${esc(e.id)}" ${e.id === S.selectedId ? 'aria-current="true"' : ""}>
+    return `<li><button class="item sev-${e.severity}${isNew(e) ? " is-new" : ""}${S.arrived && S.arrived.has(e.id) ? " arrive" : ""}" type="button" data-id="${esc(e.id)}" ${e.id === S.selectedId ? 'aria-current="true"' : ""}>
       ${eventIcon(e)}
       <span>
         <span class="item-meta"><span class="item-type">${esc(typeLabel(e))}</span><span class="item-place">${esc(metaLine(e))}</span><time datetime="${esc(e.time)}">${esc(agoShort(e._t))}</time></span>
@@ -1540,8 +1606,10 @@
 
   function updateFreshness() {
     if (!S.data) return;
+    $("#liveTag").hidden = true;
     if (DEMO) { $("#beacon").className = "beacon stale"; $("#freshText").textContent = "Demo data. None of these events are real."; return; }
     const t = Date.parse(S.data.generated_at), age = Date.now() - t;
+    $("#liveTag").hidden = age >= 45 * 60e3;   // "Live" only while the data is fresh
     $("#beacon").className = "beacon " + (age < 45 * 60e3 ? "ok" : age < 3 * HOUR ? "stale" : "dead");
     $("#freshText").textContent = age < 3 * HOUR ? `Updated ${ago(t)}` : `Updated ${ago(t)}. The update job may be paused.`;
   }
@@ -1780,6 +1848,7 @@
     $("#legend").innerHTML = LEGEND.map(([icon, cat, label]) => item(icon, iconBadge(icon, cat, "solid", "ico-sm"), label)).join("")
       + item("paths", '<span class="line-swatch line-strike" aria-hidden="true"></span>', "Launch path");
     $("#windowSeg").innerHTML = WINDOWS.map(([label, h]) => `<button type="button" data-window="${h}" aria-pressed="${h === S.windowH}">${label}</button>`).join("");
+    $("#windowSeg").style.setProperty("--seg-i", String(Math.max(0, WINDOWS.findIndex(([, x]) => x === S.windowH))));
     $("#statusList").innerHTML = Object.entries(STATUS).map(([id, s]) => `
       <li><label class="check"><input type="checkbox" data-status="${id}" checked><span class="conf-swatch conf-${s.conf}" aria-hidden="true"></span><span class="label">${esc(s.label)}</span><span class="count" data-status-count="${id}"></span></label></li>`).join("");
   }
@@ -1787,6 +1856,7 @@
   function setWindow(h) {
     S.windowH = h;
     document.querySelectorAll("[data-window]").forEach((x) => x.setAttribute("aria-pressed", String(Number(x.dataset.window) === h)));
+    $("#windowSeg").style.setProperty("--seg-i", String(Math.max(0, WINDOWS.findIndex(([, x]) => x === h))));  // the sliding highlight
   }
 
   function setPanelsHidden(hidden) {
