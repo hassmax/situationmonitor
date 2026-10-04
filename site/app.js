@@ -252,7 +252,12 @@
   controls.autoRotate = false;
   controls.minDistance = 106; // globe radius is 100: close to city scale (the painted land is coarse this close)
   controls.maxDistance = 650;
-  if (PHONE) world.renderer().setPixelRatio(Math.min(1.5, window.devicePixelRatio || 1));
+  // Render sharpness: phones at most 1.5 times; other screens at their own. On a sharp screen the
+  // globe is drawn at normal sharpness while it is dragged or pinched (a 2x screen has four times
+  // the pixels to fill every frame), and at full sharpness again once it settles.
+  const fullRatio = () => (PHONE ? Math.min(1.5, window.devicePixelRatio || 1) : window.devicePixelRatio || 1);
+  const setRatio = (r) => { const rd = world.renderer(); if (Math.abs(rd.getPixelRatio() - r) > 0.01) rd.setPixelRatio(r); };
+  setRatio(fullRatio());
   // Hover testing: 20 times a second, even with the pointer still, the library tests the pointer
   // against every object on the globe (and toGlobeCoords does on every pointer move), hidden ones
   // included. The globe itself, a sphere of 8,000 triangles, was tested triangle by triangle: it
@@ -300,12 +305,14 @@
     clearTimeout(settleTimer);
     moving = true;
     document.body.classList.add("moving");
+    if (fullRatio() > 1.2) setRatio(Math.max(1, fullRatio() * 0.6));
   });
   controls.addEventListener("end", () => {
     clearTimeout(settleTimer);
     settleTimer = setTimeout(() => {
       moving = false;
       document.body.classList.remove("moving");
+      setRatio(fullRatio());
       applyZoomScale();
       queueDeclutter();
     }, 350);
@@ -564,7 +571,7 @@
     .pointLat("lat").pointLng("lon")
     .pointAltitude(0.005)
     .pointRadius((d) => (d.alert ? 0.09 : 0.13) * zoomK)
-    .pointColor((d) => rgba(CAT_RGB.strike, d.alert ? 0.5 : STATUS[d.ref.status].alpha))
+    .pointColor((d) => rgba(CAT_RGB.strike, (d.alert ? 0.5 : STATUS[d.ref.status].alpha) * dimOf(d.ref.id === S.selectedId)))
     .pointResolution(8)
     .pointLabel((d) => `<div class="tip"><div class="tip-meta"><b>${esc(d.place || "Location")}</b><span>${d.alert ? "named in an alert" : "part of an attack wave"}</span></div><div class="tip-sum">${esc(d.ref.summary)}</div></div>`)
     .onPointHover((d) => { globeEl.style.cursor = d ? "pointer" : ""; })
@@ -1262,13 +1269,13 @@
   // from the launch area to the place hit, one after another, and a small ring marks the arrival.
   // Same lines as on the map (attackPaths), so faint assumed launch areas stay as faint as before.
   let launchTimers = [];
-  function playLaunches(e, fly) {
+  function playLaunches(e, flight) {
     launchTimers.forEach(clearTimeout);
     launchTimers = [];
     if (reduceMotion || !S.layers.paths) return;
     const paths = attackPaths([e]).slice(0, 16);
     if (!paths.length) return;
-    const lead = fly ? 1000 : 150;  // let the camera arrive first
+    const lead = Math.max(150, flight - 100);  // let the camera arrive first
     paths.forEach((a, i) => {
       const ms = clamp(700 + (a.dist || 500) * 0.8, 900, 2400);
       launchTimers.push(setTimeout(() => {
@@ -1284,6 +1291,12 @@
       }, lead + i * 160));
     });
   }
+
+  // Focus: with an event, carrier or route open, everything else on the globe dims (markers in
+  // styles.css, under body.focus; lines, dots and rings here), so what you opened stands out.
+  const focused = () => !!(S.selectedId || S.selectedHull || S.selectedFlow);
+  const FOCUS_DIM = 0.28;
+  const dimOf = (isSelected) => (focused() && !isSelected ? FOCUS_DIM : 1);
 
   // ------------------------------------------------------------------ supply routes (the time window)
   // Routes follow the time filter like everything else: a route shows, and is active, when a
@@ -1382,9 +1395,10 @@
     const push = (e, o, d, approx) => {
       const dist = km(o.lat, o.lon, d.lat, d.lon);
       if (dist < 25 || (approx && dist > 1800)) return;
-      const a = Math.min(1, STATUS[e.status].alpha * fade(e) * (approx ? 0.65 : 1.15));
+      const dim = dimOf(e.id === S.selectedId);
+      const a = Math.min(1, STATUS[e.status].alpha * fade(e) * (approx ? 0.65 : 1.15)) * dim;
       arcs.push(keyed({ ref: e, sLat: o.lat, sLng: o.lon, eLat: d.lat, eLng: d.lon, kind: approx ? "strikeApprox" : "strike",
-        color: [rgba(CAT_RGB.strike, 0.12), rgba(CAT_RGB.strike, a)], stroke: approx ? 0.26 : 0.42,
+        color: [rgba(CAT_RGB.strike, 0.12 * dim), rgba(CAT_RGB.strike, a)], stroke: approx ? 0.26 : 0.42,
         ms: approx ? 3600 : 2200, seed: Math.random(), dist }, `atk|${e.id}|${o.lat},${o.lon}>${d.lat},${d.lon}`));
     };
     for (const e of events) {
@@ -1428,14 +1442,15 @@
       if (!start || !end) continue;
       const pts = [start, ...(named ? f.via : []), end];
       const stroke = clamp(0.22 + 0.2 * Math.log2(1 + f.deliveries), 0.22, 1.1);
-      const alpha = (named ? 0.75 : 0.4) * (S.selectedFlow === f.key ? 1.3 : 1);
+      const alpha = (named ? 0.75 : 0.4) * (S.selectedFlow === f.key ? 1.3 : 1) * dimOf(S.selectedFlow === f.key);
       const sea = f.modes.length === 1 && f.modes[0] === "sea";
       for (let i = 0; i < pts.length - 1; i++) {
         const a = pts[i], b = pts[i + 1];
         if (km(a.lat, a.lon, b.lat, b.lon) < 25) continue;
         const lift = sea ? 0.002 : 0.012;
         arcs.push(...surfaceArcs(a, b, { _k: `sup|${f.key}|${i}`, flow: f, kind: f.status === "corroborated" ? "flow" : "flowDashed", color: rgba(f.money ? CAT_RGB.aid : CAT_RGB.supply, Math.min(1, alpha)), stroke, ms: 0, seed: 0 }, lift));
-        if (f.active) arcs.push(...surfaceArcs(a, b, { _k: `sup|${f.key}|${i}|p`, flow: f, kind: "particles", color: [rgba([220, 250, 252], 0.25), rgba([220, 250, 252], 0.95)], stroke: Math.max(0.3, stroke * 0.8), ms: 1800, seed: Math.random() }, lift + 0.001));
+        const pd = dimOf(S.selectedFlow === f.key);
+        if (f.active) arcs.push(...surfaceArcs(a, b, { _k: `sup|${f.key}|${i}|p`, flow: f, kind: "particles", color: [rgba([220, 250, 252], 0.25 * pd), rgba([220, 250, 252], 0.95 * pd)], stroke: Math.max(0.3, stroke * 0.8), ms: 1800, seed: Math.random() }, lift + 0.001));
       }
     }
     return arcs;
@@ -1553,15 +1568,16 @@
     const arcs = [];
     for (const c of S.fleet) {
       if (!carrierOnMap(c)) continue;
+      const dim = dimOf(c.hull === S.selectedHull);
       // where it came from: faint and still
       if (c.prev && c._moved && Date.now() - c._moved < 14 * DAY && km(c.prev.lat, c.prev.lon, c._lat, c._lon) > 100) {
         arcs.push(...alongSea({ lat: c.prev.lat, lon: c.prev.lon }, { lat: c._lat, lon: c._lon },
-          { _k: `cvn|${c.hull}|track`, carrier: c, kind: "track", color: rgba(CAT_RGB.fleet, 0.28), stroke: 0.2, ms: 0, seed: 0 }, 0.002));
+          { _k: `cvn|${c.hull}|track`, carrier: c, kind: "track", color: rgba(CAT_RGB.fleet, 0.28 * dim), stroke: 0.2, ms: 0, seed: 0 }, 0.002));
       }
       // where it is headed: dashes flow from the last reported position toward the stated destination
       if (c.heading_to && km(c._lat, c._lon, c.heading_to.lat, c.heading_to.lon) > 100) {
         arcs.push(...alongSea({ lat: c._lat, lon: c._lon }, c.heading_to,
-          { _k: `cvn|${c.hull}|plan`, carrier: c, kind: "plan", color: rgba(CAT_RGB.fleet, 0.7), stroke: 0.3, ms: 6000, seed: 0 }, 0.002));
+          { _k: `cvn|${c.hull}|plan`, carrier: c, kind: "plan", color: rgba(CAT_RGB.fleet, 0.7 * dim), stroke: 0.3, ms: 6000, seed: 0 }, 0.002));
       }
     }
     return arcs;
@@ -1584,12 +1600,44 @@
   }
 
   // ------------------------------------------------------------------ render
-  function render() {
-    if (!S.data) return;
-    newFrame();
+  // A render has two halves: the lists (feed, counts, tally, side lists), and the globe (markers,
+  // lines, dots, rings, land). render() does both at once. The controls (time window, "On the
+  // map", theaters, confidence, search) use renderSoon(): the pressed button paints first, the
+  // lists on the next frame and the globe on the one after, so a click answers at once even when
+  // the globe takes a moment on a phone. A newer click or a full render supersedes a pending one.
+  function frameData() {
     const events = visibleEvents();
     const mapEvents = markerPick(events.filter(onMap));
     S.supply = buildSupply();
+    return { events, mapEvents };
+  }
+  function renderLists({ events }) {
+    renderCounts();
+    renderTally(events);
+    renderSideLists();
+    if ($("#detail").hidden) renderFeed(events);
+  }
+  let renderGen = 0;
+  const afterPaint = (fn) => requestAnimationFrame(() => setTimeout(fn, 0));
+  function renderSoon() {
+    if (!S.data) return;
+    const gen = ++renderGen;
+    afterPaint(() => {
+      if (gen !== renderGen) return;
+      renderLists(frameData());
+      afterPaint(() => { if (gen === renderGen) renderGlobe(frameData()); });
+    });
+  }
+  function render() {
+    if (!S.data) return;
+    renderGen++;  // anything pending is covered by this
+    const d = frameData();
+    renderGlobe(d);
+    renderLists(d);
+  }
+  function renderGlobe({ events, mapEvents }) {
+    newFrame();
+    document.body.classList.toggle("focus", focused());
 
     // HTML markers: events (labels on the most important, and on alert groups), carriers
     const labelled = new Set(mapEvents.filter((e) => e.severity >= 3 || e.wave).sort((a, b) => b.severity - a.severity || b._t - a._t).slice(0, 5).map((e) => e.id));
@@ -1619,7 +1667,7 @@
         if (!e.wave || !isLive(e)) continue;
         e.targets.slice(0, 12).forEach((t, i) => {
           if (rings.length >= 30) return;
-          rings.push(stable("rings", `wave|${e.id}|${i}`, { lat: t.lat, lon: t.lon, rgb: CAT_RGB.strike, alpha: 0.55, max: 1.6, speed: 1.2, period: 1500 + Math.random() * 1500 }));
+          rings.push(stable("rings", `wave|${e.id}|${i}`, { lat: t.lat, lon: t.lon, rgb: CAT_RGB.strike, alpha: 0.55 * dimOf(e.id === S.selectedId), max: 1.6, speed: 1.2, period: 1500 + Math.random() * 1500 }));
         });
       }
     }
@@ -1634,10 +1682,6 @@
     baseArcs = [...attackPaths(mapEvents), ...routeArcs, ...hitArcs(routeArcs)];
     pushArcs();
     updateActive(mapEvents);
-    renderCounts();
-    renderTally(events);
-    renderSideLists();
-    if ($("#detail").hidden) renderFeed(events);
     queueDeclutter();
     if (!hoverLight) requestAnimationFrame(() => setTimeout(lightenHover, 0));  // once the new objects exist
   }
@@ -1917,7 +1961,14 @@
     render();
     if (S.lastFocus) { const again = document.querySelector(`[data-id="${CSS.escape(S.lastFocus)}"]`); if (again) again.focus(); }
   }
-  const zoomTo = (lat, lng, altitude) => world.pointOfView({ lat, lng, altitude }, reduceMotion ? 0 : 1100);
+  // Camera moves take as long as the trip: a short hop is quick, a flight across the world slower
+  // (it was 1.1 s for every move).
+  function flyMs(lat, lng, altitude) {
+    const pov = world.pointOfView();
+    const zoom = Math.abs(Math.log2(Math.max(0.05, altitude) / Math.max(0.05, pov.altitude)));
+    return Math.round(clamp(420 + 0.11 * km(pov.lat, pov.lng, lat, lng) + 260 * zoom, 420, 1900));
+  }
+  const zoomTo = (lat, lng, altitude) => world.pointOfView({ lat, lng, altitude }, reduceMotion ? 0 : flyMs(lat, lng, altitude));
 
   // The reports behind each event are published apart from the events (pipeline/publish.py), in
   // REPORT_BUCKETS small files chosen by a hash of the event id, and fetched when an event is opened
@@ -1970,13 +2021,19 @@
     const e = S.data && S.data.events.find((x) => x.id === id);
     if (!e) return;
     hotEvent(null);
-    if (id !== S.selectedId) playLaunches(e, fly);
+    const fresh = id !== S.selectedId;
     S.selectedId = id; S.selectedHull = null; S.selectedFlow = null;
     markViewed(id);
     history.replaceState(null, "", "#" + encodeURIComponent(id));
-    if (fly) zoomTo(e.lat, e.lon, Math.min(world.pointOfView().altitude, (e.wave || e.alert) && e.targets.length > 3 ? 1.45 : 1.15));
+    let flight = 0;
+    if (fly) {
+      const alt = Math.min(world.pointOfView().altitude, (e.wave || e.alert) && e.targets.length > 3 ? 1.45 : 1.15);
+      flight = reduceMotion ? 0 : flyMs(e.lat, e.lon, alt);
+      world.pointOfView({ lat: e.lat, lng: e.lon, altitude: alt }, flight);
+    }
+    if (fresh) playLaunches(e, flight);
     renderEventDetail(e);
-    render();
+    renderSoon();  // the details show at once; the globe follows a frame later
   }
 
   function renderEventDetail(e, refresh = false) {
@@ -2053,7 +2110,7 @@
       <h2 class="reports-title">${isPledge ? "Announcements" : "Reported deliveries"} (${f.events.length})</h2>
       <ul class="targets">${f.events.map((e) => `<li><button class="target" type="button" data-event="${esc(e.id)}"><span>${esc(e.summary)}</span><span class="target-meta">${esc(agoShort(e._t))}</span></button></li>`).join("")}</ul>
     `);
-    render();
+    renderSoon();
   }
 
   function selectCarrier(hull, fly) {
@@ -2063,7 +2120,7 @@
     history.replaceState(null, "", "#" + encodeURIComponent(hull));
     if (fly) zoomTo(c._lat, c._lon, clamp(world.pointOfView().altitude, 1.3, 1.8));
     renderCarrierDetail(c);
-    render();
+    renderSoon();
     if (isMobile()) toggleFilters(false);
   }
 
@@ -2147,7 +2204,7 @@
     S.layers = { paths: !S.off.has("paths"), supply: !S.off.has("crate"), carriers: !S.off.has("carrier") };
     $("#legendReset").hidden = !S.off.size;
     $("#legendNone").hidden = S.off.size >= items.length;
-    render();
+    renderSoon();
   }
 
   function buildStaticControls() {
@@ -2183,13 +2240,13 @@
   function wire() {
     $("#windowSeg").addEventListener("click", (ev) => {
       const b = ev.target.closest("[data-window]");
-      if (b) { setWindow(Number(b.dataset.window)); render(); }
+      if (b) { setWindow(Number(b.dataset.window)); renderSoon(); }
     });
     $("#filters").addEventListener("change", (ev) => {
       const t = ev.target;
       if (t.dataset.theater) t.checked ? S.theaterOn.add(t.dataset.theater) : S.theaterOn.delete(t.dataset.theater);
       if (t.dataset.status) t.checked ? S.statusOn.add(t.dataset.status) : S.statusOn.delete(t.dataset.status);
-      render();
+      renderSoon();
     });
     $("#legend").addEventListener("click", (ev) => {
       const b = ev.target.closest("[data-legend]");
@@ -2212,7 +2269,7 @@
       const fly = ev.target.closest("[data-fly]");
       if (!fly) return;
       const t = S.theaters.find((x) => x.id === fly.dataset.fly);
-      if (t && t.camera) { world.pointOfView(t.camera, reduceMotion ? 0 : 1500); if (isMobile()) toggleFilters(false); }
+      if (t && t.camera) { world.pointOfView(t.camera, reduceMotion ? 0 : flyMs(t.camera.lat, t.camera.lng, t.camera.altitude)); if (isMobile()) toggleFilters(false); }
     });
     $("#sourcesToggle").addEventListener("click", () => {
       const list = $("#sourcesList");
@@ -2233,7 +2290,7 @@
     let searchTimer;
     $("#search").addEventListener("input", (ev) => {
       clearTimeout(searchTimer);
-      searchTimer = setTimeout(() => { S.query = ev.target.value; render(); }, 120);
+      searchTimer = setTimeout(() => { S.query = ev.target.value; renderSoon(); }, 120);
     });
     $("#filtersToggle").addEventListener("click", () => toggleFilters());
     $("#panelsToggle").addEventListener("click", () => setPanelsHidden(!document.body.classList.contains("panels-hidden")));

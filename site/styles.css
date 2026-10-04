@@ -1333,6 +1333,13 @@ body::after {
 .tally strong { display: inline-block; transition: color 0.6s ease; }
 .tally strong.ticked { color: var(--accent); }
 
+/* focus: with an event, carrier or route open, the other markers dim (app.js dims their lines,
+   dots and rings); pointing at one lights it again */
+.mk-in { transition: transform 0.25s ease, opacity 0.35s ease; }
+.focus .mk:not(.is-selected):not(.is-hot) .mk-in { opacity: calc(var(--fade) * 0.3); }
+.focus .mk.spread:not(.is-selected):not(.is-hot)::before,
+.focus .mk.spread:not(.is-selected):not(.is-hot)::after { opacity: 0.3; }
+
 /* map and feed answer each other: the event under the pointer is lit in both places */
 .mk.is-hot .mk-in { box-shadow: 0 0 0 2px var(--ink), 0 0 16px 3px rgba(var(--accent-rgb), 0.55); opacity: 1; }
 .item.is-hot { background: rgba(var(--accent-rgb), 0.08); box-shadow: inset 2px 0 0 var(--accent); }
