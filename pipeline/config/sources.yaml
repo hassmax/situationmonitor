@@ -36,6 +36,19 @@ settings:
   extraction_reserve: 30
   brief_min_calls: 5
   dedupe_min_calls: 10
+  # Jobs sent to the free outside providers first (providers.py), with each job's daily token share
+  # there; Gemini answers when the provider has no key, fails, or the share is used. Leave a job out
+  # to keep it on Gemini; `provider_routes: {}` turns offloading off. "extract" is overflow only:
+  # batches Gemini can't take (down, busy, refused for billing, out of calls), at most
+  # overflow_batches_per_run a run. Cerebras allows 1,000,000 tokens a day (capped at 900,000).
+  # The run log's "[budget]" lines give each job's tokens per day, to tune these.
+  provider_routes:
+    analysis: {cerebras: 400000}
+    recency: {cerebras: 60000}
+    frontline_review: {cerebras: 100000}
+    frontline_isw: {cerebras: 120000}
+    frontline: {cerebras: 100000}
+    extract: {cerebras: 120000}
   # GDELT (a free database that logs news reports of violence worldwide every 15 minutes) is used
   # only to corroborate: when 3+ outlets report violence near a single-source post, that post is
   # upgraded to corroborated. Set to false to turn it off.

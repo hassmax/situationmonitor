@@ -262,7 +262,7 @@ def calls_remaining(state: dict, settings: dict, now: datetime) -> int:
     day = now.strftime("%Y-%m-%d")
     usage = state.setdefault("llm_calls", {"date": day, "count": 0})
     if usage.get("date") != day:
-        usage.update(date=day, count=0, by={})
+        usage.update(date=day, count=0, by={}, tokens={})
     return int(settings["daily_llm_calls"]) - int(usage["count"])
 
 
@@ -276,6 +276,36 @@ def _spend(state: dict, purpose: str, n: int = 1) -> None:
 
 def used_today(state: dict, purpose: str) -> int:
     return int(((state.get("llm_calls") or {}).get("by") or {}).get(purpose, 0))
+
+
+def usage_tokens(r) -> int:
+    """Tokens the reply says the call used (prompt plus answer), or 0 if it doesn't say."""
+    try:
+        usage = r.json().get("usage") or {}
+        return int(usage.get("total_tokens") or int(usage.get("prompt_tokens") or 0) + int(usage.get("completion_tokens") or 0))
+    except Exception:  # noqa: BLE001 - streamed or odd replies
+        return 0
+
+
+def _tally_tokens(state: dict, purpose: str, n: int) -> None:
+    """Gemini tokens used today, by purpose (measured to see which jobs could move elsewhere)."""
+    by = state.setdefault("llm_calls", {"count": 0}).setdefault("tokens", {})
+    by[purpose] = int(by.get(purpose, 0)) + int(n)
+
+
+# Purposes whose callers pick their outside providers themselves (the analyst's `analysis_order`).
+SELF_ROUTED = {"analysis"}
+
+
+def room(state: dict, settings: dict, now: datetime, purpose: str, reserve: int = 0) -> int:
+    """Calls `purpose` may make now: Gemini's paced share and day, or the outside providers routed
+    for it (providers.ROUTES), whichever leaves more."""
+    import providers
+
+    gemini = min(share_left(state, settings, now, purpose), calls_allowed(state, settings, now, reserve=reserve))
+    if purpose in SELF_ROUTED:
+        return gemini
+    return max(gemini, providers.room(state, settings, now, purpose))
 
 
 # Daily shares of the model budget for the checks that run after extraction, so reading new posts
@@ -503,11 +533,13 @@ def _find_model(token: str, settings: dict, state: dict, skip=()) -> dict | None
     return None
 
 
-def _call_model(batch: list[dict], token: str, chosen: dict, settings: dict) -> dict:
-    payload = [
+def _payload(batch: list[dict]) -> str:
+    return json.dumps({"items": [
         {"i": n, "source": it["source"], "platform": it["platform"], "posted": it["time"], "text": it["text"][:700]}
-        for n, it in enumerate(batch)
-    ]
+        for n, it in enumerate(batch)]}, ensure_ascii=False)
+
+
+def _call_model(batch: list[dict], token: str, chosen: dict, settings: dict, state: dict | None = None) -> dict:
     body = {
         "model": chosen["model"],
         "temperature": 0.1,
@@ -515,7 +547,7 @@ def _call_model(batch: list[dict], token: str, chosen: dict, settings: dict) -> 
         "stream": False,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": json.dumps({"items": payload}, ensure_ascii=False)},
+            {"role": "user", "content": _payload(batch)},
         ],
     }
     if chosen.get("json_mode", True):
@@ -530,6 +562,8 @@ def _call_model(batch: list[dict], token: str, chosen: dict, settings: dict) -> 
     if r.status_code >= 400:
         raise RuntimeError(_describe(r))
     content = _content_from_response(r)
+    if state is not None:
+        _tally_tokens(state, "extract", usage_tokens(r) or _estimate_tokens(SYSTEM_PROMPT + body["messages"][1]["content"] + content))
     parsed = _parse_json_object(content)
     if parsed is None:
         raise RuntimeError(f"model reply was not JSON: {content[:300]!r}")
@@ -666,66 +700,137 @@ def _clean_record(obj: dict, item: dict) -> dict | None:
     }
 
 
+def _absorb(out, batch: list[dict], state: dict, now: datetime, records: list, carriers: list, done: set) -> None:
+    """Take one batch's reply: its records and carrier reports, and the headlines it set aside."""
+    for it in batch:
+        done.add(it["id"])
+    for obj in out.get("events", []) if isinstance(out, dict) else []:
+        if not isinstance(obj, dict):
+            continue
+        i = obj.get("i")
+        if isinstance(i, int) and 0 <= i < len(batch):
+            cv = clean_carrier(obj, batch[i])
+            if cv:
+                carriers.append(cv)
+            rec = _clean_record(obj, batch[i])
+            if rec:
+                records.append(rec)
+            elif batch[i].get("platform") == "rss":
+                # Headlines the model set aside, kept briefly so a missed story can be traced.
+                # News headlines and links only: post text from other platforms is never stored.
+                state.setdefault("model_rejected", []).append({
+                    "time": batch[i]["time"], "source": batch[i]["source"], "url": batch[i]["url"],
+                    "headline": batch[i]["text"].split("\n", 1)[0][:200], "at": iso(now)})
+                state.setdefault("rejected_heads", {})[headline_key(batch[i]["text"])] = iso(now)
+
+
+OVERFLOW_WAIT = 65  # seconds an overflow batch may wait for the outside provider's per-minute limit
+
+
+def _overflow(batches: list[list[dict]], why: str, state: dict, settings: dict, now: datetime,
+              records: list, carriers: list, done: set) -> int:
+    """Batches Gemini can't take go to the outside providers routed for "extract" (providers.ROUTES),
+    at most `overflow_batches_per_run` a run, within their daily token shares."""
+    import providers
+
+    limit = int(settings.get("overflow_batches_per_run", 2))
+    if not batches or limit <= 0 or not providers.routes(settings, "extract"):
+        return 0
+    sent = 0
+    for batch in batches[:limit]:
+        # gpt-oss thought through all 9,000 tokens of a 40-post batch and its answer was cut off
+        # (2026-10-04): it is told to think briefly, with more room for the answer
+        out = providers.ask_routed(SYSTEM_PROMPT, _payload(batch), state, settings, now, "extract",
+                                   max_tokens=int(settings["max_output_tokens"]) + 3000, temperature=0.1,
+                                   max_wait=OVERFLOW_WAIT, effort="low")
+        if out is None:
+            break
+        sent += 1
+        _absorb(out, batch, state, now, records, carriers, done)
+    if sent:
+        log(f"[extract] {why}: {sent} of {len(batches)} waiting batches read by an outside provider")
+    return sent
+
+
 def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled: bool = False):
-    """Returns (records, leftover_queue, calls_used, carrier_reports)."""
+    """Returns (records, leftover_queue, calls_used, carrier_reports). `calls_used` counts Gemini
+    calls; batches Gemini can't take (no key, its day used up, refused for billing, rate-limited,
+    busy, no model answering) spill over to the outside providers (`_overflow`)."""
+    if disabled:
+        return [], queue, 0, []
     token = os.environ.get("LLM_API_KEY", "").strip()
-    if disabled or not token:
-        if not token:
-            log("[extract] LLM_API_KEY is not set; add the GEMINI_API_KEY repository secret (see README)")
-        return [], queue, 0, []
-    allowed = calls_allowed(state, settings, now, reserve=int(settings.get("extraction_reserve", 30)))
+    if not token:
+        log("[extract] LLM_API_KEY is not set; add the GEMINI_API_KEY repository secret (see README)")
     batches = make_batches(queue, settings)
+    allowed = calls_allowed(state, settings, now, reserve=int(settings.get("extraction_reserve", 30))) if token else 0
     log(f"[extract] queue={len(queue)} batches={len(batches)} allowed_calls={allowed}")
-    if not allowed or not batches:
-        return [], queue, 0, []
-    if _paused(state, now):
-        log(f"[extract] the model provider refused for billing at {state['llm_out_of_credit']}; "
-            f"{len(queue)} posts wait in the queue until it is checked again")
+    if not batches:
         return [], queue, 0, []
 
+    records: list[dict] = []
+    carriers: list[dict] = []
+    done: set[str] = set()
+    used = 0
+    stopped = None  # why Gemini stopped with batches still waiting
+    start = used_today(state, "extract")
+    if not token:
+        stopped = "no Gemini key"
+    elif not allowed:
+        stopped = "Gemini's calls for today are used up"
+    elif _paused(state, now):
+        log(f"[extract] the model provider refused for billing at {state['llm_out_of_credit']}; "
+            f"{len(queue)} posts wait in the queue until it is checked again")
+        stopped = "Gemini refused for billing"
+    else:
+        stopped = _gemini(batches[:allowed], token, state, settings, now, records, carriers, done)
+        used = used_today(state, "extract") - start
+    if stopped:
+        _overflow([b for b in batches if not any(it["id"] in done for it in b)], stopped, state, settings, now,
+                  records, carriers, done)
+    state["model_rejected"] = state.get("model_rejected", [])[-400:]
+    leftover = [it for it in queue if it["id"] not in done and int(it.get("attempts", 0)) < 3]
+    return records, leftover[: settings["pending_max"]], used, carriers
+
+
+def _gemini(todo: list[list[dict]], token: str, state: dict, settings: dict, now: datetime,
+            records: list, carriers: list, done: set) -> str | None:
+    """Send batches to Gemini. Returns why it stopped early when Gemini itself couldn't take them
+    (so they may go elsewhere), else None."""
     chosen = state.get("llm_model")
     checked = parse_time(chosen.get("checked")) if chosen else None
     stale = (not chosen or not checked or now - checked > timedelta(hours=24)
              or chosen.get("url") != settings["llm_url"] or chosen.get("model") not in _candidates(settings)
              or (chosen.get("fallback") and now - checked > FALLBACK_RECHECK))
     if stale:
-        before = state["llm_calls"]["count"]
+        before = state.setdefault("llm_calls", {"count": 0})["count"]
         try:
             chosen = _find_model(token, settings, state)
         except RateLimited as exc:
             log(f"[extract] rate limited while checking models: {exc}")
-            return [], queue, state["llm_calls"]["count"] - before, []
+            return "Gemini is rate-limited"
         if chosen is None:
             log("[extract] no model returned a usable answer; see the probe lines above")
-            return [], queue, state["llm_calls"]["count"] - before, []
-        allowed = max(0, allowed - (state["llm_calls"]["count"] - before))
+            return "Gemini refused for billing" if state.get("llm_out_of_credit") else "no Gemini model answered"
+        todo = todo[: max(0, len(todo) - (state["llm_calls"]["count"] - before))]
 
-    records: list[dict] = []
-    carriers: list[dict] = []
-    done: set[str] = set()
-    used = 0
     failures = 0
     switched = False
-    todo = list(batches[:allowed])
     n = 0
     while n < len(todo):
         batch = todo[n]
         if n:
             time.sleep(float(settings.get("seconds_between_calls", 0)))  # stay under the per-minute limit
-        used += 1
         _spend(state, "extract")
         try:
-            out = _call_model(batch, token, chosen, settings)
+            out = _call_model(batch, token, chosen, settings, state)
         except RateLimited as exc:
             log(f"[extract] rate limited, stopping for this run: {exc}")
-            break
+            return "Gemini is rate-limited"
         except OutOfCredit as exc:
-            used -= 1
             _spend(state, "extract", -1)  # not counted: refused for billing, the posts keep their place
             _out_of_credit(state, now, exc.args[0])
-            break
+            return "Gemini refused for billing"
         except Busy as exc:
-            used -= 1
             _spend(state, "extract", -1)  # not counted: the model never did the work
             if not switched:
                 switched = True
@@ -738,7 +843,7 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
                     chosen = other
                     continue  # the same batch again, with the other model
             log(f"[extract] the model is busy, stopping for this run (not counted): {exc}")
-            break
+            return "Gemini is busy"
         except Exception as exc:  # noqa: BLE001
             log(f"[extract] batch failed: {exc}")
             for it in batch:
@@ -747,34 +852,13 @@ def run(queue: list[dict], state: dict, settings: dict, now: datetime, disabled:
             if failures >= 2:
                 state.pop("llm_model", None)  # re-check models next run
                 log("[extract] two failures in a row; stopping for this run to save the daily budget")
-                break
+                return None
             n += 1
             continue
         n += 1
         failures = 0
-        for it in batch:
-            done.add(it["id"])
-        for obj in out.get("events", []) if isinstance(out, dict) else []:
-            if not isinstance(obj, dict):
-                continue
-            i = obj.get("i")
-            if isinstance(i, int) and 0 <= i < len(batch):
-                cv = clean_carrier(obj, batch[i])
-                if cv:
-                    carriers.append(cv)
-                rec = _clean_record(obj, batch[i])
-                if rec:
-                    records.append(rec)
-                elif batch[i].get("platform") == "rss":
-                    # Headlines the model set aside, kept briefly so a missed story can be traced.
-                    # News headlines and links only: post text from other platforms is never stored.
-                    state.setdefault("model_rejected", []).append({
-                        "time": batch[i]["time"], "source": batch[i]["source"], "url": batch[i]["url"],
-                        "headline": batch[i]["text"].split("\n", 1)[0][:200], "at": iso(now)})
-                    state.setdefault("rejected_heads", {})[headline_key(batch[i]["text"])] = iso(now)
-    state["model_rejected"] = state.get("model_rejected", [])[-400:]
-    leftover = [it for it in queue if it["id"] not in done and int(it.get("attempts", 0)) < 3]
-    return records, leftover[: settings["pending_max"]], used, carriers
+        _absorb(out, batch, state, now, records, carriers, done)
+    return None
 
 
 def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, now: datetime,
@@ -784,7 +868,15 @@ def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, no
     is busy, another model (a backup if need be) is tried once. `purpose` names what the call is
     for in the day's tally (state["llm_calls"]["by"]) and is checked against its share (share_left).
     `images` (data: URLs) are shown to the model after the text. `model` asks a named model at the
-    chosen model's address instead (the analyst prefers regular Flash); a failure returns None."""
+    chosen model's address instead (the analyst prefers regular Flash); a failure returns None.
+    Text-only calls whose purpose is routed to outside providers (providers.ROUTES) go there first,
+    within their token shares, and come to Gemini only when none answers."""
+    if not images and not model and purpose not in SELF_ROUTED and _retry:
+        import providers
+
+        reply = providers.ask_routed(system_prompt, user_text, state, settings, now, purpose, max_tokens)
+        if reply is not None:
+            return reply
     token = os.environ.get("LLM_API_KEY", "").strip()
     chosen = state.get("llm_model")
     if (not token or not chosen or _paused(state, now) or calls_allowed(state, settings, now) <= 0
@@ -828,6 +920,7 @@ def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, no
             log(f"[extract] one-off call ({purpose}) failed: {_describe(r)}")
             return None
         content = _content_from_response(r)
+        _tally_tokens(state, purpose, usage_tokens(r) or _estimate_tokens(system_prompt + user_text + content))
         parsed = _parse_json_object(content)
         if parsed is None:
             log(f"[extract] one-off call ({purpose}): the reply was not JSON ({len(content)} characters): {json_error(content)}")

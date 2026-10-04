@@ -35,6 +35,9 @@ DEFAULT_SETTINGS = {
     "batch_max_items": 40,      # 25 until 2026-10-02: the ~4,700-token instructions go with every call
     "batch_token_budget": 16000,
     "max_output_tokens": 9000,
+    # Batches Gemini can't take (down, busy, refused for billing, out of calls) that may go to the
+    # outside providers routed for "extract" in one run (providers.ROUTES, `provider_routes`).
+    "overflow_batches_per_run": 2,
     "max_item_age_hours": 36,
     "pending_max": 400,
     "geocode_per_run": 45,
