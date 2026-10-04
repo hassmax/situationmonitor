@@ -28,3 +28,4 @@ for it in items:
         by[it["source"]][1] += 1; by[it["source"]][2].append(it["text"][:90])
 for k, (n, c, ex) in by.items(): print(f"  {k}: {n} items, {c} pass the filter; e.g. {ex[:2]}")
 print("  health:", {k: (v.get('ok'), v.get('error')) for k, v in health.items()})
+# run 5
