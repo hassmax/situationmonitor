@@ -1319,7 +1319,6 @@
       (c.track || []).forEach((t) => { t.time = move(t.time); });
     });
     if (data.fleet_meta) data.fleet_meta.tracker_time = move(data.fleet_meta.tracker_time);
-    (data.flight_alerts || []).forEach((x) => { x.time = move(x.time); });
   }
 
   function ingest(data) {
@@ -1528,7 +1527,10 @@
       // forces sent to a region (a US command's area) form their own route, labeled with the region
       // (and forces leaving one, like tankers flying home from CENTCOM bases)
       const region = t.to && t.to.region ? t.to.place : null, fromRegion = t.from && t.from.region ? t.from.place : null;
-      const key = `${fromRegion ? `${fromRegion}>` : ""}${t.supplier}>${region || t.recipient}${money ? "|aid" : ""}`;
+      // a country moving its own forces: one route per pair of named places (US aircraft into Ramstein
+      // and US forces leaving Iraq are different moves)
+      const ends = own(t) ? `|${(t.from && t.from.place) || ""}>${(t.to && t.to.place) || ""}` : "";
+      const key = `${fromRegion ? `${fromRegion}>` : ""}${t.supplier}>${region || t.recipient}${money ? "|aid" : ""}${ends}`;
       const bucket = kind === "pledge" ? pledges : flows;
       if (!bucket.has(key)) bucket.set(key, { key, supplier: t.supplier, recipient: t.recipient, toLabel: region, fromLabel: fromRegion, own: own(t), money, events: [] });
       bucket.get(key).events.push(e);
@@ -1991,20 +1993,9 @@
   // the map's own events, independent of the filters. Confidence comes from the cited events.
   const TREND = { escalating: ["▲", "Escalating"], "de-escalating": ["▼", "De-escalating"], shifting: ["◆", "Shifting"], steady: ["●", "Steady"] };
   const CONF_WORDS = { higher: "Higher confidence", moderate: "Moderate confidence", low: "Low confidence" };
-  // Flight alerts: several C-17s or KC-135s landing at or leaving one base in a short time
-  // (pipeline/flights.py surges), linked to the aircraft on adsb.lol.
-  function flightAlertsHtml() {
-    const list = (S.data && S.data.flight_alerts) || [];
-    return list.length ? `<div class="an-alerts">${list.map((x) => `<a class="an-alert" href="${esc(safeUrl(x.url))}" target="_blank" rel="noopener noreferrer" title="See these aircraft on adsb.lol">
-      <span class="an-alert-tag">Flight alert</span><span class="an-alert-text">${esc(x.text)}</span><time datetime="${esc(x.time)}">${esc(ago(Date.parse(x.time)))}</time></a>`).join("")}</div>` : "";
-  }
   function briefHtml() {
     const a = S.data && S.data.analysis;
-    const alertsHtml = flightAlertsHtml();
-    if (!a || !a.generated_at) {
-      return alertsHtml ? `<li class="brief analysis"><section aria-labelledby="briefTitle"><div class="brief-head"><h3 id="briefTitle">Flight alerts</h3></div>${alertsHtml}
-        <p class="brief-note">From military aircraft's own transponders: where they went, not why. Flight data: adsb.lol contributors (ODbL).</p></section></li>` : "";
-    }
+    if (!a || !a.generated_at) return "";
     const byId = new Map(S.data.events.map((e) => [e.id, e]));
     const cites = (ids) => {
       const found = (ids || []).filter((i) => byId.has(i));
@@ -2037,9 +2028,8 @@
       <div class="brief-head"><h3 id="briefTitle">What's changing, by region</h3>
         <time datetime="${esc(a.generated_at)}">Written ${esc(ago(Date.parse(a.generated_at)))}</time></div>
       <p class="an-sub">The last ${esc(a.window_hours || 6)} hours against the ${esc(a.context_days || 3)} days before</p>
-      ${alertsHtml}
       ${body}
-      <p class="brief-note">Machine-written analysis of this map's own events${a.by ? ` by ${esc(a.by)}` : ""}. Confidence comes from the events each line cites (corroborated, single-source, or one side's claim) and from military flights tracked by their own transponders, which show where aircraft went, not why; open them before relying on it.${a.flight_credit || alertsHtml ? ` <a href="${esc(safeUrl((a.flight_credit || {}).url || "https://opendatacommons.org/licenses/odbl/1-0/"))}" target="_blank" rel="noopener noreferrer">${esc((a.flight_credit || {}).text || "Flight data: adsb.lol contributors, open data under the ODbL 1.0 licence")}</a>.` : ""}</p>
+      <p class="brief-note">Machine-written analysis of this map's own events${a.by ? ` by ${esc(a.by)}` : ""}. Confidence comes from the events each line cites (corroborated, single-source, or one side's claim) and from military flights tracked by their own transponders, which show where aircraft went, not why; open them before relying on it.${a.flight_credit ? ` <a href="${esc(safeUrl(a.flight_credit.url || "https://opendatacommons.org/licenses/odbl/1-0/"))}" target="_blank" rel="noopener noreferrer">${esc(a.flight_credit.text || "Flight data: adsb.lol contributors")}</a>.` : ""}</p>
     </section></li>`;
   }
 

@@ -36,7 +36,7 @@ import merge  # noqa: E402
 import providers  # noqa: E402
 import publish  # noqa: E402
 import recency  # noqa: E402
-from common import hours_since, http_session, iso, load_json, log, now, save_json  # noqa: E402
+from common import hours_since, http_session, iso, load_json, log, make_item, now, save_json  # noqa: E402
 from sources import bluesky, gdelt, maproom, rss, telegram  # noqa: E402
 
 
@@ -195,6 +195,9 @@ def main() -> int:
     fresh += merge.split_overgrown_transfers(events, state, t0)
     queue = extract.build_queue(state["pending"], fresh, t0, settings)
     records, leftover, calls, carrier_reports = extract.run(queue, state, settings, t0, disabled=args.no_llm)
+    # Flight surges (several C-17s or KC-135s at one base in a short time) become air movements on
+    # the map, like supply routes, written from the transponder data (no model)
+    records += flights.surge_records(state, t0, cfg.flight_bases, cfg.theaters, make_item)
     state["pending"] = leftover
     log(f"[extract] {len(records)} events from {calls} model calls; {len(leftover)} waiting")
 
@@ -341,8 +344,6 @@ def main() -> int:
         "theaters": theaters_meta(cfg.theaters),
         "events": published,
         "analysis": state.get("analysis"),
-        # several C-17s or KC-135s at one base in a short time (flights.py surges); shown in the analysis panel
-        "flight_alerts": flights.alerts(state, t0),
         "heat": public_cells(cells),
         "control": control.public(state, control_layers, t0),
         "frontline": frontline.public(state, cfg.frontlines, t0),

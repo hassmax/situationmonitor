@@ -5,7 +5,7 @@
 # Surge alerts (the owner, 2026-10-05: "if more than 3 C-17 fly somewhere in close timeframe, and
 # same with KC-135, have the flight tracker agent deploy an alert"): at least `min` different
 # aircraft of these ICAO types landing at, or taking off from, one watched base within `hours`.
-# Shown as a flight alert at the top of the analysis panel, sent to Telegram when alerts are set up
+# Drawn on the map as an air route (like the supply routes), sent to Telegram when alerts are set up
 # (rule flight_surge in alerts.yaml), and given to the regional analyst.
 surges:
   - {label: C-17 transports, types: [C17], min: 4, hours: 12}
