@@ -4739,19 +4739,5 @@
 "text": "Flight data: adsb.lol contributors, open data under the ODbL 1.0 licence",
 "url": "https://opendatacommons.org/licenses/odbl/1-0/"
 }
-},
-"flight_alerts": [
-{
-"id": "sdemo1",
-"text": "Sample: 5 C-17 transports landed at Al Udeid Air Base, Qatar, between 26 Sep 09:10 and 16:45 UTC (RCH401, RCH417, RCH455). Not real.",
-"time": "2026-09-26T16:45:00Z",
-"count": 5,
-"label": "C-17 transports",
-"base": "Al Udeid Air Base",
-"way": "to",
-"lat": 25.117,
-"lon": 51.315,
-"url": "https://adsb.lol/"
 }
-]
 }

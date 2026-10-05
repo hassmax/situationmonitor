@@ -442,6 +442,91 @@ def alerts(state: dict, now: datetime) -> list[dict]:
     return sorted(out, key=lambda a: a["time"], reverse=True)
 
 
+# Whose aircraft: by callsign prefix, else by the ICAO address block the airframe is registered in.
+OPERATOR_CALLSIGNS = {"RCH": "US", "CNV": "US", "PAT": "US", "SAM": "US", "SPAR": "US", "RRR": "GB", "ASCOT": "GB",
+                      "ASY": "AU", "CFC": "CA", "QAF": "QA", "UAF": "AE", "GAF": "DE", "CTM": "FR", "FAF": "FR", "IAM": "IT", "PLF": "PL"}
+OPERATOR_HEX = [("43c", "GB"), ("43d", "GB"), ("43e", "GB"), ("43f", "GB"), ("c0", "CA"), ("7c", "AU"), ("a", "US")]
+
+
+def _operator(e: dict) -> str | None:
+    cs = _prefix(e.get("callsign") or "")
+    if cs in OPERATOR_CALLSIGNS:
+        return OPERATOR_CALLSIGNS[cs]
+    return next((c for p, c in OPERATOR_HEX if (e.get("hex") or "").startswith(p)), None)
+
+
+def _most(values: list):
+    counts: dict = {}
+    for v in values:
+        if v is not None:
+            counts[v] = counts.get(v, 0) + 1
+    return max(counts.items(), key=lambda kv: kv[1]) if counts else (None, 0)
+
+
+def surge_records(state: dict, now: datetime, bases: list[dict], theaters: list[dict], item_maker) -> list[dict]:
+    """Surges as air movements on the map (the owner, 2026-10-05: "make them into a supply route"):
+    records shaped like the model's, for an arms-transfer event of a country moving its own aircraft,
+    written from the transponder data alone (no model). A landing surge runs from the base most of
+    its aircraft were seen leaving, else from the operator's country (drawn faint: not named); a
+    take-off surge runs to the base most of them were seen landing at, and waits for a landing.
+    A surge is sent again only when more aircraft join it."""
+    st = state.get("flights") or {}
+    log_entries = list((st.get("log") or {}).values())
+    by_name = {b["name"]: b for b in bases}
+    out = []
+    for s in (st.get("surges") or {}).values():
+        if s.get("routed", 0) >= s["count"]:
+            continue
+        group = [e for e in log_entries if e["hex"] in s["hexes"] and (e.get(s["way"]) or {}).get("base") == s["base"]]
+        operator, n = _most([_operator(e) for e in group])
+        if not operator or n * 2 < len(group):
+            continue  # whose aircraft they are is unclear: no route
+        here = by_name.get(s["base"]) or {}
+        if s["way"] == "to":
+            dest = {"place": s["base"], "lat": s["lat"], "lon": s["lon"], "country": here.get("country")}
+            start, k = _most([(e.get("from") or {}).get("base") for e in group])
+            origin = by_name.get(start) if start and start != s["base"] and k * 2 >= len(group) else None
+        else:
+            origin = here
+            end, k = _most([(e.get("to") or {}).get("base") for e in group if (e.get("to") or {}).get("base") != s["base"]])
+            if not end:
+                continue  # no landing seen yet: no destination to draw to
+            b = by_name.get(end) or {}
+            dest = {"place": end, "lat": b.get("lat"), "lon": b.get("lon"), "country": b.get("country")}
+            if dest["lat"] is None:
+                continue
+        theater = _theater(dest["lat"], dest["lon"], dest.get("country"), theaters)
+        if not theater:
+            continue
+        text = surge_text(s)
+        item = item_maker({"name": SOURCE_NAME, "kind": "osint", "group": SOURCE_ID, "weight": 2, "prefilter": False},
+                          "adsb", SOURCE_ID, MAP_LINK.format(hexes=",".join(s["hexes"])), text, parse_time(s["last"]) or now,
+                          uid=f"surge|{s['id']}|{s['count']}")
+        out.append({
+            "type": "arms_transfer", "happened": s["first"], "summary": text[:240], "place": dest["place"], "admin1": None,
+            "country": dest.get("country"), "lat": dest["lat"], "lon": dest["lon"], "origins": [], "attacker": None,
+            "parties": [], "launched": None, "intercepted": None, "alert": False, "legal_basis": None,
+            "transfer": {"kind": "delivery", "via": [], "value_usd": None, "supplier": operator, "recipient": operator,
+                         "mode": "air", "what": s["label"], "flights": s["count"], "money": False,
+                         "from": {"place": origin["name"], "lat": origin["lat"], "lon": origin["lon"]} if origin else None,
+                         "to": {"place": dest["place"], "lat": dest["lat"], "lon": dest["lon"]}},
+            "theater": theater, "severity": 2, "claim": "report", "killed": None, "injured": None, "item": item})
+        s["routed"] = s["count"]
+    return out
+
+
+def _theater(lat: float, lon: float, country: str | None, theaters: list[dict]) -> str | None:
+    """The theater a base belongs to: by its country, else the nearest theater's camera point."""
+    import geo
+
+    th = geo.theater_for_iso(lat, lon, country, theaters)
+    if th:
+        return th
+    near = [(haversine_km(lat, lon, t["camera"]["lat"], t["camera"]["lng"]), t["id"]) for t in theaters
+            if t.get("camera") and t.get("listed") is not False]
+    return min(near)[1] if near else None
+
+
 def for_analyst(state: dict, now: datetime) -> dict:
     """What the regional analyst is given: aircraft in the air now (role and position), and the
     logged movements with a sentence each."""

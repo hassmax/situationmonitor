@@ -162,3 +162,50 @@ def test_tankers_leaving_together_say_where_they_were_last_seen_and_old_ones_are
                    "c": _entry("x3", "C17", "to", "Al Udeid Air Base", "2026-10-05T10:20:00Z"),
                    "d": _entry("x4", "K35R", "to", "Al Udeid Air Base", "2026-10-05T10:30:00Z")}}
     assert flights.surges(st2, now) == []
+
+
+def test_a_landing_surge_becomes_an_air_route_once_per_size():
+    from datetime import datetime, timezone
+    import config
+    import geo
+    import merge
+    from common import make_item
+    now = datetime(2026, 10, 5, 18, 0, tzinfo=timezone.utc)
+    cfg = config.load()
+    st = {"log": {f"k{i}": _entry(f"ae{i}", "C17", "to", "Al Udeid Air Base", f"2026-10-05T{10 + i}:00:00Z", f"RCH{i}")
+                  for i in range(4)}}
+    for i, e in enumerate(st["log"].values()):
+        if i < 3:   # three of the four were seen leaving RAF Mildenhall
+            e["from"] = {"base": "RAF Mildenhall", "country": "United Kingdom", "lat": 52.362, "lon": 0.486, "time": "2026-10-05T04:00:00Z"}
+    flights.surges(st, now)
+    state = {"flights": st}
+    (rec,) = flights.surge_records(state, now, cfg.flight_bases, cfg.theaters, make_item)
+    t = rec["transfer"]
+    assert (rec["type"], t["supplier"], t["recipient"], t["mode"], t["flights"]) == ("arms_transfer", "US", "US", "air", 4)
+    assert (t["from"]["place"], t["to"]["place"], rec["place"]) == ("RAF Mildenhall", "Al Udeid Air Base", "Al Udeid Air Base")
+    assert rec["summary"].startswith("4 C-17 transports landed at Al Udeid Air Base") and rec["theater"] == "mideast"
+    assert flights.surge_records(state, now, cfg.flight_bases, cfg.theaters, make_item) == []     # sent once at this size
+
+    class NoLookup:
+        def locate(self, *a, **k):
+            return None
+    cand = geo.place_record(rec, NoLookup(), cfg.theaters)
+    cand["item"] = rec["item"]
+    events = merge.merge([], [cand])
+    assert len(events) == 1 and events[0]["transfer"]["to"]["place"] == "Al Udeid Air Base"
+
+
+def test_a_takeoff_surge_waits_for_a_landing_and_unknown_operators_get_no_route():
+    from datetime import datetime, timezone
+    import config
+    from common import make_item
+    now = datetime(2026, 10, 5, 18, 0, tzinfo=timezone.utc)
+    cfg = config.load()
+    st = {"log": {f"k{i}": _entry(f"ad{i}", "K35R", "from", "RAF Mildenhall", f"2026-10-05T{9 + i:02d}:00:00Z", f"QID{i}")
+                  for i in range(4)}}
+    flights.surges(st, now)
+    assert flights.surge_records({"flights": st}, now, cfg.flight_bases, cfg.theaters, make_item) == []   # no landing yet
+    st2 = {"log": {f"k{i}": _entry(f"0{i}abcd", "C17", "to", "Al Udeid Air Base", f"2026-10-05T{10 + i}:00:00Z", f"ZZZ{i}")
+                   for i in range(4)}}
+    flights.surges(st2, now)
+    assert flights.surge_records({"flights": st2}, now, cfg.flight_bases, cfg.theaters, make_item) == []  # whose aircraft?
