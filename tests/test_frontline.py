@@ -633,3 +633,37 @@ def test_the_wikipedia_maps_are_read_once_and_the_agents_evidence_wins():
     later = NOW + wikipedia.MAX_AGE + timedelta(days=1)
     wikipedia.run([YE_WIKI], state, session, later)
     assert state["frontline"]["baseline"]["maps"] == {} and session.calls == calls    # dropped, not read again
+
+
+UA_OVERVIEW = '''-- Marker shortcuts
+mk = {
+	con = "80x80-red-blue-anim.gif",
+	grz = "Location dot grey.svg",
+	rus = "Location dot red.svg",
+	ukr = "Location dot blue.svg",
+	rEE = "Map-arcEE-red.svg",
+}
+lp = { b = "bottom", l = "left" }
+return { marks = {
+  { lat = "46.305", long = "31.102", mark = "Ukraine Roadmap Overlay.png", marksize = 2600 },
+  { lat = "46.848", long = "35.365", mark = mk.rus, marksize = 16, position = lp.b, label = "[[Melitopol]]" },
+  { lat = "48.353", long = "37.210", mark = mk.con, marksize = 8, label = "[[Rodynske]]" },
+}}'''
+UA_DETAILED = '''local m = require('Module:Russo-Ukrainian war overview map')
+local marks = {
+  { lat = "48.249", long = "37.782", mark = mk.rus, marksize = 4--[[857]], position = "none", label = "[[Novobakhmutivka, Novobakhmut Village Council|Novobakhmutivka]]" },
+  { lat = "48.5", long = "37.4", mark = mk.ukr, marksize = 4, label = "[[Druzhkivka]]" },
+  { lat = "50.4", long = "30.5", mark = mk.ukr, marksize = 35, label = "[[Kyiv]]" },
+  { lat = "48.6", long = "37.9", mark = mk.rEE, marksize = 12 },
+  { lat = "46.848", long = "35.365", mark = mk.rus, marksize = 16, label = "[[Melitopol]]" },
+}'''
+
+
+def test_dots_named_through_a_lookup_table_are_read_across_both_pages():
+    from frontline import wikipedia
+    cfg = {"marks": {"Location dot red.svg": "RU", "Location dot blue.svg": "UA"}, "near": {"actors": ["UA"], "km": 40}}
+    got = wikipedia._near_only(wikipedia.parse(UA_DETAILED + "\n" + UA_OVERVIEW, cfg), cfg["near"])
+    assert {p["name"]: (p["holder"], p["status"]) for p in got} == {
+        "Novobakhmutivka": ("RU", "assessed"), "Druzhkivka": ("UA", "assessed"), "Melitopol": ("RU", "assessed"),
+        "Rodynske": (None, "contested")}                       # Kyiv is far from the front; arcs and the road map left out
+    assert [p["name"] for p in got].count("Melitopol") == 1     # listed on both pages, kept once
