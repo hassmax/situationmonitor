@@ -2,9 +2,9 @@ name: probe
 on:
   push:
     branches: [claude/tender-albattani-9vfp56]
-    paths: [probe.py, probe_prompt.txt, .github/workflows/probe.yml]
+    paths: [probe.py, .github/workflows/probe.yml]
 permissions:
-  contents: write
+  contents: read
 jobs:
   probe:
     runs-on: ubuntu-24.04
@@ -14,16 +14,19 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install -q -r pipeline/requirements.txt rasterio
+      - run: pip install -q -r pipeline/requirements.txt
       - run: git clone -q --depth 1 --branch data --single-branch "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" state
-      - name: Social sources
-        run: python probe.py social
-      - name: Imagery
-        run: python probe.py imagery
-      - name: Compare with Gemini
+      - name: Full run on a copy of the state (nothing saved or published)
         env:
           LLM_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python probe.py compare
-      - name: Keep the pictures on a scratch branch
-        run: |
-          cd probe-out && ls -la && git init -q -b probe-out && git add -A && git -c user.name=probe -c user.email=probe@example.com commit -q -m pictures && git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" probe-out:probe-out
+          TG_API_ID: ${{ secrets.TG_API_ID }}
+          TG_API_HASH: ${{ secrets.TG_API_HASH }}
+          TG_SESSION: ${{ secrets.TG_SESSION }}
+          NOMINATIM_EMAIL: ${{ vars.NOMINATIM_EMAIL }}
+          FIRMS_MAP_KEY: ${{ secrets.FIRMS_MAP_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+        run: python pipeline/run.py --state state --out out 2>&1 | grep -E "\[(frontline|telegram|budget|extract|providers)\]|Traceback|Error" | head -120
+      - name: Look at what the agents found
+        env:
+          LLM_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python probe.py

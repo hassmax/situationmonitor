@@ -11,6 +11,13 @@ the conflicts and their sides):
   claims.py        reads the map's ground-fighting and territory reports and lists every control
                    claim: who took, holds, lost or fights inside which settlement, on whose word,
                    on what evidence (model, purpose "frontline")
+  social.py        reads Telegram and Bluesky posts directly for the same claims: flag-raising and
+                   assault videos, "geolocated to" posts, a side's own announcements; who posted
+                   decides the weight (model, purpose "frontline_social")
+  heat.py          satellite fire detections near tracked settlements (no model)
+  imagery.py       before-and-after Sentinel-2 pictures of a disputed settlement, compared by the
+                   model for visible change; evidence for the reviewer only (model, purpose
+                   "frontline_imagery")
   assess.py        files claims per settlement, looks each up once, and applies fixed evidence
                    rules: assessed / claimed / contested (no model)
   review.py        checks every change against its evidence and the nearby front before it is
@@ -27,7 +34,7 @@ from datetime import timedelta
 
 from common import iso, log
 
-from . import assess, cartographer, claims, heat, isw, ledger, review, scout, standing
+from . import assess, cartographer, claims, heat, imagery, isw, ledger, review, scout, social, standing
 
 __all__ = ["search", "update", "public"]
 
@@ -45,10 +52,14 @@ def search(state: dict, session, now, outlets: dict | None = None, conflicts: li
 
 
 def update(events: list[dict], conflicts: list[dict], state: dict, settings: dict, now, ask, geocoder,
-           budget, disabled: bool = False, session=None) -> dict:
-    """One round: read claims, file and place them, assess, review. `budget(purpose)` gives the
-    model calls a purpose may make now. Returns counts for the log."""
+           budget, disabled: bool = False, session=None, posts: list[dict] | None = None) -> dict:
+    """One round: read claims (from the map's reports, ISW and this run's social `posts`), file
+    and place them, assess, review. `budget(purpose)` gives the model calls a purpose may make now.
+    Returns counts for the log."""
     fl = ledger.state_of(state)
+    queued = social.intake(posts or [], fl, now)
+    if queued:
+        log(f"[frontline] social: {queued} posts about control queued")
     if fl.get("review_version", 0) < REVIEW_VERSION:
         # 2026-10-04: the reviewer set aside descriptions of all of Crimea ("occupied Crimea") as not
         # naming the town; it now counts them for every town in it. Give those claims back.
@@ -70,6 +81,7 @@ def update(events: list[dict], conflicts: list[dict], state: dict, settings: dic
         found = claims.run(events, conflicts, state, settings, now, ask, budget("frontline"))
         if session is not None:
             found += isw.run(conflicts, state, settings, session, now, ask, budget("frontline_isw"))
+        found += social.run(conflicts, state, settings, now, ask, budget("frontline_social"))
         added = assess.add(fl, found, now)
     else:
         added = 0
@@ -102,6 +114,9 @@ def update(events: list[dict], conflicts: list[dict], state: dict, settings: dic
         if p.get("asked") is not None and live <= p["asked"]:
             continue  # the reviewer already saw this evidence
         pending.append((k, proposed))
+    if session is not None and not disabled:
+        # before-and-after satellite pictures of disputed settlements, for the reviewer
+        imagery.run(conflicts, fl, state, settings, session, now, ask, budget("frontline_imagery"), [k for k, _ in pending])
     counts = review.run(pending, conflicts, fl, state, settings, now, ask,
                         0 if disabled else budget("frontline_review"))
     shown = sum(1 for p in fl["places"].values() if p.get("published"))

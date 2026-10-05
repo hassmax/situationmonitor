@@ -146,6 +146,8 @@ def main() -> int:
         log(f"[filter] re-checking {len(again)} posts rejected by the older keyword filter")
     fresh = []
     for it in items:
+        if it.get("frontline_only"):
+            continue  # a front-line channel: read by the social media agent only (frontline/social.py)
         age = hours_since(it["time"], t0)
         older_than_normal = age > settings["max_item_age_hours"]
         # A backfill reconsiders older posts, which normal runs skipped; anything recent was already handled.
@@ -278,7 +280,7 @@ def main() -> int:
     frontline.update([e for e in events if e["id"] not in hidden], cfg.frontlines, state, settings, t0, extract.ask_json,
                      geo.Geocoder(state["geocache"], session, 30),
                      lambda purpose: extract.room(state, settings, t0, purpose, reserve=reserve),
-                     disabled=args.no_llm, session=session)
+                     disabled=args.no_llm, session=session, posts=items)
     if not args.no_llm:
         analyst.update(state, published, cfg.theaters, fleet.public(state, t0), flights.for_analyst(state, t0), settings, t0,
                        extract.ask_json, extract.calls_remaining(state, settings, t0),

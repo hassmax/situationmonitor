@@ -43,12 +43,13 @@ settings:
   # overflow_batches_per_run a run. Cerebras allows 1,000,000 tokens a day (capped at 900,000).
   # The run log's "[budget]" lines give each job's tokens per day, to tune these.
   provider_routes:
-    analysis: {cerebras: 400000}
-    recency: {cerebras: 60000}
-    frontline_review: {cerebras: 100000}
-    frontline_isw: {cerebras: 120000}
-    frontline: {cerebras: 100000}
-    extract: {cerebras: 120000}
+    analysis: {cerebras: 380000}
+    recency: {cerebras: 50000}
+    frontline_review: {cerebras: 80000}
+    frontline_isw: {cerebras: 100000}
+    frontline: {cerebras: 60000}
+    extract: {cerebras: 110000}
+    frontline_social: {cerebras: 120000}
   # GDELT (a free database that logs news reports of violence worldwide every 15 minutes) is used
   # only to corroborate: when 3+ outlets report violence near a single-source post, that post is
   # upgraded to corroborated. Set to false to turn it off.
@@ -81,6 +82,13 @@ bluesky:
     kind: osint
     group: casusbelli
     weight: 2
+  - handle: geoconfirmed.org
+    # GeoConfirmed: volunteer geolocators, unaligned; nearly every post locates a video ("geo 10/10"
+    # in the 2026-10-05 check). Their geolocations count as geolocated footage for the front lines.
+    name: GeoConfirmed (volunteer geolocators)
+    kind: osint
+    group: geoconfirmed
+    weight: 3
   - handle: kyivindependent.com
     name: The Kyiv Independent
     kind: news
@@ -186,6 +194,87 @@ telegram:
     group: almehwar
     weight: 2
     prefilter: true
+  # Front-line channels for the social media agent (frontline/social.py; the owner, 2026-10-05:
+  # "analysis of social media by our own agents"). Each was checked live from GitHub's servers that
+  # day (active, public). `frontline_only: true`: their posts go only to the social media agent,
+  # which reads them for who took, holds or lost which settlement, and not into event extraction
+  # (six busy Russian channels would use up Gemini's day). Each speaks for its side, so what it
+  # says stays that side's claim, whatever footage it shows; only a side admitting a loss counts
+  # as strong evidence.
+  - username: dva_majors
+    name: Two Majors (pro-Kremlin military blog)
+    kind: partisan
+    side: RU
+    group: ru-milbloggers
+    frontline_only: true
+  - username: milinfolive
+    name: Military Informant (pro-Kremlin military blog)
+    kind: partisan
+    side: RU
+    group: ru-milbloggers
+    frontline_only: true
+  - username: wargonzo
+    name: WarGonzo (pro-Kremlin war correspondent)
+    kind: partisan
+    side: RU
+    group: ru-milbloggers
+    frontline_only: true
+  - username: boris_rozhin
+    name: Colonelcassad (pro-Kremlin military blog)
+    kind: partisan
+    side: RU
+    group: ru-milbloggers
+    frontline_only: true
+  - username: yurasumy
+    name: Yuri Podolyaka (pro-Kremlin military blog)
+    kind: partisan
+    side: RU
+    group: ru-milbloggers
+    frontline_only: true
+  - username: RVvoenkor
+    name: Russian Spring war correspondents (pro-Kremlin)
+    kind: partisan
+    side: RU
+    group: ru-milbloggers
+    frontline_only: true
+  - username: GeneralStaffZSU
+    name: General Staff of Ukraine's Armed Forces (official)
+    kind: official
+    side: UA
+    group: ua-military
+    frontline_only: true
+  - username: ab3army
+    name: Third Army Corps of Ukraine (official)
+    kind: official
+    side: UA
+    group: ua-military
+    frontline_only: true
+  - username: operativnoZSU
+    name: Operatyvnyi ZSU (pro-Ukrainian military news)
+    kind: partisan
+    side: UA
+    group: ua-channels
+    frontline_only: true
+  - username: exilenova_plus
+    name: Exilenova+ (Ukrainian OSINT)
+    kind: osint
+    side: UA
+    group: exilenova
+    frontline_only: true
+  - username: RSFSudan
+    # The Rapid Support Forces' own channel (Arabic): its capture announcements are the RSF's claims.
+    name: Rapid Support Forces (official)
+    kind: official
+    side: RSF
+    group: rsf
+    frontline_only: true
+  - username: nugmyanmar
+    # Myanmar's National Unity Government, the resistance's parallel government.
+    name: National Unity Government of Myanmar (official)
+    kind: official
+    side: NUG
+    group: nug
+    frontline_only: true
   # OSINT aggregators that post force movements, aircraft and breaking news first, mostly from X
   # (the owner, 2026-10-04: OSINTtechnical's "At least 10 of the B-1s have departed RAF Fairford" was
   # missed; OSINTtechnical's own Telegram stopped in 2022 and its Bluesky in February 2026, and X

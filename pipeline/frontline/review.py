@@ -18,7 +18,7 @@ import json
 
 from common import haversine_km, iso, log
 
-from . import heat, ledger
+from . import heat, imagery, ledger
 
 PER_CALL = 15
 NEARBY_KM = 40
@@ -32,6 +32,7 @@ For each item decide:
 - "reject": the evidence does not say this (it is about fighting near the settlement, a strike on it, a facility such as its airport or a base rather than the town, a different place with a similar name, or an old event), or the settlement's position does not fit the region named or the nearby front.
 Evidence with basis "described" quotes the few words an outlet wrote. A description of a region that one side holds in its entirety ("occupied Crimea", which "covers all of Crimea") is evidence for every settlement in that region: do not reject it for naming the region rather than the town. Reject it when the words are about a region, district or province of the same name rather than the town (in Ukraine "occupied Kherson" usually means the Kherson region, whose capital Ukraine holds), or the position does not fit what the map shows nearby.
 An item may carry "satellite_heat": satellite fire detections (NASA FIRMS) near the settlement over the last week and the week before. Heat comes from shelling and burning vehicles but also from farm, bush and forest fires: it never shows who holds a place. It can support reports of fighting in or around the settlement (a sharp rise alongside such reports), and a quiet week weakens a "contested" proposal resting on a single old report. Do not confirm or reject on heat alone.
+An item may carry "satellite_imagery": another model's description of what changed between two Sentinel-2 pictures of the settlement (10 m per pixel; dates given). It shows physical change (destroyed buildings, burn scars, cratering, new trenches), never who holds a place or who caused the change. Heavy new destruction can support reports of fighting in the settlement; no visible change does not disprove a capture (small-unit fighting often leaves nothing visible at 10 m). Ignore it when "usable" is false. Do not confirm or reject on imagery alone.
 Give a short reason (max 20 words).
 
 JSON: {"items": [{"n": <n>, "verdict": "confirm" | "downgrade" | "reject", "reason": "..."}]}"""
@@ -99,6 +100,9 @@ def _review(batch: list[tuple], conflicts: list[dict], fl: dict, state: dict, se
         hot = heat.near(fl, k, now)
         if hot is not None:
             it["satellite_heat"] = hot
+        pics = imagery.near(fl, k, now)
+        if pics is not None:
+            it["satellite_imagery"] = pics
         items.append(it)
     got = ask(PROMPT, json.dumps({"items": items}, ensure_ascii=False), state, settings, now,
               max_tokens=3000, purpose="frontline_review")

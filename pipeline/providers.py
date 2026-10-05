@@ -43,12 +43,13 @@ DEFAULTS = [
 # Which purposes go to which providers first, with each purpose's daily token share there. Image
 # reading (the Map Room) stays on Gemini. Together the shares stay within Cerebras' daily cap.
 ROUTES = {
-    "analysis": {"cerebras": 400_000},
-    "recency": {"cerebras": 60_000},
-    "frontline_review": {"cerebras": 100_000},
-    "frontline_isw": {"cerebras": 120_000},
-    "frontline": {"cerebras": 100_000},
-    "extract": {"cerebras": 120_000},   # overflow only: when Gemini can't take the batches
+    "analysis": {"cerebras": 380_000},
+    "recency": {"cerebras": 50_000},
+    "frontline_review": {"cerebras": 80_000},
+    "frontline_isw": {"cerebras": 100_000},
+    "frontline": {"cerebras": 60_000},
+    "extract": {"cerebras": 110_000},   # overflow only: when Gemini can't take the batches
+    "frontline_social": {"cerebras": 120_000},
 }
 MAX_WAIT = 25          # seconds a call may wait for the minute's token limit before going to Gemini
 COOL_DOWN = 60         # seconds a provider is left alone after a rate-limit refusal

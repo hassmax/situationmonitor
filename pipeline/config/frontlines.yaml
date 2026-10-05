@@ -146,7 +146,7 @@ conflicts:
     actors:
       - {id: SAF, name: the Sudanese army, controlled: Army-controlled, color: "#5aa9e6", sources: [], aka: "Sudanese Armed Forces, SAF, the army, Port Sudan authorities, joint forces allied with the army",
          held_as: [army, Sudanese army, SAF, military, government, Sudanese government]}
-      - {id: RSF, name: the Rapid Support Forces, controlled: RSF-controlled, color: "#e39b5b", sources: [], aka: "RSF, Rapid Support Forces, Tasis/the parallel government",
+      - {id: RSF, name: the Rapid Support Forces, controlled: RSF-controlled, color: "#e39b5b", sources: [RSF], aka: "RSF, Rapid Support Forces, Tasis/the parallel government",
          held_as: [RSF, Rapid Support Forces, paramilitary, Sudanese paramilitary, paramilitary RSF]}
     standing:
       - region: Khartoum and the Nile
@@ -230,7 +230,7 @@ conflicts:
     actors:
       - {id: JUNTA, name: the military junta, controlled: Junta-controlled, color: "#e39b5b", sources: [MM], aka: "Tatmadaw, the junta, the military regime, SAC, the military government",
          held_as: [junta, military, regime, military junta, Tatmadaw]}
-      - {id: RESIST, name: resistance forces, controlled: Resistance-controlled, color: "#5aa9e6", sources: [], aka: "People's Defence Forces, PDF, NUG, Arakan Army, MNDAA, TNLA, KIA, KNU, Karenni forces, ethnic armed organizations, the Three Brotherhood Alliance",
+      - {id: RESIST, name: resistance forces, controlled: Resistance-controlled, color: "#5aa9e6", sources: [NUG], aka: "People's Defence Forces, PDF, NUG, Arakan Army, MNDAA, TNLA, KIA, KNU, Karenni forces, ethnic armed organizations, the Three Brotherhood Alliance",
          held_as: [rebel, resistance, Arakan Army, MNDAA, TNLA, KIA, Kachin Independence Army, KNU, Karen, PDF, ethnic armed group, ethnic army, insurgent]}
     standing:
       - region: Rakhine
