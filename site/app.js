@@ -1901,7 +1901,9 @@
   function renderControlNote() {
     const el = $("#controlNote");
     const layers = controlLayers().filter((L) => !L.assessment);  // the site's own areas need no note
-    el.hidden = !layers.length;
+    // ...except where Wikipedia's conflict maps fill gaps: its licence (CC BY-SA) asks for credit
+    const credits = (S.data && S.data.frontline && S.data.frontline.credits) || [];
+    el.hidden = !layers.length && !credits.length;
     if (el.hidden) return;
     const bySource = new Map();
     const traced = layers.filter((L) => L.approx && !L.assessment);
@@ -1923,6 +1925,9 @@
       + `. The shapes are theirs, simplified${hatched ? "; hatched areas have forces present but not in control" : ""}.`);
     for (const L of traced) parts.push(`${esc(L.label)}${L.country ? ` ${esc(country(L.country))}` : ""} (dashed edge) is approximate: traced by this site from the `
       + `<a href="${esc(L.link || "#")}" target="_blank" rel="noopener">${esc(L.source || "source")} map</a>${L.as_of ? ` of ${esc(day(L.as_of))}` : ""}, which is published only as a picture.`);
+    if (credits.length) parts.push("Where this site's agents have no evidence yet, shading is filled in from Wikipedia's conflict maps: "
+      + credits.map((c) => `<a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.name)}</a>${c.edited ? `, ${esc(day(c.edited))}` : ""}`).join("; ")
+      + ` (<a href="${esc(credits[0].license_url)}" target="_blank" rel="noopener">${esc(credits[0].license)}</a>).`);
     el.innerHTML = parts.join(" ");
   }
 

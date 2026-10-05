@@ -557,3 +557,79 @@ def test_capture_headlines_are_taken_in_turn_across_conflicts():
     q += [{"conflict": "drc", "time": "2026-09-20T00:00:00Z", "key": "d1"}]
     order = [x["key"] for x in claims._news_order(q)]
     assert order[:2] == ["u5", "d1"]                                                             # the older DRC one isn't last
+
+
+# ----------------------------------------------------------------------------- Wikipedia baseline (2026-10-05)
+
+WIKI_SRC = '''return { marks = {
+  { lat = "15.369", long = "44.191", mark = "Dot green 0d0.svg", marksize = 35, label = "[[Sanaa]]", link = "Sanaa" },
+  { lat = "12.8", long = "45.03", mark = "Location dot red.svg", marksize = 28, label = "[[Aden]]" },
+  { lat = "13.58", long = "44.02", mark = "80x80-red-lime-anim.gif", label = "[[Taiz]]" },
+  { lat = "15.46", long = "45.32", mark = "map-circle-red.svg", label = "[[Marib Governorate|Marib]]" },
+  { lat = "15.0", long = "44.0", mark = "Map-peak-lime.svg", label = "Jabal X" },
+  { lat = "14.0", long = "48.0", mark = "Map-dot-grey-68a.svg", label = "[[Azzan]]" },
+  { lat = "14.9", long = "43.4", mark = "Abm-lime-icon.png", link = "Some base" },
+}}'''
+YE_WIKI = {"id": "yemen", "name": "Yemen", "countries": ["YE"], "center": [15.3, 45.0], "radius_km": 900, "area_km": 10,
+           "actors": [{"id": "HOUTHI", "name": "the Houthis", "color": "#e39b5b", "controlled": "Houthi-controlled", "sources": ["YE"]},
+                      {"id": "ROYG", "name": "the government", "color": "#5aa9e6", "controlled": "Government-controlled", "sources": []}],
+           "wikipedia": {"page": "Module:Yemeni Civil War detailed map",
+                         "marks": {"Location dot red.svg": "ROYG", "Dot green 0d0.svg": "HOUTHI", "map-circle-red.svg": "ROYG"}}}
+
+
+def test_wikipedia_dots_become_places_by_the_legend_and_nothing_else_does():
+    from frontline import wikipedia
+    got = {p["name"]: (p["holder"], p["status"]) for p in wikipedia.parse(WIKI_SRC, YE_WIKI["wikipedia"])}
+    assert got == {"Sanaa": ("HOUTHI", "assessed"), "Aden": ("ROYG", "assessed"), "Taiz": (None, "contested"),
+                   "Marib": ("ROYG", "assessed")}                                   # peaks, bases, untracked sides left out
+    pts = [{"name": "A", "lat": 13.0, "lon": 39.0, "holder": "ENDF"}, {"name": "B", "lat": 13.5, "lon": 39.5, "holder": "TPLF"},
+           {"name": "C", "lat": 9.0, "lon": 38.7, "holder": "ENDF"}]
+    near = wikipedia._near_only(pts, {"actors": ["ENDF"], "km": 100})
+    assert [p["name"] for p in near] == ["A", "B"]                                  # Addis Ababa is far from the fighting
+
+
+class FakeWiki:
+    def __init__(self, fail=False):
+        self.fail, self.calls = fail, 0
+
+    def get(self, url, params=None, headers=None, timeout=None):
+        self.calls += 1
+        if self.fail:
+            raise OSError("down")
+        body = WIKI_SRC if params.get("action") == "raw" else json.dumps(
+            {"query": {"pages": {"1": {"revisions": [{"timestamp": "2026-10-04T23:47:30Z"}]}}}})
+
+        class R:
+            text = body
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return json.loads(body)
+        return R()
+
+
+def test_the_wikipedia_maps_are_read_once_and_the_agents_evidence_wins():
+    from frontline import cartographer, wikipedia
+    state = {"frontline": {"places": {}, "read": {}}}
+    assert wikipedia.run([YE_WIKI], {"frontline": {"places": {}}}, FakeWiki(fail=True), NOW) == 0   # tried again next run
+    session = FakeWiki()
+    assert wikipedia.run([YE_WIKI], state, session, NOW) == 1
+    calls = session.calls
+    assert wikipedia.run([YE_WIKI], state, session, NOW) == 0 and session.calls == calls             # once
+    base = state["frontline"]["baseline"]["maps"]["yemen"]
+    assert {p["name"]: p["country"] for p in base["points"]} == {"Sanaa": "YE", "Aden": "YE", "Taiz": "YE", "Marib": "YE"}
+    # a settlement the agents published near Aden: its own evidence, not Wikipedia's dot, shades there
+    mine = [{"name": "Aden", "conflict": "yemen", "lat": 12.79, "lon": 45.02}]
+    names = [p["name"] for p in wikipedia.points(state["frontline"], [YE_WIKI], mine)]
+    assert "Aden" not in names and "Sanaa" in names
+    credit = wikipedia.credits(state["frontline"], [YE_WIKI])[0]
+    assert credit["license"] == "CC BY-SA 4.0" and credit["edited"] == "2026-10-04" and "Yemeni_Civil_War" in credit["url"]
+    pub = cartographer.public(state["frontline"], [YE_WIKI], NOW)
+    labels = {L["label"]: L["source"] for L in pub["areas"]}
+    assert labels["Houthi-controlled"] == "Wikipedia's conflict map" and "Contested" in labels
+    assert pub["credits"] and pub["places"] == []                                 # the dots aren't published as places
+    later = NOW + wikipedia.MAX_AGE + timedelta(days=1)
+    wikipedia.run([YE_WIKI], state, session, later)
+    assert state["frontline"]["baseline"]["maps"] == {} and session.calls == calls    # dropped, not read again

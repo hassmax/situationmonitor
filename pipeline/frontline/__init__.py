@@ -23,6 +23,8 @@ the conflicts and their sides):
                    rules: assessed / claimed / contested (no model)
   review.py        checks every change against its evidence and the nearby front before it is
                    published (model, purpose "frontline_review")
+  wikipedia.py     a one-time snapshot of Wikipedia's conflict maps that fills the gaps where the
+                   agents have nothing (no model)
   cartographer.py  what the map draws: shaded areas of control around the assessed settlements (no model)
 
 The scout and the standing-control agent run before extraction (the scout's results join the
@@ -35,7 +37,7 @@ from datetime import timedelta
 
 from common import iso, log
 
-from . import assess, cartographer, claims, heat, imagery, isw, ledger, review, scout, social, standing
+from . import assess, cartographer, claims, heat, imagery, isw, ledger, review, scout, social, standing, wikipedia
 
 __all__ = ["search", "update", "public"]
 
@@ -89,6 +91,8 @@ def update(events: list[dict], conflicts: list[dict], state: dict, settings: dic
         added = 0
     placed = assess.locate(fl, conflicts, geocoder)
     merged = assess.merge_spellings(fl)
+    if session is not None:
+        wikipedia.run(conflicts, state, session, now)  # once: Wikipedia's maps fill the gaps (no model)
     if session is not None and not disabled:
         heat.update(conflicts, fl, session, now)  # satellite fire detections near tracked places (no model)
 

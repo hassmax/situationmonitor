@@ -29,6 +29,10 @@
 #                   (regions.json names) with no listed town of their own that it fills too.
 #   search_context  words the standing-control searches add (one must appear), so a town named like
 #                   something else ("Gao", "Kaya", "Muse", "Ann") finds this war's news
+#   wikipedia       a one-time fill-in where the agents have nothing (pipeline/frontline/wikipedia.py):
+#                   `page`, the Wikipedia "detailed map" module; `marks`, which of its dot files stand
+#                   for which side here (from the map's legend; others are left out); `near`, keep the
+#                   listed sides' dots only within km of another side's
 #   search_french   also search Google News in French (eastern DRC, the Sahel: most reporting is French)
 #   actors          the sides, each with:
 #     id, name      id used by the agents, and the name used in the reviewer's notes
@@ -110,6 +114,9 @@ conflicts:
 
   - id: yemen
     name: Yemen
+    wikipedia:
+      page: "Module:Yemeni Civil War detailed map"
+      marks: {"Location dot red.svg": ROYG, "Dot green 0d0.svg": HOUTHI, "map-circle-red.svg": ROYG, "map-circle-lime.svg": HOUTHI}
     search_context: "Yemen OR Houthi OR Houthis"
     countries: [YE]
     center: [15.3, 45.0]
@@ -140,6 +147,10 @@ conflicts:
 
   - id: sudan
     name: Sudan
+    wikipedia:
+      page: "Module:2023 Sudanese Clashes detailed map"
+      # orange: the allied RSF and SPLM-N (al-Hilu); SPLM-N alone (yellow), SLM (al-Nur) and South Sudan's army are not tracked
+      marks: {"Location dot red.svg": SAF, "Location dot blue.svg": RSF, "Location dot orange.svg": RSF, "map-circle-red.svg": SAF, "map-circle-blue.svg": RSF}
     search_context: "Sudan OR Sudanese OR RSF OR Darfur OR Kordofan"
     countries: [SD]
     center: [14.5, 29.5]
@@ -171,6 +182,12 @@ conflicts:
 
   - id: ethiopia
     name: Ethiopia
+    wikipedia:
+      page: "Module:Ethiopian wars and insurgencies detailed map"
+      # Eritrean forces, the OLA and Benishangul militias are not tracked; the government holds most of the
+      # country, so its towns are kept only within 100 km of another side's
+      marks: {"Location dot red.svg": ENDF, "Location dot green.svg": TPLF, "Dot green 0d0.svg": TPLF, "Map-dot-grey-68a.svg": FANO}
+      near: {actors: [ENDF], km: 100}
     search_context: "Ethiopia OR Ethiopian OR Tigray OR Tigrayan OR Amhara OR Fano OR Afar"
     countries: [ET]
     center: [12.0, 39.5]
@@ -230,6 +247,14 @@ conflicts:
 
   - id: myanmar
     name: Myanmar
+    wikipedia:
+      page: "Module:Myanmar Civil War detailed map"
+      # the anti-junta groups: PDF, KIO, CNF, Chin Brotherhood, KNU, Karenni forces, Arakan Army, MNDAA, TNLA, MNLA;
+      # the Shan armies, NDAA, and the junta-aligned Pa-O and Karen National Army are not tracked
+      marks: {"Location dot red.svg": JUNTA, "Dot green 0d0.svg": RESIST, "Location dot blue.svg": RESIST, "Location dot magenta.svg": RESIST,
+              "Location dot orange.svg": RESIST, "Location dot black.svg": RESIST, "Location dot cyan.svg": RESIST, "Location dot green.svg": RESIST,
+              "Map-dot-grey-68a.svg": RESIST, "Dot yellow ff4.svg": RESIST, "Location dot bisque.svg": RESIST,
+              "map-circle-blue.svg": RESIST, "map-circle-green.svg": RESIST, "map-circle-yellow.svg": RESIST}
     search_context: "Myanmar OR Burma OR junta OR Rakhine OR Shan OR Kachin OR Sagaing OR Karen"
     countries: [MM]
     center: [20.5, 96.0]
@@ -253,6 +278,10 @@ conflicts:
 
   - id: sahel
     name: Sahel
+    wikipedia:
+      page: "Module:Mali War detailed map"
+      # JNIM (grey) and IS Sahel (black); the CMA/FLA and the Plateforme are not tracked
+      marks: {"Location dot red.svg": STATE, "Map-dot-grey-68a.svg": JIHADI, "Location dot black.svg": JIHADI, "Map-circle-grey.svg": JIHADI, "Map-circle-black.svg": JIHADI}
     search_context: "Mali OR Burkina OR Niger OR JNIM OR jihadist OR jihadistes OR FAMa"
     search_french: true
     countries: [ML, BF, NE]
@@ -278,6 +307,10 @@ conflicts:
 
   - id: somalia
     name: Somalia
+    wikipedia:
+      page: "Module:Somali Civil War detailed map"
+      # federal, Jubaland and Puntland forces (all SFG here); Somaliland, IS and local forces are not tracked
+      marks: {"Location dot red.svg": SFG, "Location dot green.svg": SFG, "Location dot purple.svg": SFG, "Map-dot-grey-68a.svg": SHABAAB}
     search_context: "Somalia OR Somali OR Shabaab OR Shabab"
     countries: [SO]
     center: [3.5, 45.5]
