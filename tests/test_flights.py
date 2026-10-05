@@ -107,3 +107,58 @@ def test_aircraft_only_passing_by_are_not_logged_and_old_entries_go():
 def test_watched_bases_load():
     bases = config.load().flight_bases
     assert any(b["name"] == "RAF Fairford" for b in bases) and all({"lat", "lon", "country_name"} <= set(b) for b in bases)
+
+
+# ----------------------------------------------------------------------------- surges
+
+def _entry(hexid, typ, way, base, when, callsign="RCH1", last=None):
+    b = {"Al Udeid Air Base": (25.117, 51.315, "Qatar"), "RAF Mildenhall": (52.362, 0.486, "United Kingdom")}[base]
+    end = {"base": base, "country": b[2], "lat": b[0], "lon": b[1], "time": when}
+    e = {"id": "f" + hexid, "hex": hexid, "type": typ, "callsign": callsign, way: end}
+    if last:
+        e["last"] = last
+    return e
+
+
+def test_four_c17s_landing_at_one_base_in_hours_make_one_surge_alerted_once():
+    import alerts as alerts_mod
+    from datetime import datetime, timezone
+    now = datetime(2026, 10, 5, 18, 0, tzinfo=timezone.utc)
+    st = {"log": {f"k{i}": _entry(f"ae{i}", "C17", "to", "Al Udeid Air Base", f"2026-10-05T{10 + i}:00:00Z", f"RCH{i}") for i in range(3)}}
+    assert flights.surges(st, now) == []                                   # three is not "more than 3"
+    st["log"]["k3"] = _entry("ae3", "C17", "to", "Al Udeid Air Base", "2026-10-05T15:30:00Z", "RCH3")
+    (s,) = flights.surges(st, now)
+    assert (s["count"], s["way"], s["base"]) == (4, "to", "Al Udeid Air Base")
+    text = flights.surge_text(s)
+    assert text.startswith("4 C-17 transports landed at Al Udeid Air Base, Qatar, between 5 Oct 10:00 UTC and 5 Oct 15:30 UTC")
+    st["log"]["k4"] = _entry("ae4", "C17", "to", "Al Udeid Air Base", "2026-10-05T16:00:00Z", "RCH4")
+    (s2,) = flights.surges(st, now)
+    assert s2["id"] == s["id"] and s2["count"] == 5                        # the same surge grew
+    state = {"flights": st}
+    shown = flights.alerts(state, now)
+    assert [a["count"] for a in shown] == [5] and "icao=ae0,ae1,ae2,ae3,ae4" in shown[0]["url"]
+    sent = []
+    env = {"TELEGRAM_BOT_TOKEN": "t", "TELEGRAM_CHAT_ID": "c"}
+    rules = {"rules": {"flight_surge": {"enabled": True}}}
+    state["alerts"] = {"started": "2026-10-01T00:00:00Z", "sent": {}}
+    alerts_mod.run(state, [], [], rules, {}, now, env, send=lambda tok, chat, text: sent.append(text) or True, flight_alerts=shown)
+    alerts_mod.run(state, [], [], rules, {}, now, env, send=lambda tok, chat, text: sent.append(text) or True, flight_alerts=shown)
+    assert len(sent) == 1 and sent[0].startswith("Flight alert: 5 C-17 transports at Al Udeid Air Base")
+
+
+def test_tankers_leaving_together_say_where_they_were_last_seen_and_old_ones_are_spread_out():
+    from datetime import datetime, timezone
+    now = datetime(2026, 10, 5, 18, 0, tzinfo=timezone.utc)
+    east = {"lat": 52.4, "lon": 8.0, "time": "2026-10-05T14:00:00Z"}
+    st = {"log": {f"k{i}": _entry(f"ad{i}", "K35R", "from", "RAF Mildenhall", f"2026-10-05T{9 + i:02d}:00:00Z", f"QID{i}", last=east)
+                  for i in range(4)}}
+    # a fifth tanker a day earlier is not part of it
+    st["log"]["old"] = _entry("ad9", "K35R", "from", "RAF Mildenhall", "2026-10-04T08:00:00Z", "QID9", last=east)
+    (s,) = flights.surges(st, now)
+    assert s["count"] == 4 and "4 last seen heading east" in flights.surge_text(s)
+    # C-17s and KC-135s are counted apart
+    st2 = {"log": {"a": _entry("x1", "C17", "to", "Al Udeid Air Base", "2026-10-05T10:00:00Z"),
+                   "b": _entry("x2", "K35R", "to", "Al Udeid Air Base", "2026-10-05T10:10:00Z"),
+                   "c": _entry("x3", "C17", "to", "Al Udeid Air Base", "2026-10-05T10:20:00Z"),
+                   "d": _entry("x4", "K35R", "to", "Al Udeid Air Base", "2026-10-05T10:30:00Z")}}
+    assert flights.surges(st2, now) == []

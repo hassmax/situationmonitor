@@ -1,6 +1,16 @@
-# Watched bases for the flight agent (pipeline/flights.py): when several military aircraft of one
-# kind take off from or land at one of these (within 40 km, below 12,000 ft) within 3 hours, the
-# agent reports it. Positions are the airfields' published coordinates. Add bases freely.
+# Watched bases for the flight agent (pipeline/flights.py): each tracked military flight's take-off
+# from and landing at one of these (within 40 km, below 12,000 ft) is logged for the regional
+# analyst. Positions are the airfields' published coordinates. Add bases freely.
+
+# Surge alerts (the owner, 2026-10-05: "if more than 3 C-17 fly somewhere in close timeframe, and
+# same with KC-135, have the flight tracker agent deploy an alert"): at least `min` different
+# aircraft of these ICAO types landing at, or taking off from, one watched base within `hours`.
+# Shown as a flight alert at the top of the analysis panel, sent to Telegram when alerts are set up
+# (rule flight_surge in alerts.yaml), and given to the regional analyst.
+surges:
+  - {label: C-17 transports, types: [C17], min: 4, hours: 12}
+  - {label: KC-135 tankers, types: [K35R, K35E], min: 4, hours: 12}
+
 bases:
   # United Kingdom and Europe
   - {name: RAF Fairford, country: GB, country_name: United Kingdom, lat: 51.682, lon: -1.790}

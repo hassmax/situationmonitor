@@ -136,6 +136,8 @@ def make_item(src: dict, platform: str, source_id: str, url: str, text: str,
         "url": url,
         "text": clean_text(text)[:1500],
         "time": iso(published),
+        # read only by the front-line social media agent, never sent to event extraction
+        **({"frontline_only": True} if src.get("frontline_only") else {}),
     }
 
 

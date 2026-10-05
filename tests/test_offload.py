@@ -113,7 +113,7 @@ def test_room_counts_the_outside_providers_when_gemini_has_none():
     state = {"llm_calls": {"date": "2026-10-04", "count": 470}}
     env = {"CEREBRAS_API_KEY": "c"}
     assert extract.room(state, SETTINGS, NOW, "frontline_review") == 0           # no key in this test's environment
-    assert providers.room(state, SETTINGS, NOW, "frontline_review", env) == 100_000 // providers.TYPICAL_CALL
+    assert providers.room(state, SETTINGS, NOW, "frontline_review", env) == providers.ROUTES["frontline_review"]["cerebras"] // providers.TYPICAL_CALL
     assert providers.room(state, SETTINGS, NOW, "dedupe", env) == 0               # not routed
 
 

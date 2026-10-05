@@ -180,8 +180,16 @@ def send_telegram(token: str, chat_id: str, text: str) -> bool:
     return True
 
 
+def _surge_text(a: dict, base: str) -> str:
+    lines = [f"Flight alert: {a['count']} {a['label']} {'at' if a['way'] == 'to' else 'leaving'} {a['base']}", a["text"],
+             "From aircraft transponders (adsb.lol): where they went, not why.", a["url"]]
+    if base:
+        lines.append(base)
+    return "\n".join(lines)
+
+
 def run(state: dict, events: list[dict], fleet: list[dict], rules: dict, names: dict, now, env,
-        send=send_telegram) -> None:
+        send=send_telegram, flight_alerts: list[dict] | None = None) -> None:
     token, chat = (env.get("TELEGRAM_BOT_TOKEN") or "").strip(), (env.get("TELEGRAM_CHAT_ID") or "").strip()
     if not token or not chat:
         log("[alerts] Telegram is not set up (TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID); skipping alerts")
@@ -204,6 +212,10 @@ def run(state: dict, events: list[dict], fleet: list[dict], rules: dict, names: 
         hits = [(k, w) for k, w in carrier_matches(c, rules) if k not in sent]
         if hits:
             due.append(([k for k, _ in hits], _carrier_text(c, [w for _, w in hits], base), None))
+    if _rule(rules, "flight_surge"):
+        for a in flight_alerts or []:
+            if f"surge:{a['id']}" not in sent:
+                due.append(([f"surge:{a['id']}"], _surge_text(a, base), None))
     bridges = active_bridges(events, rules, now)
     was_active = set(st.get("bridges", []))
     hours = float((_rule(rules, "supply_bridge") or {}).get("window_hours", 72))
