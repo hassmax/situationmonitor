@@ -498,6 +498,8 @@ def test_searches_add_context_and_french_and_queue_capture_headlines(monkeypatch
     en = _rss(("Congolese army retakes Masisi from M23 rebels", "Reuters", "reuters.com", day),
               ("Masisi court jails two for theft", "Local", "local.cd", day),                     # no capture word
               ("Rebels seize Kitshanga near Masisi", "AP", "apnews.com", day),
+              ("M23 rebels seize Kazinga village", "AP", "apnews.com", day),                        # the war's own words
+              ("Police seize stolen cars in Kinshasa", "AP", "apnews.com", day),                    # neither
               ("Goma, under M23 control, reopens schools", "AP", "apnews.com", day))
     fr = _rss(("Masisi : les FARDC reprennent le contrôle de la cité", "Actualite.cd", "actualite.cd", day))
     session = FakeFeeds(en, fr)
@@ -508,11 +510,11 @@ def test_searches_add_context_and_french_and_queue_capture_headlines(monkeypatch
     assert "Congo" in session.urls[0] and "seized" in session.urls[0]                            # context and capture words
     news = state["frontline"]["news"]
     heads = sorted(x["headline"] for x in news["queue"])
-    assert heads == ["Congolese army retakes Masisi from M23 rebels", "Masisi : les FARDC reprennent le contrôle de la cité",
-                     "Rebels seize Kitshanga near Masisi"]                                         # the outlet's name cut off
+    assert heads == ["Congolese army retakes Masisi from M23 rebels", "M23 rebels seize Kazinga village",
+                     "Masisi : les FARDC reprennent le contrôle de la cité", "Rebels seize Kitshanga near Masisi"]   # the outlet's name cut off
     assert all(x["town"] == "Masisi" and x["conflict"] == "drc" for x in news["queue"])
     standing.run([small], {**state, "frontline": {**state["frontline"], "standing": {}}}, session, NOW, [], {})
-    assert len(news["queue"]) == 3                                                                 # each headline queued once
+    assert len(news["queue"]) == 4                                                                 # each headline queued once
 
 
 def test_an_old_search_version_searches_every_town_again():

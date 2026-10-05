@@ -22,8 +22,8 @@ Melitopol", "Houthi-held Hodeidah", "the al-Shabaab stronghold of Jilib".
   under the control of M23", "Goma, ville sous contrôle de l'AFC/M23" (`_post`).
 - Headlines that report a capture instead ("Sudanese army recaptures Sodari", "Government forces
   seize Mekelle") are how most of Africa's and Myanmar's wars are written up (a probe of 290 towns
-  on 2026-10-05 found almost no "RSF-held <town>"): those naming a searched town with a capture
-  word wait in state["frontline"]["news"] for the claims agent (claims.run_news, its own model
+  on 2026-10-05 found almost no "RSF-held <town>"): those with a capture word that name the
+  searched town or the war's own context words (the village taken is seldom the town searched) wait in state["frontline"]["news"] for the claims agent (claims.run_news, its own model
   purpose), which decides who took what on whose word. Searches add the conflict's
   `search_context` words (a town named "Kaya", "Gao" or "Muse" otherwise finds other news), and
   conflicts marked `search_french` are searched in French too.
@@ -335,7 +335,10 @@ def _queue_news(news: dict, item: dict, conflict: dict, town: dict, now) -> bool
     head = _headline(item["text"], item["source"])
     if not CAPTURE_RE.search(head):
         return False
-    if not any(re.search(r"(?<![\w-])" + re.escape(n).replace(r"\ ", r"[\s-]+") + r"(?![\w-])", head, re.I) for n in town["names"]):
+    # the searched town, or (where the conflict has context words) this war's own words: capture
+    # headlines name the village taken ("army recaptures Sodari"), seldom the town searched for
+    names = list(town["names"]) + [w.strip() for w in str(conflict.get("search_context") or "").split(" OR ") if w.strip()]
+    if not any(re.search(r"(?<![\w-])" + re.escape(n).replace(r"\ ", r"[\s-]+") + r"(?![\w-])", head, re.I) for n in names):
         return False
     k = hashlib.sha1(f"{item['url']}|{head}".encode()).hexdigest()[:16]
     if k in news["seen"]:
