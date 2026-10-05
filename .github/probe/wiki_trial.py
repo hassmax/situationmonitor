@@ -1,5 +1,6 @@
 """Temporary trial: the Wikipedia fill-in on a copy of the data branch's state. Nothing saved."""
 import collections, json, math, sys, time
+# run 2: simplified outlines
 from datetime import datetime, timezone
 sys.path.insert(0, "pipeline")
 import config

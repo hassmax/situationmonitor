@@ -108,13 +108,41 @@ def controller(p: dict) -> str | None:
     return p.get("holder")
 
 
-def _polygons(xs, ys, g) -> list:
-    """Outlines of g <= 0."""
+def _simplify(ring: list, tol: float) -> list:
+    """Douglas-Peucker on a closed ring: drops points within tol (degrees) of the line through their
+    neighbours (contour points sit one per grid cell, mostly along straight halfway lines)."""
+    if len(ring) <= 8 or tol <= 0:
+        return ring
+    pts = np.asarray(ring, dtype=float)
+    keep = np.zeros(len(pts), dtype=bool)
+    keep[0] = keep[-1] = True
+    split = int(np.argmax(np.hypot(*(pts - pts[0]).T)))   # far point: two open halves
+    keep[split] = True
+    stack = [(0, split), (split, len(pts) - 1)]
+    while stack:
+        i, j = stack.pop()
+        if j <= i + 1:
+            continue
+        a, b = pts[i], pts[j]
+        seg = b - a
+        norm = math.hypot(*seg)
+        rel = pts[i + 1:j] - a
+        d = np.abs(seg[0] * rel[:, 1] - seg[1] * rel[:, 0]) / norm if norm else np.hypot(*rel.T)
+        k = int(np.argmax(d))
+        if d[k] > tol:
+            keep[i + 1 + k] = True
+            stack += [(i, i + 1 + k), (i + 1 + k, j)]
+    out = [ring[i] for i in np.flatnonzero(keep)]
+    return out if len(out) >= 4 else ring
+
+
+def _polygons(xs, ys, g, tol: float = 0.0) -> list:
+    """Outlines of g <= 0, simplified within tol degrees."""
     import contourpy
     gen = contourpy.contour_generator(xs, ys, g, fill_type=contourpy.FillType.OuterOffset)
     polys = []
     for points, offsets in zip(*gen.filled(-1e9, 0.0)):
-        rings = [[[round(float(x), 3), round(float(y), 3)] for x, y in points[offsets[j]:offsets[j + 1]]]
+        rings = [_simplify([[round(float(x), 3), round(float(y), 3)] for x, y in points[offsets[j]:offsets[j + 1]]], tol)
                  for j in range(len(offsets) - 1)]
         rings = [r for r in rings if len(r) >= 4]
         if rings:
@@ -167,6 +195,7 @@ def areas(places: list[dict], conflict: dict) -> list[dict]:
         nx, ny = int(nx / f) + 2, int(ny / f) + 2
     xs, ys = np.linspace(w, e, nx), np.linspace(s, n, ny)
     dx, dy = xs[1] - xs[0], ys[1] - ys[0]
+    tol = min(dx, dy) / 2           # outlines are simplified within half a grid cell
     gx, gy = np.meshgrid(xs, ys)
     # the land of each of the conflict's countries: a settlement shades only the country it lies in
     masks = {c: land.mask(xs, ys, [ISO_NUMERIC[c]]) for c in conflict["countries"] if c in ISO_NUMERIC}
@@ -242,7 +271,7 @@ def areas(places: list[dict], conflict: dict) -> list[dict]:
         others = [v for kk, v in near.items() if kk != k]
         nearest_other = np.minimum.reduce(others) if others else np.full_like(d, np.inf)
         # inside where within reach (or its province) and nearer to this side than to any other
-        polys = _polygons(xs, ys, np.maximum(inside[k], (d - nearest_other) / 2))
+        polys = _polygons(xs, ys, np.maximum(inside[k], (d - nearest_other) / 2), tol)
         if not polys:
             continue
         status, holder = k
@@ -262,7 +291,7 @@ def areas(places: list[dict], conflict: dict) -> list[dict]:
             if got is not None:
                 sl, d = got
                 g[sl] = np.minimum(g[sl], d - area)
-        polys = _polygons(xs, ys, g)
+        polys = _polygons(xs, ys, g, tol)
         if polys:
             layers.append({"id": f"fl-{conflict['id']}-contested", "label": "Contested", "style": STYLE["contested"],
                            "color": None, "country": None, "conflict": conflict["id"], "source": _source(fought),
