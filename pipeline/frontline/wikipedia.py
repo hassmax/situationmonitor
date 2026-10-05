@@ -16,7 +16,7 @@ the agents can count (Sudan, Myanmar, Somalia, the Sahel).
   the agents have nothing: a dot within the conflict's `area_km` of a settlement the agents
   published is left out, so the site's own evidence always wins.
 - Licence: Wikipedia's text, its modules included, is CC BY-SA 4.0: the source is credited with
-  the map's name, link and last-edit date under "On the map" (`credits`), and the areas drawn
+  the map's name, link and last-edit date in the Sources list at the bottom of the page (`credits`), and the areas drawn
   partly from it are shared under the same licence.
 """
 from __future__ import annotations

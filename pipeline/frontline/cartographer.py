@@ -22,7 +22,7 @@ the way the globe already shows territorial control:
   with contourpy, so the edges are circles and straight halfway lines, not pixel steps.
 
 Where the agents have nothing, a one-time snapshot of Wikipedia's conflict maps fills the gaps
-(wikipedia.py): its towns shade ground the same way, credited under "On the map".
+(wikipedia.py): its towns shade ground the same way, credited in the Sources list.
 
 The areas are approximate by nature (labelled so on the map) and never reach beyond area_km
 (reach_km for a listed town) of a settlement the evidence names. Settlements with no evidence in SHOW_DAYS are left out. The

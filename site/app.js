@@ -1901,9 +1901,7 @@
   function renderControlNote() {
     const el = $("#controlNote");
     const layers = controlLayers().filter((L) => !L.assessment);  // the site's own areas need no note
-    // ...except where Wikipedia's conflict maps fill gaps: its licence (CC BY-SA) asks for credit
-    const credits = (S.data && S.data.frontline && S.data.frontline.credits) || [];
-    el.hidden = !layers.length && !credits.length;
+    el.hidden = !layers.length;
     if (el.hidden) return;
     const bySource = new Map();
     const traced = layers.filter((L) => L.approx && !L.assessment);
@@ -1925,9 +1923,6 @@
       + `. The shapes are theirs, simplified${hatched ? "; hatched areas have forces present but not in control" : ""}.`);
     for (const L of traced) parts.push(`${esc(L.label)}${L.country ? ` ${esc(country(L.country))}` : ""} (dashed edge) is approximate: traced by this site from the `
       + `<a href="${esc(L.link || "#")}" target="_blank" rel="noopener">${esc(L.source || "source")} map</a>${L.as_of ? ` of ${esc(day(L.as_of))}` : ""}, which is published only as a picture.`);
-    if (credits.length) parts.push("Where this site's agents have no evidence yet, shading is filled in from Wikipedia's conflict maps: "
-      + credits.map((c) => `<a href="${esc(c.url)}" target="_blank" rel="noopener">${esc(c.name)}</a>${c.edited ? `, ${esc(day(c.edited))}` : ""}`).join("; ")
-      + ` (<a href="${esc(credits[0].license_url)}" target="_blank" rel="noopener">${esc(credits[0].license)}</a>).`);
     el.innerHTML = parts.join(" ");
   }
 
@@ -2146,7 +2141,18 @@
       const quiet = s.ok && s.last_post && Date.now() - Date.parse(s.last_post) > 3 * DAY;
       const meta = s.ok ? `${PLATFORM[s.platform] || s.platform}, ${last}` : `${PLATFORM[s.platform] || s.platform}: ${s.error}`;
       return `<li><span class="dot ${s.ok ? (quiet ? "quiet" : "") : "bad"}" aria-hidden="true"></span><span><span class="name">${esc(s.name)}</span><span class="meta">${esc(meta)}</span></span></li>`;
-    }).join("");
+    }).join("") + wikiCredits();
+  }
+
+  // Wikipedia's conflict maps, read once to fill gaps in the front-line shading where the agents have
+  // no evidence (pipeline/frontline/wikipedia.py): credited here, as their licence (CC BY-SA) asks.
+  function wikiCredits() {
+    const credits = (S.data && S.data.frontline && S.data.frontline.credits) || [];
+    const day = (iso) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+    return credits.map((c) => `<li><span class="dot quiet" aria-hidden="true"></span><span><span class="name">`
+      + `<a href="${esc(safeUrl(c.url))}" target="_blank" rel="noopener noreferrer">Wikipedia: ${esc(c.title)}</a></span>`
+      + `<span class="meta">Read once to fill gaps in ${esc(c.name)}'s shaded territory where this site has no evidence of its own`
+      + `${c.edited ? `; map last edited ${esc(day(c.edited))}` : ""}; <a href="${esc(safeUrl(c.license_url))}" target="_blank" rel="noopener noreferrer">${esc(c.license)}</a></span></span></li>`).join("");
   }
 
   function updateFreshness() {
