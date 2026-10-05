@@ -7,7 +7,8 @@ separates "assessed" control from a side's claim:
 - It is STRONG evidence when it rests on geolocated footage, reporting from the scene, both sides'
   acknowledgement, or an independent analyst (ISW); when the side that lost it says so itself;
   when the opposing side's sources say the same; or when 2+ independent source groups, one of them
-  not aligned with either side, report it within CORROBORATE of each other (as for events).
+  not aligned with either side, report it within CORROBORATE of each other (as for events), with
+  no capture by another side reported between them.
   Outlets describing the town as held as settled fact (standing.py, basis "described") count the
   same way over DESCRIBED_WINDOW, or at once when it is the other side's own media.
   Otherwise it is one side's word (or unattributed): a CLAIM.
@@ -167,8 +168,13 @@ def _strength(c: dict, h: str | None, claims: list[dict], conflict: dict) -> str
         return "conceded"     # the other side's own media call it held by h ("occupied Melitopol")
     t = parse_time(c["time"])
     window = DESCRIBED_WINDOW if described else CORROBORATE
+    # reports on either side of another side's reported capture don't back each other up: Al
+    # Jazeera's "Houthi-held Mocha" on 4 Oct and a misread "Houthis recapture" on 5 Oct, after
+    # several outlets reported the government retaking it (2026-10-05)
+    taken = [parse_time(x["time"]) for x in claims if x["change"] == "took" and holder_of(x, conflict) not in (h, None)]
     same = [x for x in claims if x is not c and holder_of(x, conflict) == h
-            and abs(parse_time(x["time"]) - t) <= window]
+            and abs(parse_time(x["time"]) - t) <= window
+            and not any(min(t, parse_time(x["time"])) < y < max(t, parse_time(x["time"])) for y in taken)]
     if c.get("aligned") and any(x.get("aligned") and x["aligned"] != c["aligned"] for x in same):
         return "both_sides"   # opposing sides' sources agree
     groups = {x["group"] for x in same + [c]}

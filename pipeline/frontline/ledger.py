@@ -75,3 +75,22 @@ def state_of(state: dict) -> dict:
 def possessive(name: str) -> str:
     """"Russia's", "the Houthis'", "Yemeni government-aligned forces'"."""
     return f"{name}'" if name.endswith("s") else f"{name}'s"
+
+
+def _names(a: dict) -> list[str]:
+    """The words reports use for a side: its id, name, aka and held_as."""
+    aka = re.sub(r"\(.*?\)", "", a.get("aka") or "")
+    out = [a["id"], a["name"]] + re.split(r",|\bor\b", aka) + list(a.get("held_as") or [])
+    out = [re.sub(r"^the\s+", "", x.strip(), flags=re.I).strip(" '\"") for x in out]
+    return sorted({x for x in out if len(x) >= 3}, key=len, reverse=True)
+
+
+def backwards(conflict: dict, actor_id: str | None, change: str | None, note: str) -> bool:
+    """A claim that a side took or holds a place whose own note says it was taken FROM that side
+    ("Yemeni forces recapture Mokha from Houthis", filed as a Houthi capture, 2026-10-05)."""
+    a = actor(conflict, actor_id)
+    if change not in ("took", "holds") or not a or not note:
+        return False
+    names = "|".join(re.escape(x) for x in _names(a))
+    return bool(re.search(rf"\bfrom\s+(?:the\s+)?(?:{names})(?:n|s|ns)?\b(?![\s-]*(?:border|frontier|territory|side\b|lines?\b|positions?\b))",
+                          note, re.I))

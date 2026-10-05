@@ -11,6 +11,13 @@
 #   area_km         how far around a settlement its holder's shading reaches (half the usual
 #                   distance between the settlements reports name there); where two sides' zones
 #                   meet, the line runs halfway between their settlements
+#   broad_km        how far a side's ground reaches from its nearest controlled settlement, where no
+#                   other side's settlement is nearer: one broad shape per side (cartographer.py)
+#   rest            {actor, countries}: that side holds whatever nobody else does in those countries
+#   counts_as       {country: [[west, south, east, north]]}: boxes the globe's map draws in another
+#                   country (Crimea, inside Russia) that count as this one
+#   min_km2, smooth_km  specks smaller than min_km2 go to whoever surrounds them (default 1500);
+#                   outlines are smoothed over smooth_km (default 1.5 x area_km)
 #   fill: regions   shade whole provinces: a province holding an assessed `standing` town is shaded
 #                   whole, split halfway between the two sides' settlements in it
 #                   (pipeline/frontline/regions.json, Natural Earth admin-1, public domain)
@@ -64,6 +71,9 @@ conflicts:
     center: [48.4, 36.5]
     radius_km: 700
     area_km: 10
+    broad_km: 25
+    rest: {actor: UA, countries: [UA]}   # everything in Ukraine not Russian-held
+    counts_as: {UA: [[32.4, 44.3, 36.62, 46.3]]}   # Crimea, which the globe's map draws inside Russia
     reach_km: 35
     actors:
       - {id: RU, name: Russia, controlled: Russian-controlled, color: "#e39b5b", sources: [RU, BY], aka: "Russian forces, Russian MoD, the 'Sever/Zapad/Tsentr/Yug/Vostok/Dnepr' groupings, Wagner, Akhmat",
@@ -135,6 +145,7 @@ conflicts:
     fill: regions
     fill_km: 120
     area_km: 10
+    broad_km: 120
     reach_km: 35
     actors:
       - {id: HOUTHI, name: the Houthis, controlled: Houthi-controlled, color: "#e39b5b", sources: [YE], aka: "Houthis, Ansar Allah, the Sanaa-based authorities, Houthi media (Al-Masirah, Saba)",
@@ -169,6 +180,7 @@ conflicts:
     fill: regions
     fill_km: 250
     area_km: 25
+    broad_km: 300
     reach_km: 90
     actors:
       - {id: SAF, name: the Sudanese army, controlled: Army-controlled, color: "#5aa9e6", sources: [], aka: "Sudanese Armed Forces, SAF, the army, Port Sudan authorities, joint forces allied with the army",
@@ -206,6 +218,8 @@ conflicts:
     fill: regions
     fill_km: 100
     area_km: 20
+    broad_km: 120
+    rest: {actor: ENDF, countries: [ET]}   # the government holds what the Tigrayans and Fano don't
     reach_km: 45
     actors:
       - {id: ENDF, name: Ethiopian government forces, controlled: Government-controlled, color: "#5aa9e6", sources: [ET], aka: "ENDF, the federal army, regional special forces allied with Addis Ababa",
@@ -236,6 +250,7 @@ conflicts:
     fill: regions
     fill_km: 80
     area_km: 12
+    broad_km: 80
     reach_km: 30
     actors:
       - {id: M23, name: AFC/M23, controlled: M23-controlled, color: "#e39b5b", sources: [RW], aka: "M23, AFC, Alliance Fleuve Congo, Congo River Alliance",
@@ -271,6 +286,7 @@ conflicts:
     center: [20.5, 96.0]
     radius_km: 1100
     area_km: 15
+    broad_km: 120
     reach_km: 30
     actors:
       - {id: JUNTA, name: the military junta, controlled: Junta-controlled, color: "#e39b5b", sources: [MM], aka: "Tatmadaw, the junta, the military regime, SAC, the military government",
@@ -299,6 +315,7 @@ conflicts:
     center: [15.0, 0.0]
     radius_km: 1500
     area_km: 30
+    broad_km: 200
     reach_km: 60
     actors:
       - {id: JIHADI, name: jihadist groups, controlled: Jihadist-controlled, color: "#e39b5b", sources: [], aka: "JNIM, al-Qaeda's Sahel branch, Islamic State Sahel, ISGS",
@@ -327,6 +344,7 @@ conflicts:
     center: [3.5, 45.5]
     radius_km: 900
     area_km: 25
+    broad_km: 150
     reach_km: 50
     actors:
       - {id: SHABAAB, name: al-Shabaab, controlled: Al-Shabaab-controlled, color: "#e39b5b", sources: [], aka: "al-Shabaab, Harakat al-Shabaab al-Mujahideen",

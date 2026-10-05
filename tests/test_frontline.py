@@ -107,6 +107,44 @@ def test_a_newer_rival_claim_or_fighting_inside_changes_the_status():
     assert got["status"] == "assessed"                                  # old fighting no longer counts
 
 
+def test_a_newer_capture_outweighs_older_reports_of_the_other_holder():
+    # Mokha, 2026-10-05: a month of "Houthi-held Mocha" and then several outlets on the government retaking it
+    old = [claim("RU", "holds", basis="described", group=g, hours_ago=h) for g, h in (("aljazeera", 30), ("oz", 29))]
+    now_ = [claim("UA", "took", basis="unattributed", group=g, hours_ago=h) for g, h in (("Reuters", 5), ("AP", 4))]
+    got = assess.assess(place(*old, *now_), UA, NOW)
+    assert (got["holder"], got["status"]) == ("UA", "assessed")
+    # a later report naming the old holder doesn't pair up with descriptions from before the capture
+    misread = claim("RU", "took", basis="unattributed", group="TRT", hours_ago=2)
+    got = assess.assess(place(*old, *now_, misread), UA, NOW)
+    assert (got["status"], got["holder"], got["previous"]) == ("claimed", "RU", "UA")
+    # the claims agent drops a capture whose own note says it was taken from that side
+    assert ledger.backwards(UA, "RU", "took", "Ukrainian forces retook the village from Russian troops")
+    assert not ledger.backwards(UA, "UA", "took", "Ukrainian forces retook the village from Russian troops")
+    assert not ledger.backwards(UA, "RU", "took", "Russian forces took the village, 3 km from the Russian border")
+    assert not ledger.backwards(UA, "RU", "lost", "Russian forces were pushed from the village")
+
+
+def test_the_reviewer_sees_evidence_by_date_and_counted_rejections_come_back():
+    from frontline import review
+    p = place(*[claim("RU", "holds", basis="described", group=g, hours_ago=h) for g, h in (("aljazeera", 30), ("oz", 29))],
+              *[claim("UA", "took", basis="unattributed", group=g, hours_ago=h) for g, h in (("Reuters", 5), ("AP", 4))])
+    item = review._item(0, p, UA, {"holder": "UA", "status": "assessed", "since": p["claims"][2]["time"], "basis": "2 sources"}, {})
+    assert item["tally"]["newer_than_since"] == {"Ukraine": 2} and item["tally"]["older_than_since"] == {"Russia": 2}
+    assert [e["says_held_by"] for e in item["evidence"]] == ["Russia", "Russia", "Ukraine", "Ukraine"]
+    assert "never decide by counting older reports" in review.PROMPT
+    # REVIEW_VERSION 3: changes rejected on a count of older reports come back; claims filed the wrong way round go
+    split = claim("UA", "took", group="Clash Report")
+    split["rejected"] = "Evidence split; majority says Russia holds, not Ukraine."
+    wrong = claim("RU", "took", group="TRT")
+    wrong["summary"] = "TRT World: Ukrainian forces recapture the village from Russian forces"
+    state = {"frontline": {"places": {"ua:ulanove": place(split, wrong)}, "read": {}, "scout": {}}, }
+    state["frontline"]["review_version"] = 2
+    frontline.update([], [UA], state, {}, NOW, lambda *a, **k: None, None, lambda purpose: 0, disabled=True)
+    by = {c["group"]: c for c in state["frontline"]["places"]["ua:ulanove"]["claims"]}
+    assert "rejected" not in by["Clash Report"] and by["TRT"]["rejected"].startswith("the report says")
+    assert state["frontline"]["review_version"] == frontline.REVIEW_VERSION
+
+
 class Geo:
     """A lookup service with fixed answers by name (default: one spot near Sumy)."""
     def __init__(self, answers=None, default=None):
@@ -197,33 +235,44 @@ def test_a_rejected_change_sets_its_claims_aside():
 
 # ----------------------------------------------------------------------------- cartographer: areas
 
-def test_areas_shade_corroborated_control_only_and_split_halfway_between_sides():
+def test_areas_are_one_broad_shape_per_side_split_halfway_between_sides():
     import mapshapes
     from frontline import cartographer
-    conflict = {**UA, "area_km": 6, "actors": [{**UA["actors"][0], "controlled": "Russian-controlled"}, UA["actors"][1]]}
-    P = lambda name, lat, lon, status, holder, previous=None: {
-        "name": name, "conflict": "ukraine", "lat": lat, "lon": lon, "status": status, "holder": holder,
-        "previous": previous, "last": "2026-10-03T00:00:00Z"}
-    layers = cartographer.areas([P("A", 50.0, 37.0, "assessed", "RU"), P("B", 50.0, 37.12, "assessed", "UA"),
-                                 P("C", 50.3, 37.4, "claimed", "RU"),                  # a claim alone: not shaded
-                                 P("D", 50.3, 37.8, "claimed", "UA", previous="RU"),  # claimed back: stays Russian
-                                 P("E", 50.05, 37.3, "contested", "UA")], conflict)   # fighting inside: stays Ukrainian
+    conflict = {**UA, "area_km": 6, "broad_km": 30, "min_km2": 200,
+                "actors": [{**UA["actors"][0], "controlled": "Russian-controlled"}, UA["actors"][1]]}
+    P = lambda name, lat, lon, status, holder, previous=None, baseline=False: {
+        "name": name, "conflict": "ukraine", "country": "UA", "lat": lat, "lon": lon, "status": status, "holder": holder,
+        "previous": previous, "last": "2026-10-03T00:00:00Z", **({"baseline": True} if baseline else {})}
+    # villages 10 km apart: Russian-held west of 37.3, Ukrainian-held east of it
+    grid = [(50.0 + 0.09 * i, 36.9 + 0.14 * j) for i in range(5) for j in range(6)]
+    places = [P(f"V{i}", lat, lon, "assessed", "RU" if lon < 37.3 else "UA", baseline=True) for i, (lat, lon) in enumerate(grid)]
+    places += [P("C", 50.18, 37.6, "claimed", "RU"),                     # a claim alone: changes nothing
+               P("D", 50.18, 37.04, "claimed", "UA", previous="RU"),    # claimed back: stays Russian
+               P("Speck", 50.27, 37.46, "assessed", "RU", baseline=True)]   # a lone dot: folded into the ground around it
+    for i, (lat, lon) in enumerate((a, b) for a in (50.02, 50.08, 50.14) for b in (37.32, 37.38, 37.44, 37.5)):
+        places.append(P(f"F{i}", lat, lon, "contested", "UA"))          # fighting inside twelve villages: a hatched zone
+    layers = cartographer.areas(places, conflict)
     by = {L["id"]: L for L in layers}
     assert set(by) == {"fl-ukraine-assessed-RU", "fl-ukraine-assessed-UA", "fl-ukraine-contested"}
     ru, ua = by["fl-ukraine-assessed-RU"], by["fl-ukraine-assessed-UA"]
-    assert (ru["label"], ru["color"], ru["assessment"]) == ("Russian-controlled", "#e39b5b", True)
-    assert ua["label"] == "Held by Ukraine"                                                 # no `controlled` given
+    assert len(ru["polygons"]) == 1 and len(ua["polygons"]) == 1                 # one broad shape each, no specks
+    assert all(len(p) == 1 for p in ru["polygons"] + ua["polygons"])            # and no holes
+    assert (ru["label"], ru["color"], ru["assessment"], ru["source"]) == ("Russian-controlled", "#e39b5b", True,
+                                                                    "This site's assessment, with Wikipedia's conflict map")
+    assert ua["label"] == "Held by Ukraine"                                       # no `controlled` given
     inside = mapshapes._inside
-    assert inside(ru["polygons"], 37.0, 50.0) and not inside(ru["polygons"], 37.12, 50.0)
-    assert inside(ua["polygons"], 37.12, 50.0)
-    assert inside(ru["polygons"], 37.055, 50.0) and inside(ua["polygons"], 37.065, 50.0)   # the line runs halfway
-    assert not inside(ru["polygons"], 37.0, 50.2)                                           # nothing far from a named place
-    assert not inside(ru["polygons"], 37.4, 50.3)                                           # C: only claimed
-    assert inside(ru["polygons"], 37.8, 50.3)                                               # D: until corroborated
-    assert inside(ua["polygons"], 37.3, 50.05)                                              # E
-    fought = by["fl-ukraine-contested"]                                                     # E, hatched on top
+    assert inside(ru["polygons"], 37.0, 50.18) and inside(ua["polygons"], 37.6, 50.18)
+    assert inside(ru["polygons"], 37.17, 50.18) and inside(ua["polygons"], 37.43, 50.18)    # the line runs halfway (37.3)
+    assert inside(ua["polygons"], 37.46, 50.27)                                  # the speck went to Ukraine
+    assert not inside(ru["polygons"], 37.0, 51.0)                                # nothing far from any named place
+    fought = by["fl-ukraine-contested"]
     assert (fought["label"], fought["style"]) == ("Contested", "infiltration")
-    assert inside(fought["polygons"], 37.3, 50.05) and not inside(fought["polygons"], 37.0, 50.0)
+    assert inside(fought["polygons"], 37.38, 50.08) and not inside(fought["polygons"], 37.0, 50.18)
+    # a capture the agents confirmed shows even where it is a speck in the other side's ground
+    taken = P("Taken", 50.18, 37.6, "assessed", "RU", previous="UA")
+    layers = cartographer.areas([p for p in places if p["name"] != "C"] + [taken], conflict)
+    ru = next(L for L in layers if L["id"] == "fl-ukraine-assessed-RU")
+    assert inside(ru["polygons"], 37.6, 50.18) and not inside(ru["polygons"], 37.6, 49.95)
 
 
 # ----------------------------------------------------------------------------- standing control
@@ -282,27 +331,40 @@ def test_two_outlets_describing_a_town_as_held_make_it_assessed():
     assert assess.assess(other_side, UA_STANDING, NOW)["basis"] == "the other side's own media describe it as held"
 
 
-def test_standing_towns_reach_further_stay_on_land_and_home_ground_is_not_shaded():
+def test_areas_stay_on_land_hide_home_ground_and_fill_the_rest_of_a_country():
     import mapshapes
     from frontline import cartographer
     P = lambda name, lat, lon, status, holder, country="UA", standing=False: {
         "name": name, "conflict": "ukraine", "country": country, "lat": lat, "lon": lon, "status": status,
         "holder": holder, "standing": standing, "last": "2026-10-03T00:00:00Z"}
     inside = mapshapes._inside
-    # Melitopol, assessed and listed: shades 35 km; a village only claimed: nothing
+    conflict = {**UA_STANDING, "broad_km": 35, "min_km2": 300}
+    # Melitopol, assessed: holds the ground around it out to broad_km; a village only claimed: nothing
     layers = cartographer.areas([P("Melitopol", 46.85, 35.37, "assessed", "RU", standing=True),
-                                 P("Village", 47.6, 36.6, "claimed", "RU")], UA_STANDING)
+                                 P("Village", 47.6, 36.6, "claimed", "RU")], conflict)
     assert len(layers) == 1
     held = layers[0]
-    assert inside(held["polygons"], 35.37, 47.10)                 # ~28 km north of Melitopol
-    assert not inside(held["polygons"], 35.37, 47.25)             # beyond reach
-    assert not inside(held["polygons"], 35.6, 46.55)              # the Sea of Azov is not shaded
+    assert inside(held["polygons"], 35.37, 47.05)                 # ~22 km north of Melitopol
+    assert not inside(held["polygons"], 35.37, 47.30)             # beyond reach
+    assert not inside(held["polygons"], 35.8, 46.4)               # the Sea of Azov is not shaded
     assert not inside(held["polygons"], 36.6, 47.6)               # a claimed village isn't shaded
     # Russian-held villages in Russia are Russia's own ground: nothing to shade
-    assert cartographer.areas([P("Tetkino", 51.27, 34.27, "assessed", "RU", country="RU")], UA_STANDING) == []
-    # Ukrainian-held Sumy's zone stops at the border
-    sumy = cartographer.areas([P("Sumy", 50.91, 34.80, "assessed", "UA", standing=True)], {**UA_STANDING, "reach_km": 45})[0]
-    assert inside(sumy["polygons"], 34.80, 50.95) and not inside(sumy["polygons"], 35.1, 51.18)   # Russia, ~36 km
+    assert cartographer.areas([P("Tetkino", 51.27, 34.27, "assessed", "RU", country="RU")], conflict) == []
+    # Ukrainian-held Sumy's ground stops at the border
+    sumy = cartographer.areas([P("Sumy", 50.91, 34.80, "assessed", "UA", standing=True)], conflict)[0]
+    assert inside(sumy["polygons"], 34.80, 51.0) and not inside(sumy["polygons"], 35.1, 51.18)   # Russia, ~36 km
+    # `rest`: everything in Ukraine nobody else holds is Ukraine's, as one shape; `counts_as`: a Crimean
+    # town the globe's map draws inside Russia is still Ukraine's ground held by Russia, so it shows
+    whole = {**conflict, "rest": {"actor": "UA", "countries": ["UA"]}, "counts_as": {"UA": [[32.4, 44.3, 36.62, 46.3]]}}
+    layers = cartographer.areas([P("Melitopol", 46.85, 35.37, "assessed", "RU", standing=True),
+                                 P("Simferopol", 44.95, 34.10, "assessed", "RU", country="RU")], whole)
+    by = {L["id"]: L for L in layers}
+    ua, ru = by["fl-ukraine-assessed-UA"], by["fl-ukraine-assessed-RU"]
+    assert len(ua["polygons"]) == 1 and ua["settlements"] == 0
+    assert inside(ua["polygons"], 30.5, 50.45) and inside(ua["polygons"], 24.0, 49.8)    # Kyiv, Lviv
+    assert not inside(ua["polygons"], 35.37, 46.85) and inside(ru["polygons"], 35.37, 46.85)
+    assert inside(ru["polygons"], 34.10, 44.95)                    # Simferopol
+    assert not inside(ua["polygons"], 37.6, 55.75)                 # Moscow: not Ukraine's
 
 
 def test_where_provinces_fill_a_held_town_shades_its_whole_province():
@@ -628,7 +690,8 @@ def test_the_wikipedia_maps_are_read_once_and_the_agents_evidence_wins():
     assert credit["license"] == "CC BY-SA 4.0" and credit["edited"] == "2026-10-04" and "Yemeni_Civil_War" in credit["url"]
     pub = cartographer.public(state["frontline"], [YE_WIKI], NOW)
     labels = {L["label"]: L["source"] for L in pub["areas"]}
-    assert labels["Houthi-controlled"] == "Wikipedia's conflict map" and "Contested" in labels
+    assert labels["Houthi-controlled"] == "Wikipedia's conflict map"
+    assert "Contested" not in labels          # one contested town alone makes no hatched spot
     assert pub["credits"] and pub["places"] == []                                 # the dots aren't published as places
     later = NOW + wikipedia.MAX_AGE + timedelta(days=1)
     wikipedia.run([YE_WIKI], state, session, later)

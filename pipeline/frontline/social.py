@@ -64,7 +64,7 @@ Each post (identified by "i") gives its channel, the kind of channel, and "speak
 - change: "took" (a side captured, seized, liberated, cleared or established control over it), "holds" (a side is said to keep or still hold it), "lost" (a side withdrew from it or lost it), "contested" (fighting inside it, an assault on it, or forces inside it while control is unclear).
 - Footage of soldiers in a settlement, a flag raised in it, or an assault on it shows presence, not control: "contested", with actor = the side shown, unless the post says the settlement was captured or fully cleared.
 - Not claims: fighting "near", "around", "towards" or "in the area of" a settlement, including "repelled attacks near X" and "advanced near X"; predictions, plans and expectations ("will take", "is about to fall", "preparing to storm"); strikes, shelling or drone attacks on it; casualties; prisoners. Leave those out.
-- actor: the side the change is about (who took, holds or lost it; for "contested", the attacking side, else null).
+- actor: the side the change is about (who took, holds or lost it; for "contested", the attacking side, else null). In "A recaptured X from B", A took X (actor A), not B.
 - claimed_by: the side whose statement the post makes or relays. A post by a channel that speaks for a side is that side's statement, unless it reports the other side's claim (to deny or mock it, too): then claimed_by is the other side. null if the post names no side's statement.
 - basis: "footage" (the post shows or cites video or imagery that it says was geolocated or verified), "on_scene" (a reporter or monitor at the place), "analyst" (the channel's own mapping or analysis), "party" (a side's statement), "unattributed".
 - geolocated_by: who the post says geolocated or verified the footage, or null.
@@ -155,7 +155,7 @@ def clean(c: dict, post: dict, conflicts: list[dict]) -> dict | None:
     if not when:
         return None
     note = re.sub(r"\s+", " ", str(c.get("note") or "")).strip()[:140]
-    if NOT_A_CLAIM_RE.search(note):
+    if NOT_A_CLAIM_RE.search(note) or ledger.backwards(conflict, actor, change, note):
         return None
     geo = str(c.get("geolocated_by") or "").strip()[:60]
     summary = f"{post.get('source')}: {note}" + (f" (geolocated by {geo})" if geo and basis == "footage" else "")
