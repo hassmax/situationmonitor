@@ -10,7 +10,8 @@ the conflicts and their sides):
                    findings in them, credited to ISW (model, purpose "frontline_isw")
   claims.py        reads the map's ground-fighting and territory reports and lists every control
                    claim: who took, holds, lost or fights inside which settlement, on whose word,
-                   on what evidence (model, purpose "frontline")
+                   on what evidence (model, purpose "frontline"); and the capture headlines the
+                   standing-control searches find (purpose "frontline_news")
   social.py        reads Telegram and Bluesky posts directly for the same claims: flag-raising and
                    assault videos, "geolocated to" posts, a side's own announcements; who posted
                    decides the weight (model, purpose "frontline_social")
@@ -79,6 +80,7 @@ def update(events: list[dict], conflicts: list[dict], state: dict, settings: dic
         log(f"[frontline] {back} descriptions set aside by the earlier review rule are back for review")
     if not disabled:
         found = claims.run(events, conflicts, state, settings, now, ask, budget("frontline"))
+        found += claims.run_news(conflicts, state, settings, now, ask, budget("frontline_news"))
         if session is not None:
             found += isw.run(conflicts, state, settings, session, now, ask, budget("frontline_isw"))
         found += social.run(conflicts, state, settings, now, ask, budget("frontline_social"))

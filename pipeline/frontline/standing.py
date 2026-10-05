@@ -18,9 +18,19 @@ Melitopol", "Houthi-held Hodeidah", "the al-Shabaab stronghold of Jilib".
   on its own. The assessor counts two independent outlets describing the same holder within
   assess.DESCRIBED_WINDOW (one of them unaligned), or the other side's own media doing so, as
   strong evidence; the reviewer checks every change, as for all front-line evidence.
+- The same words after the town count too: "Bukavu, occupied by the Rwandan army", "Kasopo,
+  under the control of M23", "Goma, ville sous contrôle de l'AFC/M23" (`_post`).
+- Headlines that report a capture instead ("Sudanese army recaptures Sodari", "Government forces
+  seize Mekelle") are how most of Africa's and Myanmar's wars are written up (a probe of 290 towns
+  on 2026-10-05 found almost no "RSF-held <town>"): those with a capture word that name the
+  searched town or the war's own context words (the village taken is seldom the town searched) wait in state["frontline"]["news"] for the claims agent (claims.run_news, its own model
+  purpose), which decides who took what on whose word. Searches add the conflict's
+  `search_context` words (a town named "Kaya", "Gao" or "Muse" otherwise finds other news), and
+  conflicts marked `search_french` are searched in French too.
 """
 from __future__ import annotations
 
+import hashlib
 import re
 import time
 from datetime import timedelta
@@ -52,6 +62,23 @@ NOT_TOWN = (r"region|regions|oblast|oblasts|province|governorate|state|district|
             r"outskirts|suburbs?|countryside|villages|province's|region's|oblast's")
 FORMERLY = re.compile(r"(?:formerly|previously|once|briefly|recently[\s-]+liberated|de)[\s-]*$", re.I)
 SOURCE = {"name": "Google News (standing-control search)", "kind": "news", "group": "google-news", "weight": 1}
+QUERY = ("occupied OR held OR controlled OR run OR stronghold OR seized OR captured OR recaptured OR retook OR "
+         '"took control" OR "fell to" OR "under control"')
+QUERY_FR = ('contrôle OR occupée OR "aux mains" OR "s\'empare" OR "pris le contrôle" OR "repris" OR reprend OR '
+            '"tombée aux mains" OR libéré OR libérée')
+EN = "&hl=en-US&gl=US&ceid=US%3Aen"
+FR = "&hl=fr&gl=FR&ceid=FR%3Afr"
+# a headline that reports a capture or withdrawal, for the claims agent (claims.run_news)
+CAPTURE_RE = re.compile(
+    r"\b(?:seiz\w*|captur\w*|recaptur\w*|retak\w*|retook|took\s+(?:control|over)|takes?\s+(?:control|over)|taken\s+(?:control|over)|"
+    r"taking\s+(?:control|over)|fell\s+to|falls\s+to|fall\s+of|overr[au]n|enter(?:s|ed)?|withdr\w*|pull(?:s|ed)?\s+out|"
+    r"liberat\w*|regain\w*|los(?:es|t|ing)\s+(?:control|key|the|its)|wrest\w*|expel\w*|driv(?:e|es|en)\s+out|push(?:es|ed)?\s+out|"
+    r"pris\s+le\s+contr[ôo]le|pren\w*\s+le\s+contr[ôo]le|s['’]\s*empar\w*|repris\w*|repren\w*|tomb[ée]e?s?\s+(?:aux|entre\s+les)\s+mains|"
+    r"lib[ée]r[ée]e?s?|passe\w*\s+sous\s+(?:le\s+)?contr[ôo]le|retir\w*)", re.I)
+SEARCH_VERSION = 2   # bump when the searches change: every town is searched again (FIRST_PASS a run)
+NEWS_KEEP = timedelta(days=45)   # older capture headlines aren't worth reading: the map shades SHOW_DAYS 45
+NEWS_MAX = 600
+SEEN_KEEP = timedelta(days=ledger.MEMORY_DAYS)
 
 
 def towns(conflict: dict) -> list[dict]:
@@ -87,7 +114,7 @@ def _pattern(conflict: dict, names: list[str]) -> re.Pattern | None:
     if k not in _PATTERNS:
         if len(_PATTERNS) > 64:
             _PATTERNS.clear()
-        _PATTERNS[k] = _build(conflict, names)
+        _PATTERNS[k] = (_build(conflict, names), _build_post(conflict, names))
     return _PATTERNS[k]
 
 
@@ -104,6 +131,32 @@ def _build(conflict: dict, names: list[str]) -> re.Pattern | None:
     return re.compile(rf"\b{lead}\s+{LEADS}(?P<town>{town})\b(?!-)(?P<after>\s+(?:(?:port\s+)?city\b|(?:{NOT_TOWN})\b))?", re.I)
 
 
+# the side's name after the town: "Bukavu, occupied by the Rwandan army", "Kasopo, under the control
+# of M23", "Goma, under M23 control", "Goma, ville sous contrôle de l'AFC/M23", "Kayna, sous
+# occupation de l'AFC/M23", "Bukavu occupée par l'armée rwandaise", "Nyala, the RSF-held capital of"
+_NOW = r"(?:(?:which|that)\s+(?:is|was)\s+|(?:is|are|remains?|was)\s+|now\s+|still\s+|currently\s+|long\s+)*"
+_DE = r"(?:de\s+|du\s+|des\s+|d['’]\s*)?(?:l['’]\s*|la\s+|le\s+|les\s+)?"
+_NOW_FR = r"(?:(?:une\s+)?ville\s+|(?:qui\s+)?(?:est|reste|demeure|était)\s+|toujours\s+|désormais\s+|passée?\s+)*"
+
+
+def _post(adj: str) -> str:
+    return (rf"(?:{_NOW}(?:(?:occupied|held|controlled|run)\s+by\s+(?:the\s+)?(?P<p1>{adj})"
+            rf"|under\s+(?:the\s+)?(?:control|occupation|rule)\s+of\s+(?:the\s+)?(?P<p2>{adj})"
+            rf"|under\s+(?P<p3>{adj})\s+(?:control|occupation|rule)"
+            rf"|the\s+(?P<p6>{adj})[\s-]+(?:held|controlled|occupied|run)\s+(?:regional\s+|provincial\s+|state\s+)?(?:capital|city|town|hub))"
+            rf"|{_NOW_FR}(?:sous\s+(?:le\s+)?contr[ôo]le|sous\s+(?:l['’]\s*)?occupation|aux\s+mains)\s+{_DE}(?P<p4>{adj})"
+            rf"|{_NOW_FR}(?:occupée|contrôlée|tenue)\s+par\s+{_DE}(?P<p5>{adj}))(?![\w-])")
+
+
+def _build_post(conflict: dict, names: list[str]) -> re.Pattern | None:
+    words = sorted({w for a in conflict["actors"] for w in a.get("held_as") or []}, key=len, reverse=True)
+    if not words or not names:
+        return None
+    adj = "|".join(re.escape(w).replace(r"\ ", r"[\s-]+") for w in words)
+    town = "|".join(re.escape(n).replace(r"\ ", r"\s+") for n in sorted(set(names), key=len, reverse=True))
+    return re.compile(rf"(?<![\w-])(?P<town>{town}),?\s+{_post(adj)}", re.I)
+
+
 def _actor_for(conflict: dict, word: str | None) -> str | None:
     if word is None:
         return next((a["id"] for a in conflict["actors"] if a.get("plain_occupied")), None)
@@ -117,10 +170,20 @@ def find(text: str, conflict: dict, places: list[dict]) -> list[tuple[dict, str,
     for p in places:
         for n in p["names"]:
             by_name.setdefault(re.sub(r"\s+", " ", n).lower(), p)
-    pat = _pattern(conflict, list(by_name))
+    pat, post = _pattern(conflict, list(by_name))
     out, seen = [], set()
     if not pat:
         return out
+    for m in post.finditer(text or ""):
+        p = by_name.get(re.sub(r"\s+", " ", m["town"]).lower())
+        if not p or p.get("city_only"):  # "Donetsk, held by Russia" may mean the oblast
+            continue
+        adj = next(m[g] for g in ("p1", "p2", "p3", "p4", "p5", "p6") if m[g] is not None)
+        actor = _actor_for(conflict, adj)
+        if not actor or (p["name"], actor) in seen:
+            continue
+        seen.add((p["name"], actor))
+        out.append((p, actor, re.sub(r"\s+", " ", m.group(0)).strip()))
     for m in pat.finditer(text or ""):
         if FORMERLY.search(text[max(0, m.start() - 20):m.start()]):
             continue
@@ -212,31 +275,82 @@ def run(conflicts: list[dict], state: dict, session, now, items: list[dict], out
         for c in conflicts:
             if any(n in text for n in lowered[c["id"]]):
                 found += _claims(it, c, known[c["id"]], now)
-    searched = 0
+    if fl.get("standing_version") != SEARCH_VERSION:
+        fl["standing"], fl["standing_version"] = {}, SEARCH_VERSION   # 2: capture words, context words, French
+    searched, queued = 0, 0
+    news = fl.setdefault("news", {"queue": [], "seen": {}})
     for c, t in due(conflicts, fl, now):
         names = " OR ".join(f'"{n}"' for n in t["names"][:3])
-        q = f"({names}) (occupied OR held OR controlled OR run OR stronghold) when:{WHEN}"
-        url = f"https://news.google.com/rss/search?q={quote_plus(q)}&hl=en-US&gl=US&ceid=US%3Aen"
+        context = f" ({c['search_context']})" if c.get("search_context") else ""
+        searches = [(f"({names}){context} ({QUERY}) when:{WHEN}", EN)]
+        if c.get("search_french"):
+            searches.append((f"({names}){context} ({QUERY_FR}) when:{WHEN}", FR))
         try:
-            r = session.get(url, timeout=20)
-            r.raise_for_status()
-            feed = feedparser.parse(r.content)
+            feeds = []
+            for q, edition in searches:
+                r = session.get(f"https://news.google.com/rss/search?q={quote_plus(q)}{edition}", timeout=20)
+                r.raise_for_status()
+                feeds.append(feedparser.parse(r.content))
+                time.sleep(PAUSE)   # spread the searches out a little
         except Exception as exc:  # noqa: BLE001 - tried again next run
             log(f"[frontline] standing search failed: {exc}; the rest wait for the next run")
             break
         fl["standing"][t["search_key"]] = iso(now)
         searched += 1
-        time.sleep(PAUSE)   # spread the first pass's searches out a little
-        for entry in feed.entries[:RESULTS]:
-            published, link = _entry_time(entry), entry.get("link") or ""
-            if not published or not link:
-                continue
-            src = _outlet_src(SOURCE, entry, outlets or {})
-            title = clean_text(entry.get("title", ""))
-            found += _claims({"text": title, "time": iso(published), "url": link, "source": src.get("name"),
-                              "group": src.get("group"), "side": src.get("side")}, c, [t], now)
+        for feed in feeds:
+            for entry in feed.entries[:RESULTS]:
+                published, link = _entry_time(entry), entry.get("link") or ""
+                if not published or not link:
+                    continue
+                src = _outlet_src(SOURCE, entry, outlets or {})
+                title = clean_text(entry.get("title", ""))
+                item = {"text": title, "time": iso(published), "url": link, "source": src.get("name"),
+                        "group": src.get("group"), "side": src.get("side")}
+                described = _claims(item, c, [t], now)
+                found += described
+                if not described and _queue_news(news, item, c, t, now):
+                    queued += 1
+    _trim_news(news, now)
     keep = {(t["key"] or ledger.key(t["name"], t["country"]) + ":region") for c in conflicts for t in towns(c)}
     fl["standing"] = {k: v for k, v in fl["standing"].items() if k in keep}
     if searched or found:
-        log(f"[frontline] standing: searched {searched} towns; {len(found)} descriptions of a town as held")
+        log(f"[frontline] standing: searched {searched} towns; {len(found)} descriptions of a town as held; "
+            f"{queued} capture headlines queued for the claims agent ({len(news['queue'])} waiting)")
     return found
+
+
+def _headline(title: str, source: str | None) -> str:
+    """The headline without the " - Outlet" Google News appends."""
+    name = (source or "").removesuffix(" (via Google News)")
+    if name and title.endswith(f" - {name}"):
+        return title[: -len(name) - 3]
+    return title.rsplit(" - ", 1)[0] if " - " in title else title
+
+
+def _queue_news(news: dict, item: dict, conflict: dict, town: dict, now) -> bool:
+    """Queue a headline that names the searched town with a capture word, for claims.run_news."""
+    t = parse_time(item["time"])
+    if not t or now - t > NEWS_KEEP or town.get("whole"):
+        return False
+    head = _headline(item["text"], item["source"])
+    if not CAPTURE_RE.search(head):
+        return False
+    # the searched town, or (where the conflict has context words) this war's own words: capture
+    # headlines name the village taken ("army recaptures Sodari"), seldom the town searched for
+    names = list(town["names"]) + [w.strip() for w in str(conflict.get("search_context") or "").split(" OR ") if w.strip()]
+    if not any(re.search(r"(?<![\w-])" + re.escape(n).replace(r"\ ", r"[\s-]+") + r"(?![\w-])", head, re.I) for n in names):
+        return False
+    k = hashlib.sha1(f"{item['url']}|{head}".encode()).hexdigest()[:16]
+    if k in news["seen"]:
+        return False
+    news["seen"][k] = iso(now)
+    news["queue"].append({"key": k, "conflict": conflict["id"], "town": town["name"], "country": town["country"],
+                          "region": town.get("region"), "headline": head, "time": item["time"], "url": item["url"],
+                          "source": item["source"], "group": item["group"], "side": item["side"]})
+    return True
+
+
+def _trim_news(news: dict, now) -> None:
+    cutoff, seen_cutoff = iso(now - NEWS_KEEP), iso(now - SEEN_KEEP)
+    news["queue"] = sorted((x for x in news["queue"] if x["time"] >= cutoff), key=lambda x: x["time"], reverse=True)[:NEWS_MAX]
+    news["seen"] = {k: v for k, v in news["seen"].items() if v >= seen_cutoff}

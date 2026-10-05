@@ -27,6 +27,9 @@
 #                   `front: true` on a group: towns on a front line or a river, which never fill a
 #                   whole province (fill: regions). `provinces` on a town: neighbouring provinces
 #                   (regions.json names) with no listed town of their own that it fills too.
+#   search_context  words the standing-control searches add (one must appear), so a town named like
+#                   something else ("Gao", "Kaya", "Muse", "Ann") finds this war's news
+#   search_french   also search Google News in French (eastern DRC, the Sahel: most reporting is French)
 #   actors          the sides, each with:
 #     id, name      id used by the agents, and the name used in the reviewer's notes
 #     controlled    what hovering over ground it holds says ("Russian-controlled")
@@ -107,6 +110,7 @@ conflicts:
 
   - id: yemen
     name: Yemen
+    search_context: "Yemen OR Houthi OR Houthis"
     countries: [YE]
     center: [15.3, 45.0]
     radius_km: 900
@@ -136,6 +140,7 @@ conflicts:
 
   - id: sudan
     name: Sudan
+    search_context: "Sudan OR Sudanese OR RSF OR Darfur OR Kordofan"
     countries: [SD]
     center: [14.5, 29.5]
     radius_km: 1300
@@ -166,6 +171,7 @@ conflicts:
 
   - id: ethiopia
     name: Ethiopia
+    search_context: "Ethiopia OR Ethiopian OR Tigray OR Tigrayan OR Amhara OR Fano OR Afar"
     countries: [ET]
     center: [12.0, 39.5]
     radius_km: 900
@@ -174,7 +180,7 @@ conflicts:
     area_km: 20
     reach_km: 45
     actors:
-      - {id: ENDF, name: Ethiopian government forces, controlled: Government-controlled, color: "#5aa9e6", sources: [], aka: "ENDF, the federal army, regional special forces allied with Addis Ababa",
+      - {id: ENDF, name: Ethiopian government forces, controlled: Government-controlled, color: "#5aa9e6", sources: [ET], aka: "ENDF, the federal army, regional special forces allied with Addis Ababa",
          held_as: [government, federal, army, military]}
       - {id: TPLF, name: Tigray forces, controlled: Tigrayan-controlled, color: "#e39b5b", sources: [], aka: "TPLF, Tigray Defense Forces, TDF, Tigrayan fighters",
          held_as: [TPLF, Tigrayan, Tigray forces, TDF]}
@@ -194,6 +200,8 @@ conflicts:
 
   - id: drc
     name: Eastern DR Congo
+    search_context: "Congo OR RDC OR M23 OR Kivu OR FARDC"
+    search_french: true
     countries: [CD]
     center: [-1.5, 28.8]
     radius_km: 700
@@ -203,9 +211,9 @@ conflicts:
     reach_km: 30
     actors:
       - {id: M23, name: AFC/M23, controlled: M23-controlled, color: "#e39b5b", sources: [RW], aka: "M23, AFC, Alliance Fleuve Congo, Congo River Alliance",
-         held_as: [M23, AFC/M23, M23 rebel, rebel, Rwanda-backed, Rwanda-backed M23, Rwandan-backed]}
+         held_as: [M23, AFC/M23, AFC-M23, M23 rebel, rebel, rebels, Rwanda-backed, Rwanda-backed M23, Rwandan-backed, Rwandan army, armée rwandaise]}
       - {id: FARDC, name: Congolese government forces, controlled: Government-controlled, color: "#5aa9e6", sources: [CD], aka: "FARDC, the Congolese army, Wazalendo militias allied with the army",
-         held_as: [government, Congolese government, army, Congolese army, FARDC, Kinshasa]}
+         held_as: [government, Congolese government, army, Congolese army, FARDC, Kinshasa, Wazalendo, armée]}
     standing:
       - region: North Kivu
         places: [Goma, Rutshuru, Kiwanja, Sake, Masisi, Kitshanga/Kitchanga, Bunagana, Rubaya, Mushaki, Butembo, Beni]
@@ -222,6 +230,7 @@ conflicts:
 
   - id: myanmar
     name: Myanmar
+    search_context: "Myanmar OR Burma OR junta OR Rakhine OR Shan OR Kachin OR Sagaing OR Karen"
     countries: [MM]
     center: [20.5, 96.0]
     radius_km: 1100
@@ -231,7 +240,7 @@ conflicts:
       - {id: JUNTA, name: the military junta, controlled: Junta-controlled, color: "#e39b5b", sources: [MM], aka: "Tatmadaw, the junta, the military regime, SAC, the military government",
          held_as: [junta, military, regime, military junta, Tatmadaw]}
       - {id: RESIST, name: resistance forces, controlled: Resistance-controlled, color: "#5aa9e6", sources: [NUG], aka: "People's Defence Forces, PDF, NUG, Arakan Army, MNDAA, TNLA, KIA, KNU, Karenni forces, ethnic armed organizations, the Three Brotherhood Alliance",
-         held_as: [rebel, resistance, Arakan Army, MNDAA, TNLA, KIA, Kachin Independence Army, KNU, Karen, PDF, ethnic armed group, ethnic army, insurgent]}
+         held_as: [rebel, rebels, resistance, opposition, Arakan Army, AA, MNDAA, TNLA, KIA, Kachin Independence Army, KNU, Karen, PDF, ethnic armed group, ethnic army, insurgent]}
     standing:
       - region: Rakhine
         places: [Sittwe, Kyaukphyu, Mrauk-U/Mrauk U, Thandwe, Toungup, Maungdaw, Buthidaung, Kyauktaw, Ann, Minbya, Ponnagyun, Rathedaung, Gwa, Ramree, Paletwa]
@@ -244,6 +253,8 @@ conflicts:
 
   - id: sahel
     name: Sahel
+    search_context: "Mali OR Burkina OR Niger OR JNIM OR jihadist OR jihadistes OR FAMa"
+    search_french: true
     countries: [ML, BF, NE]
     center: [15.0, 0.0]
     radius_km: 1500
@@ -251,9 +262,9 @@ conflicts:
     reach_km: 60
     actors:
       - {id: JIHADI, name: jihadist groups, controlled: Jihadist-controlled, color: "#e39b5b", sources: [], aka: "JNIM, al-Qaeda's Sahel branch, Islamic State Sahel, ISGS",
-         held_as: [jihadist, JNIM, Islamist, militant, al-Qaeda, Islamic State]}
+         held_as: [jihadist, jihadists, JNIM, JIM, Islamist, militant, al-Qaeda, Islamic State, jihadistes, terroristes]}
       - {id: STATE, name: Sahel governments' forces, controlled: Government-controlled, color: "#5aa9e6", sources: [BF], aka: "the Malian, Burkinabe or Nigerien army, FAMa, Africa Corps or Wagner alongside them, VDP",
-         held_as: [government, army, junta, military]}
+         held_as: [government, army, junta, military, FAMa, armée]}
     standing:
       - region: Mali
         country: ML
@@ -267,6 +278,7 @@ conflicts:
 
   - id: somalia
     name: Somalia
+    search_context: "Somalia OR Somali OR Shabaab OR Shabab"
     countries: [SO]
     center: [3.5, 45.5]
     radius_km: 900
