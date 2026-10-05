@@ -190,6 +190,10 @@
     }
     return TYPES[e.type] || "Event";
   };
+  const wholeCountry = (o, cc) => {
+    const p = String((o && o.place) || "").trim().toLowerCase().replace(/^the\s+/, "");
+    return !!cc && (!p || p === cc.toLowerCase() || p === countryName(cc).toLowerCase());
+  };
   const originsOf = (e) => (e.origins && e.origins.length ? e.origins : e.origin ? [e.origin] : []);
   const bestStatus = (list) => list.reduce((b, e) => (STATUS[e.status].rank > STATUS[b].rank ? e.status : b), "claimed");
   const metaLine = (e) => (e.wave ? `${countryName(e.attacker)} → ${countryName(e.country)}`
@@ -1683,7 +1687,9 @@
       if (arcs.length >= 180) break;
       // a wave is a drone and missile attack unless corrected (a landmine blast retyped as an explosion)
       if (e.type !== "missile_drone" && e.type !== "air_defense" && !originsOf(e).length) continue;
-      const origins = originsOf(e);
+      // a launch "from Yemen" names no site: the country's middle is placed in the Hadramawt desert
+      // (government-held), so the line comes from the attacker's usual launch areas instead (2026-10-05)
+      const origins = originsOf(e).filter((o) => !wholeCountry(o, e.attacker));
       if (e.wave) {
         for (const d of (e.targets.length ? e.targets.slice(0, 16) : [e])) {
           const o = nearest(origins, d);
