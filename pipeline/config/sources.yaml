@@ -369,7 +369,7 @@ outlets:
   - {domain: thehill.com, name: The Hill, tier: 2}
   - {domain: foxnews.com, name: Fox News, tier: 2}
   - {domain: newsweek.com, name: Newsweek, tier: 2}
-  - {domain: euronews.com, name: Euronews, tier: 2}
+  - {domain: euronews.com, name: Euronews, tier: 2, group: euronews}
   - {domain: lemonde.fr, name: Le Monde, tier: 1}
   # Leading outlets of major countries (owner's list, 2026-10-02)
   - {domain: spiegel.de, name: Der Spiegel, tier: 1, names: [DER SPIEGEL, Spiegel, SPIEGEL International]}
@@ -488,6 +488,31 @@ outlets:
   - {domain: apa.az, name: APA (Azerbaijan), tier: 2, side: AZ, names: [Apa.az]}
   - {domain: caliber.az, name: Caliber.Az (pro-government), tier: 2, side: AZ, names: [Caliber.Az]}
   - {domain: insightcrime.org, name: InSight Crime, tier: 2, group: insightcrime}
+  # Regional newsrooms the front-line searches find (2026-10-05): listed so each counts as its own
+  # source instead of sharing the unlisted "Google News" group; groups match their own feeds above.
+  # KT Press, Taarifa and The New Times are Rwandan pro-government outlets, and ACP is the Congolese
+  # state agency: each speaks for its side (Rwanda backs M23).
+  - {domain: sudanspost.com, name: Sudans Post, tier: 2, group: sudanspost}
+  - {domain: dabangasudan.org, name: Dabanga, tier: 2, group: dabanga, names: [Radio Dabanga, dabangasudan.org]}
+  - {domain: sudanwarmonitor.com, name: Sudan War Monitor, tier: 2, group: sudanwarmonitor, kind: analysis}
+  - {domain: myanmar-now.org, name: Myanmar Now, tier: 2, group: myanmarnow}
+  - {domain: dvb.no, name: DVB, tier: 2, group: dvb, names: [Democratic Voice of Burma]}
+  - {domain: bnionline.net, name: BNI Online, tier: 2, group: bni, names: [bnionline.net, BNI]}
+  - {domain: irrawaddy.com, name: The Irrawaddy, tier: 2, group: irrawaddy}
+  - {domain: mizzima.com, name: Mizzima, tier: 2, group: mizzima}
+  - {domain: somaliguardian.com, name: Somali Guardian, tier: 2, group: somaliguardian}
+  - {domain: radiookapi.net, name: Radio Okapi, tier: 2, group: radiookapi}
+  - {domain: actualite.cd, name: Actualite.cd, tier: 2, group: actualitecd}
+  - {domain: rfi.fr, name: RFI, tier: 1, group: rfi}
+  - {domain: africanews.com, name: Africanews, tier: 2, group: euronews, names: [Africanews - Africanews]}
+  - {domain: theafricareport.com, name: The Africa Report, tier: 2, group: jeuneafrique}
+  - {domain: jeuneafrique.com, name: Jeune Afrique, tier: 2, group: jeuneafrique}
+  - {domain: ethiopiaobserver.com, name: Ethiopia Observer, tier: 2}
+  - {domain: agenzianova.com, name: Agenzia Nova, tier: 2}
+  - {domain: acp.cd, name: ACP (Congolese state), tier: 2, side: CD, names: ["ACP | Agence Congolaise de Presse", Agence Congolaise de Presse]}
+  - {domain: ktpress.rw, name: KT Press (Rwandan pro-government), tier: 2, side: RW, names: [KT PRESS, KT PRESS -]}
+  - {domain: taarifa.rw, name: Taarifa Rwanda (pro-government), tier: 2, side: RW, names: [Taarifa Rwanda]}
+  - {domain: newtimes.co.rw, name: The New Times (Rwandan pro-government), tier: 2, side: RW, names: [The New Times]}
   - {domain: elpais.com, name: El País, tier: 1}
   - {domain: miamiherald.com, name: Miami Herald, tier: 2}
 

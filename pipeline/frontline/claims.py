@@ -157,3 +157,78 @@ def run(events: list[dict], conflicts: list[dict], state: dict, settings: dict, 
             fl["read"][x["key"]] = iso(now)
         log(f"[frontline] claims: read {len(batch)} reports, {n_claims} control claims; {len(queue)} still waiting")
     return found
+
+
+# Capture headlines from the standing-control searches (standing.py: "Sudanese army recaptures
+# Sodari", "Government forces seize Mekelle"), read with the same prompt, under their own purpose
+# "frontline_news" (share frontline_news_daily_max). Each headline is read once. The claim's text
+# is the outlet's name and the model's note, never the headline.
+NEWS_BATCH = 40
+NEWS_BACKLOG_EXTRA = 120
+NEWS_NOTE = """
+
+Here each report is a news headline ("headline") found by searching for the settlement named in "searched_for". A headline about another place that shares the name, or about anything but who holds the settlement, gives no claim. A headline saying a side "says" or "claims" it took a place is that side's claim (claimed_by)."""
+
+
+def _news_order(queue: list[dict]) -> list[dict]:
+    """Newest first within each conflict, taken in turn, so Ukraine's long list can't crowd out the rest."""
+    by = {}
+    for x in queue:
+        by.setdefault(x["conflict"], []).append(x)
+    out, lists = [], [sorted(v, key=lambda x: x["time"], reverse=True) for v in by.values()]
+    while any(lists):
+        for v in lists:
+            if v:
+                out.append(v.pop(0))
+    return out
+
+
+def run_news(conflicts: list[dict], state: dict, settings: dict, now, ask, budget: int) -> list[dict]:
+    fl = ledger.state_of(state)
+    news = fl.get("news") or {}
+    queue = _news_order(news.get("queue") or [])
+    calls = min(budget, 2 if len(queue) > NEWS_BACKLOG_EXTRA else 1)
+    if not queue or calls <= 0:
+        if queue:
+            log(f"[frontline] capture headlines: {len(queue)} wait for model budget")
+        return []
+    by_id = {c["id"]: c for c in conflicts}
+    system = PROMPT.format(conflicts=_conflicts_text(conflicts)) + NEWS_NOTE
+    found, done = [], set()
+    for _ in range(calls):
+        batch = [x for x in queue if x["key"] not in done and x["conflict"] in by_id][:NEWS_BATCH]
+        if not batch:
+            break
+        rows = [{"key": x["key"], "conflict": by_id[x["conflict"]],
+                 "report": {"time": x["time"], "source": x["source"], "side": x["side"], "group": x["group"],
+                            "url": x["url"], "summary": x["headline"]},
+                 "event": {"country": x["country"], "place": x["town"]}} for x in batch]
+        payload = json.loads(_payload(rows))
+        for item, x in zip(payload["reports"], batch):
+            item["headline"] = item.pop("summary")
+            item["searched_for"] = f"{x['town']} ({x.get('region') or x['country']})"
+            item.pop("map_place", None)
+        got = ask(system, json.dumps(payload, ensure_ascii=False), state, settings, now, max_tokens=8000, purpose="frontline_news")
+        if got is None:
+            log("[frontline] capture headlines: the model gave no answer; they wait")
+            break
+        n_claims = 0
+        for rep in got.get("reports") or []:
+            i = rep.get("i") if isinstance(rep, dict) else None
+            if not isinstance(i, int) or not 0 <= i < len(rows):
+                continue
+            for c in rep.get("claims") or []:
+                claim = _clean(c, rows[i], conflicts)
+                if not claim:
+                    continue
+                source = (rows[i]["report"]["source"] or "a news outlet").removesuffix(" (via Google News)")
+                note = re.sub(r"\s+", " ", str(c.get("note") or "")).strip()[:160]
+                claim["claim"].update(summary=f"{source}: {note}" if note else f"{source} reports this in a headline",
+                                      event=None, via="news")
+                found.append(claim)
+                n_claims += 1
+        done |= {x["key"] for x in batch}
+        log(f"[frontline] capture headlines: read {len(batch)}, {n_claims} control claims; "
+            f"{len(queue) - len(done)} still waiting")
+    news["queue"] = [x for x in news.get("queue") or [] if x["key"] not in done]
+    return found

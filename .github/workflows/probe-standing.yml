@@ -17,9 +17,7 @@ jobs:
           cache: pip
           cache-dependency-path: pipeline/requirements.txt
       - run: pip install -r pipeline/requirements.txt
-      - run: python .github/probe/standing_probe.py
-      - uses: actions/upload-artifact@v4
-        with:
-          name: standing-probe
-          path: standing_probe.json
-          retention-days: 2
+      - run: git fetch -q origin data && git show origin/data:state.json > state.json
+      - run: python .github/probe/standing_trial.py
+        env:
+          LLM_API_KEY: ${{ secrets.GEMINI_API_KEY }}

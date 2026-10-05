@@ -434,3 +434,124 @@ def test_the_reviewer_makes_a_second_call_while_many_changes_wait():
     assert asked == [review.PER_CALL, 5] and counts["confirm"] == review.PER_CALL + 5 and counts["waiting"] == 0
     assert review.run(pending[:3], [UA], {"places": places}, {}, {}, NOW, ask, budget=5)["confirm"] == 3
     assert asked[-1] == 3 and len(asked) == 3                                          # few waiting: one call
+
+
+# ----------------------------------------------------------------------------- capture headlines (2026-10-05)
+
+DRC = {"id": "drc", "name": "Eastern DRC", "countries": ["CD"], "center": [-1.5, 28.9], "radius_km": 500,
+       "search_context": "Congo OR M23", "search_french": True,
+       "actors": [{"id": "M23", "name": "AFC/M23", "color": "#e39b5b", "sources": ["RW"],
+                   "held_as": ["M23", "AFC/M23", "rebel", "Rwandan army", "armée rwandaise"]},
+                  {"id": "FARDC", "name": "Congolese forces", "color": "#5aa9e6", "sources": ["CD"],
+                   "held_as": ["army", "FARDC", "armée"]}],
+       "standing": [{"region": "North Kivu", "places": ["Goma", "Masisi"]}, {"region": "South Kivu", "places": ["Bukavu"]}]}
+
+
+def test_the_side_named_after_the_town_counts_in_english_and_french():
+    from frontline import standing
+    towns = standing.towns(DRC)
+
+    def found(text):
+        return [(p["name"], a) for p, a, _ in standing.find(text, DRC, towns)]
+    assert found("27 children killed in a fire in Bukavu, occupied by the Rwandan army") == [("Bukavu", "M23")]
+    assert found("A Goma, ville sous contrôle de l’AFC/M23, la rentrée scolaire") == [("Goma", "M23")]
+    assert found("Incendie à Bukavu occupée par l’armée rwandaise") == [("Bukavu", "M23")]   # the longer name wins over "armée"
+    assert found("Goma, under M23 control since January") == [("Goma", "M23")]
+    assert found("Masisi remains under the control of the army") == [("Masisi", "FARDC")]
+    assert found("Goma, the M23-held provincial capital") == [("Goma", "M23")]
+    assert found("Fighting near Goma, held by M23 until") == [("Goma", "M23")]
+    assert found("Goma, formerly held by M23") == []
+    assert found("Ships seized near Goma by the army") == []
+    towns_ua = standing.towns(UA_STANDING)
+    assert [p["name"] for p, _, _ in standing.find("Zaporizhzhia, held by Ukraine", UA_STANDING, towns_ua)] == []   # also the oblast
+
+
+class FakeFeeds:
+    """Google News searches answered from canned RSS, by edition."""
+
+    def __init__(self, en, fr=""):
+        self.en, self.fr, self.urls = en, fr, []
+
+    def get(self, url, timeout=None):
+        self.urls.append(url)
+        body = self.fr if "hl=fr" in url else self.en
+
+        class R:
+            content = body.encode()
+
+            def raise_for_status(self):
+                pass
+        return R()
+
+
+def _rss(*items):
+    rows = "".join(f"<item><title>{t} - {s}</title><link>https://news.google.com/{abs(hash(t))}</link>"
+                   f"<pubDate>{d}</pubDate><source url=\"https://{h}\">{s}</source></item>" for t, s, h, d in items)
+    return f"<rss><channel>{rows}</channel></rss>"
+
+
+def test_searches_add_context_and_french_and_queue_capture_headlines(monkeypatch):
+    from frontline import standing
+    monkeypatch.setattr(standing, "PAUSE", 0)
+    monkeypatch.setattr(standing, "FIRST_PASS", 1)
+    day = "Fri, 02 Oct 2026 10:00:00 GMT"
+    en = _rss(("Congolese army retakes Masisi from M23 rebels", "Reuters", "reuters.com", day),
+              ("Masisi court jails two for theft", "Local", "local.cd", day),                     # no capture word
+              ("Rebels seize Kitshanga near Masisi", "AP", "apnews.com", day),
+              ("Goma, under M23 control, reopens schools", "AP", "apnews.com", day))
+    fr = _rss(("Masisi : les FARDC reprennent le contrôle de la cité", "Actualite.cd", "actualite.cd", day))
+    session = FakeFeeds(en, fr)
+    state = {"frontline": {"places": {}, "read": {}, "standing": {}, "standing_version": standing.SEARCH_VERSION}}
+    small = {**DRC, "standing": [{"region": "North Kivu", "places": ["Masisi"]}]}
+    standing.run([small], state, session, NOW, [], {})
+    assert len(session.urls) == 2 and "hl=fr" in session.urls[1]
+    assert "Congo" in session.urls[0] and "seized" in session.urls[0]                            # context and capture words
+    news = state["frontline"]["news"]
+    heads = sorted(x["headline"] for x in news["queue"])
+    assert heads == ["Congolese army retakes Masisi from M23 rebels", "Masisi : les FARDC reprennent le contrôle de la cité",
+                     "Rebels seize Kitshanga near Masisi"]                                         # the outlet's name cut off
+    assert all(x["town"] == "Masisi" and x["conflict"] == "drc" for x in news["queue"])
+    standing.run([small], {**state, "frontline": {**state["frontline"], "standing": {}}}, session, NOW, [], {})
+    assert len(news["queue"]) == 3                                                                 # each headline queued once
+
+
+def test_an_old_search_version_searches_every_town_again():
+    from frontline import standing
+    fl = {"places": {}, "read": {}, "standing": {"cd:goma": "2026-10-03T00:00:00Z"}}
+    standing.run([DRC], {"frontline": fl}, FakeFeeds(_rss()), NOW, [], {})
+    assert fl["standing_version"] == standing.SEARCH_VERSION and "cd:goma" in fl["standing"]
+
+
+def test_capture_headlines_become_claims_credited_to_the_outlet_with_the_models_note():
+    fl = {"places": {}, "read": {}}
+    state = {"frontline": fl}
+    news = fl.setdefault("news", {"queue": [], "seen": {}})
+    t = (NOW - timedelta(days=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    for i, (head, src, side) in enumerate([("Congolese army retakes Masisi from M23 rebels", "Reuters (via Google News)", None),
+                                           ("M23 says it captured Masisi", "KT Press (via Google News)", "RW")]):
+        news["queue"].append({"key": f"k{i}", "conflict": "drc", "town": "Masisi", "country": "CD", "region": "North Kivu",
+                              "headline": head, "time": t, "url": f"https://x/{i}", "source": src, "group": f"g{i}", "side": side})
+    seen = {}
+
+    def ask(system, user, *a, purpose=None, **k):
+        seen["purpose"], seen["user"], seen["system"] = purpose, json.loads(user), system
+        return {"reports": [
+            {"i": 0, "claims": [{"settlement": "Masisi", "country": "CD", "conflict": "drc", "change": "took", "actor": "FARDC",
+                                 "claimed_by": None, "basis": "unattributed", "date": None, "note": "army retook the town"}]},
+            {"i": 1, "claims": [{"settlement": "Masisi", "country": "CD", "conflict": "drc", "change": "took", "actor": "M23",
+                                 "claimed_by": "M23", "basis": "party", "date": None, "note": "M23 claims capture"}]}]}
+    got = claims.run_news([DRC], state, {}, NOW, ask, 5)
+    assert seen["purpose"] == "frontline_news" and "headline" in seen["system"]
+    assert seen["user"]["reports"][0]["headline"] == "Congolese army retakes Masisi from M23 rebels"
+    assert seen["user"]["reports"][1]["source_speaks_for"] == "M23"
+    assert [(c["name"], c["claim"]["actor"], c["claim"]["aligned"]) for c in got] == [("Masisi", "FARDC", None), ("Masisi", "M23", "M23")]
+    assert got[0]["claim"]["summary"] == "Reuters: army retook the town"                         # never the headline
+    assert got[0]["claim"]["via"] == "news" and news["queue"] == []
+    assert claims.run_news([DRC], state, {}, NOW, ask, 5) == []                                  # read once
+
+
+def test_capture_headlines_are_taken_in_turn_across_conflicts():
+    q = [{"conflict": "ukraine", "time": f"2026-10-0{d}T00:00:00Z", "key": f"u{d}"} for d in range(1, 6)]
+    q += [{"conflict": "drc", "time": "2026-09-20T00:00:00Z", "key": "d1"}]
+    order = [x["key"] for x in claims._news_order(q)]
+    assert order[:2] == ["u5", "d1"]                                                             # the older DRC one isn't last
