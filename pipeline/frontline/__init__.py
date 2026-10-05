@@ -33,6 +33,7 @@ of the run are merged. The ledger lives in state["frontline"] (see ledger.py).
 """
 from __future__ import annotations
 
+import re
 from datetime import timedelta
 
 from common import iso, log
@@ -41,7 +42,8 @@ from . import assess, cartographer, claims, heat, imagery, isw, ledger, review, 
 
 __all__ = ["search", "update", "public"]
 
-REVIEW_VERSION = 2   # bump when the reviewer's rules change in a way that should revisit its rejections
+REVIEW_VERSION = 3   # bump when the reviewer's rules change in a way that should revisit its rejections
+COUNTED_RE = re.compile(r"\b(majority|split|conflicting|mixed)\b", re.I)
 
 
 def search(state: dict, session, now, outlets: dict | None = None, conflicts: list[dict] | None = None,
@@ -63,7 +65,7 @@ def update(events: list[dict], conflicts: list[dict], state: dict, settings: dic
     queued = social.intake(posts or [], fl, now)
     if queued:
         log(f"[frontline] social: {queued} posts about control queued")
-    if fl.get("review_version", 0) < REVIEW_VERSION:
+    if fl.get("review_version", 0) < 2:
         # 2026-10-04: the reviewer set aside descriptions of all of Crimea ("occupied Crimea") as not
         # naming the town; it now counts them for every town in it. Give those claims back.
         back = 0
@@ -78,8 +80,29 @@ def update(events: list[dict], conflicts: list[dict], state: dict, settings: dic
                 if c.pop("rejected", None):
                     back += 1
             p.pop("asked", None)
-        fl["review_version"] = REVIEW_VERSION
         log(f"[frontline] {back} descriptions set aside by the earlier review rule are back for review")
+    if fl.get("review_version", 0) < 3:
+        # 2026-10-05: the reviewer rejected the government's recapture of Mokha because most of the
+        # (older) reports said the Houthis held it; it now weighs evidence by date. Give back what it
+        # set aside on such counts, and set aside claims whose own words say the place was taken
+        # from the side named as taking it.
+        back = flipped = 0
+        for p in fl["places"].values():
+            conflict = ledger.conflict_for(conflicts, p["country"], p["conflict"])
+            for c in p["claims"]:
+                if c.get("rejected") and COUNTED_RE.search(c["rejected"]):
+                    c.pop("rejected")
+                    back += 1
+                    p.pop("asked", None)
+                note = (c.get("summary") or "").split(": ", 1)[-1]
+                if conflict and not c.get("rejected") and ledger.backwards(conflict, c.get("actor"), c.get("change"), note):
+                    c["rejected"] = "the report says the place was taken from this side"
+                    flipped += 1
+                    p.pop("asked", None)
+        log(f"[frontline] {back} claims set aside by counting older reports are back for review; "
+            f"{flipped} claims filed the wrong way round set aside")
+    if fl.get("review_version", 0) < REVIEW_VERSION:
+        fl["review_version"] = REVIEW_VERSION
     if not disabled:
         found = claims.run(events, conflicts, state, settings, now, ask, budget("frontline"))
         found += claims.run_news(conflicts, state, settings, now, ask, budget("frontline_news"))

@@ -31,7 +31,7 @@ Conflicts and their sides (use these ids exactly):
 For each report (identified by "i"), list every settlement the report says changed hands, is held, or is being fought over inside it. A settlement is a named city, town, village or small locality. A region, district, oblast, state, "direction", front, river, road or height is not a settlement, and neither is a facility in or near one: capturing "the Mekelle airport", a base, a headquarters, a factory or a checkpoint is not capturing the town (leave it out).
 - change: "took" (a side captured, seized, liberated, entered and now holds, or established control over it), "holds" (a side is said to keep or still hold it), "lost" (a side withdrew from it or lost it), "contested" (fighting inside it, a battle for it, or forces entered but control is unclear).
 - Not claims: fighting "near", "around", "on the outskirts of" or "in the direction of" a settlement; advances "near" it; strikes, shelling or drone attacks on it; casualties there. Leave those out.
-- actor: the side the change is about (who took, holds or lost it); for "contested", the side said to be attacking, else null.
+- actor: the side the change is about (who took, holds or lost it); for "contested", the side said to be attacking, else null. In "A recaptured X from B", A took X (actor A), not B.
 - claimed_by: the side whose statement the report relays ("Russian MoD claims", "the army says", "Houthi media report"), else null. A source of the report that speaks for a side counts as that side's statement.
 - basis: "footage" (geolocated or verified video or imagery), "on_scene" (a reporter or independent monitor at the place), "both_sides" (the report says both sides acknowledge it), "analyst" (an independent analysis or mapping group's assessment, such as ISW), "party" (only a side's statement), "unattributed" (no source given).
 - settlement: its standard English name, one spelling for every report: for Ukraine the Ukrainian transliteration (Hrachivka, not Grachovka; Nesterne, not Nesternoye; Kupiansk, not Kupyansk). local_name: for Ukraine and Russia only, the same name in Cyrillic (Ukrainian for Ukraine, Russian for Russia), or null if you are not sure; null for every other country.
@@ -104,6 +104,8 @@ def _clean(c: dict, x: dict, conflicts: list[dict]) -> dict | None:
     basis = c.get("basis") if c.get("basis") in ledger.BASES else "unattributed"
     if change not in ledger.CHANGES or (change != "contested" and not actor):
         return None
+    if ledger.backwards(conflict, actor, change, str(c.get("note") or "")):
+        return None   # the note says it was taken from this side: the actor is the wrong way round
     r = x["report"]
     posted = parse_time(r.get("time"))
     when = parse_time(f"{c['date']}T12:00:00Z") if re.fullmatch(r"\d{4}-\d{2}-\d{2}", str(c.get("date") or "")) else None

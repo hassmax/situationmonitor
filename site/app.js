@@ -489,7 +489,7 @@
     for (let i = 0; i < 4; i++) h.fillRect(i, 3 - i, 1, 1);
     return (hatch = g.createPattern(c, "repeat"));
   }
-  const OUTLINE_MIN_KM2 = 3000;
+  const OUTLINE_MIN_KM2 = 500;
   function ringKm2(ring) {   // planar area of a (lon, lat) ring, good enough to tell patches from fronts
     let a = 0;
     const k = 111.32 * Math.cos((ring[0][1] * Math.PI) / 180);
@@ -517,9 +517,9 @@
     }
     if (!outlinesToo) return;
     // crisp outlines of held ground, drawn as lines like the borders. Each ring is a line the globe
-    // redraws every frame (its dashes flow), so the site's own areas outline only rings of
-    // OUTLINE_MIN_KM2 or more: the gap-filled maps (2026-10-05) made 319 rings, mostly small patches
-    // around single towns; 49 of them hold 89% of the outlined ground. Small patches keep their fill.
+    // redraws every frame (its dashes flow). The site's own areas are one broad shape per side
+    // (2026-10-05: about 40 rings in all, down from 319 patches around single towns); a ring under
+    // OUTLINE_MIN_KM2 (a lone confirmed capture) keeps its fill without an outline.
     const outlines = controlOutlines = [];
     for (const L of controlLayers()) {
       if (L.style !== "occupied" && !(L.assessment && L.style === "claimed")) continue;

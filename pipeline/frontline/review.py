@@ -18,7 +18,7 @@ import json
 
 from common import haversine_km, iso, log
 
-from . import heat, imagery, ledger
+from . import assess, heat, imagery, ledger
 
 PER_CALL = 15
 NEARBY_KM = 40
@@ -30,6 +30,7 @@ For each item decide:
 - "confirm": the evidence says what the proposal says about this specific settlement, and the strength fits. Status "assessed" needs more than one side's word: verified or geolocated footage, reporting from the scene, both sides agreeing, an independent analyst, or two independent sources (including two independent outlets that describe the town as held as settled fact, basis "described": "Russian-occupied Melitopol", "Houthi-held Hodeidah"). Status "claimed" is one side's claim. Status "contested" is fighting inside the settlement.
 - "downgrade": the change is supported, but every piece of evidence traces back to one side's own statement; it will be shown as "claimed". Use the tally: several independent outlets, or reporting from the scene, are not one side's statement, even if a side also made a claim.
 - "reject": the evidence does not say this (it is about fighting near the settlement, a strike on it, a facility such as its airport or a base rather than the town, a different place with a similar name, or an old event), or the settlement's position does not fit the region named or the nearby front.
+Control changes over time: read the evidence by date. When independent outlets report a capture, earlier reports and descriptions naming the previous holder are expected and do not contradict it; never decide by counting older reports against newer ones ("since" is when the proposed picture begins, and "newer_than_since" and "older_than_since" count the evidence on each side of it). Reject as "an old event" only when the reports describe an earlier capture. What weighs against a change is evidence from after it: reports after "since" that the previous holder still holds the place, or that the capture was denied or reversed.
 Evidence with basis "described" quotes the few words an outlet wrote. A description of a region that one side holds in its entirety ("occupied Crimea", which "covers all of Crimea") is evidence for every settlement in that region: do not reject it for naming the region rather than the town. Reject it when the words are about a region, district or province of the same name rather than the town (in Ukraine "occupied Kherson" usually means the Kherson region, whose capital Ukraine holds), or the position does not fit what the map shows nearby.
 An item may carry "satellite_heat": satellite fire detections (NASA FIRMS) near the settlement over the last week and the week before. Heat comes from shelling and burning vehicles but also from farm, bush and forest fires: it never shows who holds a place. It can support reports of fighting in or around the settlement (a sharp rise alongside such reports), and a quiet week weakens a "contested" proposal resting on a single old report. Do not confirm or reject on heat alone.
 An item may carry "satellite_imagery": another model's description of what changed between two Sentinel-2 pictures of the settlement (10 m per pixel; dates given). It shows physical change (destroyed buildings, burn scars, cratering, new trenches), never who holds a place or who caused the change. Heavy new destruction can support reports of fighting in the settlement; no visible change does not disprove a capture (small-unit fighting often leaves nothing visible at 10 m). Ignore it when "usable" is false. Do not confirm or reject on imagery alone.
@@ -58,15 +59,30 @@ def _item(n: int, p: dict, conflict: dict, proposed: dict, places: dict) -> dict
         if d <= NEARBY_KM:
             nearby.append((d, f"{q['name']} ({round(d)} km): {_label(conflict, qp.get('holder'), qp.get('status'))}"))
     live = [c for c in p["claims"] if not c.get("rejected")]
+    since = proposed.get("since") or ""
+
+    def says(c):
+        h = assess.holder_of(c, conflict)
+        a = ledger.actor(conflict, h)
+        return "fighting inside" if c["change"] == "contested" else (a["name"] if a else None)
+
+    def count(rows):
+        out = {}
+        for c in rows:
+            k = says(c) or "unclear"
+            out[k] = out.get(k, 0) + 1
+        return out
     tally = {"independent_outlets": len({c["group"] for c in live if not c.get("aligned")}),
              "statements_by_side": sorted({ledger.actor(conflict, c["aligned"])["name"] for c in live
                                            if c.get("aligned") and ledger.actor(conflict, c["aligned"])}),
-             "kinds_of_evidence": sorted({c["basis"] for c in live}), "reports": len(live)}
+             "kinds_of_evidence": sorted({c["basis"] for c in live}), "reports": len(live),
+             "since": since[:16], "newer_than_since": count(c for c in live if c["time"] >= since),
+             "older_than_since": count(c for c in live if c["time"] < since)}
     evidence = []
     for c in live[-EVIDENCE:]:
         who = ledger.actor(conflict, c.get("aligned"))
-        evidence.append({"date": c["time"][:10], "source": c.get("source"), "speaks_for": who["name"] if who else None,
-                         "basis": c["basis"], "summary": c.get("summary")})
+        evidence.append({"date": c["time"][:16].replace("T", " "), "says_held_by": says(c), "source": c.get("source"),
+                         "speaks_for": who["name"] if who else None, "basis": c["basis"], "summary": c.get("summary")})
     return {"n": n, "settlement": p["name"], "region": p.get("region"), "country": p["country"],
             "position": [p["lat"], p["lon"]], "conflict": conflict["name"],
             "now": _label(conflict, pub.get("holder"), pub.get("status")),
