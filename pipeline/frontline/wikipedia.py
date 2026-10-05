@@ -7,7 +7,10 @@ the agents can count (Sudan, Myanmar, Somalia, the Sahel).
   map's legend gives to a side ("Location dot red.svg": the Sudanese Armed Forces). frontlines.yaml
   names, per conflict, the module (`wikipedia.page`) and which dots stand for which of our sides
   (`wikipedia.marks`); dots of groups we don't track, terrain (peaks), bases and airports are left
-  out. Animated two-colour dots (`80x80-…-anim.gif`) are "contested". `near` keeps a side's dots
+  out. Animated two-colour dots (`80x80-…-anim.gif`) are "contested". Some maps name their dots
+  through a lookup table instead (Ukraine's: `mk = { rus = "Location dot red.svg", … }`, then
+  `mark = mk.rus`), which is resolved first (`_shortcuts`); `page` may list several modules (Ukraine's
+  detailed map adds its villages to the overview map's cities). `near` keeps a side's dots
   only within `km` of another side's (Ethiopia: the government holds most of the country; only
   the ground near the fighting is of interest).
 - When: once (`VERSION`; bump it to read the maps again). A map that fails is tried again next run.
@@ -61,6 +64,29 @@ def _name(entry: str) -> str | None:
     return re.sub(r",.*$", "", link).strip() if link else None
 
 
+_TABLE = re.compile(r"\b([A-Za-z_]\w*)\s*=\s*\{([^{}]*)\}")
+_PAIR = re.compile(r"\b([A-Za-z_]\w*)\s*=\s*[\"']([^\"']+)[\"']")
+
+
+def _shortcuts(text: str) -> dict:
+    """Lua lookup tables of names for dot files ("mk.rus" -> "Location dot red.svg")."""
+    out = {}
+    for m in _TABLE.finditer(text):
+        for k, v in _PAIR.findall(m.group(2)):
+            if re.search(r"\.(svg|png|gif)$", v, re.I):
+                out[f"{m.group(1)}.{k}".lower()] = v
+    return out
+
+
+def _mark(entry: str, shortcuts: dict) -> str:
+    m = re.search(r"\bmark\s*=\s*(?:\"([^\"]*)\"|'([^']*)'|([A-Za-z_][\w.]*))", entry)
+    if not m:
+        return ""
+    if m.group(3):
+        return shortcuts.get(m.group(3).lower(), m.group(3))
+    return m.group(1) if m.group(1) is not None else m.group(2)
+
+
 def _key(mark: str) -> str:
     return mark.strip().lower().replace("_", " ")
 
@@ -68,10 +94,11 @@ def _key(mark: str) -> str:
 def parse(text: str, cfg: dict) -> list[dict]:
     """The settlements of a module's source with the side its dot gives, or contested."""
     marks = {_key(k): v for k, v in (cfg.get("marks") or {}).items()}
-    out = []
+    shortcuts = _shortcuts(text)
+    out, seen = [], set()
     for m in _ENTRY.finditer(text):
         entry = m.group(0)
-        mark = _key(_field(entry, "mark") or "")
+        mark = _key(_mark(entry, shortcuts))
         holder = marks.get(mark)
         contested = bool(CONTESTED_RE.match(mark))
         if not holder and not contested:
@@ -81,8 +108,9 @@ def parse(text: str, cfg: dict) -> list[dict]:
         except (TypeError, ValueError):
             continue
         name = _name(entry)
-        if not name:
+        if not name or (name, round(lat, 2), round(lon, 2)) in seen:
             continue
+        seen.add((name, round(lat, 2), round(lon, 2)))
         out.append({"name": name, "lat": lat, "lon": lon, "holder": None if contested else holder,
                     "status": "contested" if contested else "assessed"})
     return out
@@ -145,15 +173,20 @@ def run(conflicts: list[dict], state: dict, session, now) -> int:
         cfg = c.get("wikipedia")
         if not cfg or c["id"] in base["maps"] or c["id"] in base.get("expired", []):
             continue
-        title = cfg["page"]
+        titles = cfg["page"] if isinstance(cfg["page"], list) else [cfg["page"]]
+        title = titles[0]
         try:
-            r = session.get(RAW, params={"title": title, "action": "raw"}, headers={"User-Agent": UA}, timeout=30)
-            r.raise_for_status()
-            edited = _edited(session, title)
+            texts, edits = [], []
+            for t in titles:
+                r = session.get(RAW, params={"title": t, "action": "raw"}, headers={"User-Agent": UA}, timeout=30)
+                r.raise_for_status()
+                texts.append(r.text)
+                edits.append(_edited(session, t))
+            edited = max((e for e in edits if e), default=None)
         except Exception as exc:  # noqa: BLE001 - tried again next run
             log(f"[frontline] wikipedia: {title}: {exc}; tried again next run")
             continue
-        points = _placed(_near_only(parse(r.text, cfg), cfg.get("near")), c)
+        points = _placed(_near_only(parse("\n".join(texts), cfg), cfg.get("near")), c)
         base["maps"][c["id"]] = {"title": title.removeprefix("Module:"), "url": PAGE + quote(title.replace(" ", "_")),
                                  "edited": edited, "read": iso(now), "points": points}
         sides = {}

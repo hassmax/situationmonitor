@@ -14,5 +14,8 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install requests
-      - run: python .github/probe/ua_probe.py
+          cache: pip
+          cache-dependency-path: pipeline/requirements.txt
+      - run: pip install -r pipeline/requirements.txt
+      - run: git fetch -q origin data && git show origin/data:state.json > state.json
+      - run: python .github/probe/ua_trial.py
