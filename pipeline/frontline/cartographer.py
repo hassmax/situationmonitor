@@ -89,7 +89,10 @@ def _klass(p: dict) -> tuple:
 def _reach(p: dict, conflict: dict) -> float:
     area = float(conflict.get("area_km") or DEFAULT_AREA_KM)
     if p.get("baseline"):   # Wikipedia's towns: their map's own reach, where set (Ukraine's villages)
-        return max(area, float((conflict.get("wikipedia") or {}).get("reach_km") or area))
+        reach = (conflict.get("wikipedia") or {}).get("reach_km") or area
+        if isinstance(reach, dict):   # per side
+            reach = reach.get(p.get("holder")) or area
+        return max(area, float(reach))
     if p.get("standing") and p["status"] == "assessed":
         return max(area, float(p.get("reach_km") or conflict.get("reach_km") or area))
     return area

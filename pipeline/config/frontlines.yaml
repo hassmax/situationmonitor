@@ -33,7 +33,7 @@
 #                   `page`, the Wikipedia "detailed map" module; `marks`, which of its dot files stand
 #                   for which side here (from the map's legend; others are left out); `near`, keep the
 #                   listed sides' dots only within km of another side's; `reach_km`, how far each of
-#                   its towns shades (else area_km); `page` may be a list of modules
+#                   its towns shades (else area_km), or per side ({RU: 25}); `page` may be a list of modules
 #   search_french   also search Google News in French (eastern DRC, the Sahel: most reporting is French)
 #   actors          the sides, each with:
 #     id, name      id used by the agents, and the name used in the reviewer's notes
@@ -54,11 +54,12 @@ conflicts:
       # the detailed map adds its villages to the overview map's cities; both name their dots through a
       # lookup table (mk.rus, mk.ukr). Ukrainian-held towns count only within 40 km of Russian-held or
       # contested ones (the front), so the rest of Ukraine isn't shaded; grey "uncontrolled" dots and
-      # the pressure arcs are left out. Villages are close together, so each reaches 25 km.
+      # the pressure arcs are left out. Russian-held villages reach 25 km, so the occupied ground between
+      # them fills in; Ukrainian-held ones keep area_km and mostly mark where the line runs.
       page: ["Module:Russo-Ukrainian war detailed map", "Module:Russo-Ukrainian war overview map"]
       marks: {"Location dot red.svg": RU, "Location dot blue.svg": UA, "map-circle-red.svg": RU, "map-circle-blue.svg": UA}
       near: {actors: [UA], km: 40}
-      reach_km: 25
+      reach_km: {RU: 25}
     countries: [UA, RU]
     center: [48.4, 36.5]
     radius_km: 700

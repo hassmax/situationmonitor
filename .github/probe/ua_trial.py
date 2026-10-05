@@ -1,5 +1,6 @@
 """Temporary trial: Ukraine's Wikipedia map on a copy of the data branch's state. Nothing saved."""
 import collections, json, math, sys, time
+# run 2: reach per side
 from datetime import datetime, timezone
 sys.path.insert(0, "pipeline")
 import config

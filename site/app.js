@@ -20,7 +20,12 @@
   const PHONE = window.matchMedia("(max-width: 859px), (pointer: coarse)").matches;
   const MAX_MARKERS = PHONE ? 160 : 320;
   const MAX_ANIMATED_NOW = PHONE ? 8 : MAX_ANIMATED;
-  const isMobile = () => window.innerWidth < 860;
+  // Asked many times a frame (marker layout while the globe turns): reading the window's width after
+  // markers moved forced the browser to lay the whole page out again each time (half a second a
+  // second of dragging on a slow phone, 2026-10-05), so it is read once and on resize.
+  let mobileNow = window.innerWidth < 860;
+  window.addEventListener("resize", () => { mobileNow = window.innerWidth < 860; });
+  const isMobile = () => mobileNow;
   // Phones and tablets have no pointer to hover with: a first tap on a marker shows the card that
   // pointing shows on desktop, a second tap (or a tap on the card) opens it.
   const hoverMq = window.matchMedia("(hover: hover) and (pointer: fine)");
@@ -306,6 +311,25 @@
     });
     hoverLight = linesQuiet && globeDone;
   }
+  // On touch screens nothing hovers, but the library still tests the last touch point against every
+  // marker and line about 20 times a second, long after the finger lifted. There, dots and lines are
+  // tested only while a finger is down and just after (when a tap is answered).
+  let tapOpen = 0, touchQuiet = false;
+  function quietTouchHover() {
+    if (canHover() || touchQuiet) return;
+    let Mesh = null;
+    world.scene().traverse((o) => { if (!Mesh && o.isMesh && o.type === "Mesh") Mesh = Object.getPrototypeOf(o); });
+    if (!Mesh || !Mesh.raycast) return;   // the scene isn't built yet: tried again after the next render
+    touchQuiet = true;
+    const raycast = Mesh.raycast;
+    Mesh.raycast = function (raycaster, hits) {
+      if (canHover() || performance.now() < tapOpen) return raycast.call(this, raycaster, hits);
+    };
+  }
+  globeEl.addEventListener("pointerdown", () => { tapOpen = Infinity; }, true);
+  globeEl.addEventListener("pointerup", () => { tapOpen = performance.now() + 700; }, true);
+  globeEl.addEventListener("pointercancel", () => { tapOpen = performance.now() + 700; }, true);
+  setTimeout(quietTouchHover, 0);
   setTimeout(lightenHover, 0);
 
   // While the globe is being dragged or pinched, markers stop sliding into place and heavier
@@ -465,6 +489,13 @@
     for (let i = 0; i < 4; i++) h.fillRect(i, 3 - i, 1, 1);
     return (hatch = g.createPattern(c, "repeat"));
   }
+  const OUTLINE_MIN_KM2 = 3000;
+  function ringKm2(ring) {   // planar area of a (lon, lat) ring, good enough to tell patches from fronts
+    let a = 0;
+    const k = 111.32 * Math.cos((ring[0][1] * Math.PI) / 180);
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) a += (ring[j][0] * k) * (ring[i][1] * 110.57) - (ring[i][0] * k) * (ring[j][1] * 110.57);
+    return Math.abs(a) / 2;
+  }
   function paintControl(g, X, Y, outlinesToo = true) {
     // one path per style and colour, filled "nonzero", so overlapping layers of one kind don't double up
     const byStyle = new Map();
@@ -485,11 +516,17 @@
       g.fill("nonzero");
     }
     if (!outlinesToo) return;
-    // crisp outlines of held ground, drawn as lines like the borders
+    // crisp outlines of held ground, drawn as lines like the borders. Each ring is a line the globe
+    // redraws every frame (its dashes flow), so the site's own areas outline only rings of
+    // OUTLINE_MIN_KM2 or more: the gap-filled maps (2026-10-05) made 319 rings, mostly small patches
+    // around single towns; 49 of them hold 89% of the outlined ground. Small patches keep their fill.
     const outlines = controlOutlines = [];
     for (const L of controlLayers()) {
       if (L.style !== "occupied" && !(L.assessment && L.style === "claimed")) continue;
-      for (const poly of L.polygons) for (const ring of poly) outlines.push({ control: true, approx: !!(L.approx || L.assessment), color: L.color, faint: L.style === "claimed", pts: ring });
+      for (const poly of L.polygons) for (const ring of poly) {
+        if (L.assessment && ringKm2(ring) < OUTLINE_MIN_KM2) continue;
+        outlines.push({ control: true, approx: !!(L.approx || L.assessment), color: L.color, faint: L.style === "claimed", pts: ring });
+      }
     }
     world.pathsData([...borderPaths, ...outlines]);
   }
@@ -1559,8 +1596,38 @@
       f.bins = bins;
       return f;
     };
-    out.flows = [...flows.values()].map(summarize).sort((a, b) => (b.active - a.active) || b.deliveries - a.deliveries);
-    out.pledges = [...pledges.values()].map(summarize).sort((a, b) => b.last - a.last);
+    out.flows = joinRoutes([...flows.values()].map(summarize), summarize).sort((a, b) => (b.active - a.active) || b.deliveries - a.deliveries);
+    out.pledges = joinRoutes([...pledges.values()].map(summarize), summarize).sort((a, b) => b.last - a.last);
+    return out;
+  }
+
+  // One line per move. The same move gets reported with different spellings or detail: B-1s leaving
+  // "RAF Fairford" and "Fairford", landing in "South Dakota", "the United States", or nowhere named
+  // (2026-10-05: four lines out of Fairford). Routes of the same kind between the same sides join when
+  // they start within ROUTE_JOIN_KM of each other and end within it, or one end is just the country
+  // (or unnamed) while the other names a place; or when neither names a start and they end together.
+  const ROUTE_JOIN_KM = 150;
+  function joinRoutes(list, summarize) {
+    const near = (a, b) => a && b && km(a.lat, a.lon, b.lat, b.lon) < ROUTE_JOIN_KM;
+    const broad = (v, cc) => !v || (!v.region && (!v.place || v.place === countryName(cc)));
+    const sameEnd = (a, b, cc) => near(a, b) || broad(a, cc) || broad(b, cc);
+    const out = [];
+    for (const f of list) {
+      const g = out.find((o) => o.supplier === f.supplier && o.recipient === f.recipient && o.money === f.money
+        && o.toLabel === f.toLabel && o.fromLabel === f.fromLabel
+        // at least one end must actually match: two moves that name nothing aren't the same move
+        && ((near(o.from, f.from) && sameEnd(o.to, f.to, f.recipient))
+          || (broad(o.from, o.supplier) && broad(f.from, f.supplier) && near(o.to, f.to))));
+      if (!g) { out.push(f); continue; }
+      g.events.push(...f.events);
+      const specific = (v, cc) => (broad(v, cc) ? null : v);
+      const keepTo = specific(g.to, g.recipient) || specific(f.to, f.recipient);
+      const keepFrom = specific(g.from, g.supplier) || specific(f.from, f.supplier);
+      if (f.events.length > g.events.length - f.events.length) g.key = f.key;   // the bigger one names it
+      summarize(g);
+      g.to = specific(g.to, g.recipient) || keepTo || g.to;     // a named place beats "the United States"
+      g.from = specific(g.from, g.supplier) || keepFrom || g.from;
+    }
     return out;
   }
 
@@ -1895,6 +1962,7 @@
     updateActive(mapEvents);
     queueDeclutter();
     if (!hoverLight) requestAnimationFrame(() => setTimeout(lightenHover, 0));  // once the new objects exist
+    if (!touchQuiet) requestAnimationFrame(() => setTimeout(quietTouchHover, 0));
   }
 
   // Who drew the control shapes, and when: credited under the legend, with a link to the source's map.
