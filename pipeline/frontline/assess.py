@@ -14,7 +14,8 @@ separates "assessed" control from a side's claim:
 - assessed: the holder named by the latest strong evidence ("since" = its first strong evidence
   after the last strong evidence for anyone else).
 - claimed: a newer claim names a different holder (or there is no strong evidence at all).
-- contested: fighting inside reported since the latest strong evidence, within CONTESTED_FOR.
+- contested: fighting inside reported since the latest strong evidence, within CONTESTED_FOR, by more
+  than the attacking side's own word.
 Nothing here is published directly: the reviewer agent checks every change first.
 """
 from __future__ import annotations
@@ -201,7 +202,11 @@ def assess(p: dict, conflict: dict, now) -> dict | None:
     else:
         newer = rows
     rival = [(x, hx) for x, hx in newer if hx and hx != out.get("holder")]
-    fighting = [x for x, hx in newer if x["change"] == "contested" and now - parse_time(x["time"]) <= CONTESTED_FOR]
+    # Fighting inside, on more than the attacker's own word: an attacking side saying its forces are
+    # fighting in a town (a milblogger's "fighting continues in Dobropillia") doesn't hatch it; the
+    # defender saying so, an unaligned source, or footage does (2026-10-05, with the social media agent)
+    fighting = [x for x, hx in newer if x["change"] == "contested" and now - parse_time(x["time"]) <= CONTESTED_FOR
+                and not (x.get("aligned") and x.get("aligned") == x.get("actor") and x["basis"] not in ledger.STRONG_BASES)]
     if rival:
         x, hx = rival[-1]
         first = x["time"]

@@ -186,3 +186,23 @@ def test_the_reviewer_sees_the_pictures_as_evidence_only():
     system, payload = sent[0]
     assert payload["items"][0]["satellite_imagery"]["summary"] == "Much of the centre is destroyed."
     assert "never who holds a place" in system
+
+
+def test_fighting_near_a_place_and_forecasts_are_not_claims():
+    p = post("ЗСУ відбили атаки біля Садків", source="General Staff", side="UA", kind="official")
+    assert social.clean(said(change="contested", actor="RU", claimed_by=None, basis="party",
+                             note="Ukrainian forces repelled enemy attacks near Sadky."), p, CONFLICTS) is None
+    p = post("Хуситы скоро возьмут Таиз", source="Colonelcassad", side="RU", kind="partisan")
+    yemen = {"id": "yemen", "name": "Yemen", "countries": ["YE"], "center": [15, 45], "radius_km": 600,
+             "actors": [{"id": "HOUTHI", "name": "the Houthis", "sources": ["YE"]}, {"id": "ROYG", "name": "government", "sources": ["SA"]}]}
+    c = {"settlement": "Taiz", "country": "YE", "conflict": "yemen", "change": "took", "actor": "HOUTHI", "claimed_by": None,
+         "basis": "unattributed", "note": "Houthis will gain full control of Taiz city"}
+    assert social.clean(c, p, [yemen]) is None
+
+
+def test_the_attackers_own_word_does_not_make_a_town_contested():
+    attacker = {"time": t(2), "actor": "RU", "change": "contested", "claimed_by": "RU", "basis": "party", "aligned": "RU",
+                "group": "ru-milbloggers", "source": "WarGonzo", "url": "u1", "summary": "fighting continues in the town", "event": None}
+    assert assess.assess({"claims": [attacker]}, UA, NOW) is None
+    defender = {**attacker, "aligned": "UA", "claimed_by": "UA", "group": "ua-military", "url": "u2"}
+    assert assess.assess({"claims": [attacker, defender]}, UA, NOW)["status"] == "contested"

@@ -61,6 +61,7 @@ class Config:
     control: list = field(default_factory=list)  # territorial-control layers (control.yaml)
     frontlines: list = field(default_factory=list)  # conflicts the front-line agents assess (frontlines.yaml)
     flight_bases: list = field(default_factory=list)  # bases the flight agent watches (flights.yaml)
+    flight_surges: list | None = None  # surge alert rules (flights.yaml `surges`; None: flights.SURGE_DEFAULTS)
 
     @property
     def theater_ids(self) -> set[str]:
@@ -85,6 +86,9 @@ def load() -> Config:
     front_file = CONFIG_DIR / "frontlines.yaml"
     frontlines = ((yaml.safe_load(front_file.read_text(encoding="utf-8")) or {}).get("conflicts") or []) if front_file.exists() else []
     flights_file = CONFIG_DIR / "flights.yaml"
-    flight_bases = ((yaml.safe_load(flights_file.read_text(encoding="utf-8")) or {}).get("bases") or []) if flights_file.exists() else []
+    flights_cfg = (yaml.safe_load(flights_file.read_text(encoding="utf-8")) or {}) if flights_file.exists() else {}
+    flight_bases = flights_cfg.get("bases") or []
+    flight_surges = flights_cfg.get("surges")
     return Config(theaters=theaters, sources=sources, settings=settings, removed=removed_ids, outlets=outlets,
-                  alerts=alerts, control=control, frontlines=frontlines, flight_bases=flight_bases)
+                  alerts=alerts, control=control, frontlines=frontlines, flight_bases=flight_bases,
+                  flight_surges=flight_surges)

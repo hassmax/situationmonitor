@@ -118,7 +118,7 @@ def main() -> int:
     items += telegram.fetch(cfg.sources["telegram"], state, health)
     # Flight agent: notable military aircraft from open ADS-B data (no model). Not drawn on the map:
     # its take-offs and landings at watched bases go to the regional analyst.
-    flights.update(state, session, health, t0, cfg.flight_bases)
+    flights.update(state, session, health, t0, cfg.flight_bases, cfg.flight_surges)
     log(f"[fetch] {len(items)} items")
     # Google News reports stored before outlets were told apart carry only the search's name;
     # credit them to the outlet that published them (once over the past week, then as seen).
@@ -291,7 +291,7 @@ def main() -> int:
 
     # 8. Telegram alerts (skipped unless TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID are set)
     alerts.run(state, published, fleet.public(state, t0), cfg.alerts, {t["id"]: t["name"] for t in cfg.theaters},
-               t0, os.environ)
+               t0, os.environ, flight_alerts=flights.alerts(state, t0))
 
     # 9. Housekeeping
     cutoff = int((t0 - timedelta(days=8)).timestamp())
@@ -341,6 +341,8 @@ def main() -> int:
         "theaters": theaters_meta(cfg.theaters),
         "events": published,
         "analysis": state.get("analysis"),
+        # several C-17s or KC-135s at one base in a short time (flights.py surges); shown in the analysis panel
+        "flight_alerts": flights.alerts(state, t0),
         "heat": public_cells(cells),
         "control": control.public(state, control_layers, t0),
         "frontline": frontline.public(state, cfg.frontlines, t0),

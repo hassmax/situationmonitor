@@ -49,6 +49,11 @@ CONTROL_RE = re.compile(
     r"سيطر|تحرير|حرر|استعاد|اقتحم|انسحب|تقدم|تطهير|"
     r"pris le contr[oô]le|empar|repris|lib[ée]r[ée]|retir[ée]|encercl", re.I)
 GEOLOCATED_RE = re.compile(r"geolocat|geoconfirm|verified|геолок|геопозиц", re.I)
+# The model's own note still says "near", "will" or "towards": fighting around a place, or a forecast,
+# is not a claim about the place (trial 2026-10-05: "repelled attacks near Sadky"; "the Houthis will
+# gain full control of Taiz")
+NOT_A_CLAIM_RE = re.compile(r"\b(near|nearby|around|outskirts|towards?|in the direction of|in the area of|vicinity|will|would|could|"
+                            r"might|expect\w*|plan\w*|prepar\w*|about to)\b", re.I)
 
 PROMPT = """You read posts from Telegram and Bluesky channels and list claims about who controls specific settlements, for a front-line map like the Institute for the Study of War's. Reply with one JSON object and nothing else. Posts may be in any language; answer in English.
 
@@ -58,7 +63,7 @@ Conflicts and their sides (use these ids exactly):
 Each post (identified by "i") gives its channel, the kind of channel, and "speaks_for" when the channel speaks for a side. For each post, list every settlement it says changed hands, is held, or is being fought over inside it. A settlement is a named city, town, village or small locality. A region, district, oblast, "direction", front, river, road or height is not a settlement, and neither is a facility in or near one (an airport, a base, a factory, a checkpoint).
 - change: "took" (a side captured, seized, liberated, cleared or established control over it), "holds" (a side is said to keep or still hold it), "lost" (a side withdrew from it or lost it), "contested" (fighting inside it, an assault on it, or forces inside it while control is unclear).
 - Footage of soldiers in a settlement, a flag raised in it, or an assault on it shows presence, not control: "contested", with actor = the side shown, unless the post says the settlement was captured or fully cleared.
-- Not claims: fighting "near", "around" or "towards" a settlement; strikes, shelling or drone attacks on it; casualties; prisoners. Leave those out.
+- Not claims: fighting "near", "around", "towards" or "in the area of" a settlement, including "repelled attacks near X" and "advanced near X"; predictions, plans and expectations ("will take", "is about to fall", "preparing to storm"); strikes, shelling or drone attacks on it; casualties; prisoners. Leave those out.
 - actor: the side the change is about (who took, holds or lost it; for "contested", the attacking side, else null).
 - claimed_by: the side whose statement the post makes or relays. A post by a channel that speaks for a side is that side's statement, unless it reports the other side's claim (to deny or mock it, too): then claimed_by is the other side. null if the post names no side's statement.
 - basis: "footage" (the post shows or cites video or imagery that it says was geolocated or verified), "on_scene" (a reporter or monitor at the place), "analyst" (the channel's own mapping or analysis), "party" (a side's statement), "unattributed".
@@ -150,6 +155,8 @@ def clean(c: dict, post: dict, conflicts: list[dict]) -> dict | None:
     if not when:
         return None
     note = re.sub(r"\s+", " ", str(c.get("note") or "")).strip()[:140]
+    if NOT_A_CLAIM_RE.search(note):
+        return None
     geo = str(c.get("geolocated_by") or "").strip()[:60]
     summary = f"{post.get('source')}: {note}" + (f" (geolocated by {geo})" if geo and basis == "footage" else "")
     region = str(c.get("region") or "").strip() or None

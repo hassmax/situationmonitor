@@ -99,6 +99,7 @@ Rules:
 - Use only what you are given. No outside knowledge, no background, no predictions of what will happen next.
 - Every judgment cites at least two events of its region (ids from that region only) that point the same way. Never combine unrelated events into one judgment.
 - "flight_movements" are military aircraft tracked by their own transponders (public ADS-B data, adsb.lol) taking off from or landing at watched bases, each with an id you may cite like an event. They show where aircraft went and when, never why. Several aircraft of one kind leaving or reaching a base can be a force-posture judgment ("US tankers leaving Al Udeid", "US bombers arriving at Diego Garcia"). Write a movement as the data shows it ("KC-135 tankers took off from Al Udeid and were last seen 400 km to the northwest"); give a destination only where a landing was seen. Never infer a mission, target or intent from flights. One flight of a bomber, tanker, surveillance aircraft, airborne command post or government VIP flight may be a line of its own ("KC-135 tanker left Al Udeid and landed at Incirlik", trend "shifting"); transports only when several move together.
+- "flight_surges" sum up several aircraft of one kind (C-17 transports, KC-135 tankers) landing at or leaving one base in a short time; the flights behind them are among the flight_movements, so cite those ids. A surge can be a force-posture judgment in its own right ("US airlift to Al Udeid increasing"), worded as the data shows it, never with a reason for it.
 - Carriers and the count of aircraft broadcasting now are context only: mention them together with cited events or flights, never as the only basis.
 - Weigh confidence: events marked single-source or one side's claim are weaker. When a judgment cites any of them, say so in the words ("reports suggest", "Russia claims", "unconfirmed reports"). Keep each event's own attribution. Never state a single-source report or a claim as fact. Corroborated events are stated plainly, without "unconfirmed".
 - The cited events must be separate incidents showing a pattern (several strikes, several deployments). One incident and the reactions to it (an arrest and the protest about it) is news, not a trend: leave it out.
@@ -190,8 +191,12 @@ def regions(events: list[dict], theaters: list[dict], carriers: list[dict], flig
             for f in planes:
                 by_role[f["role"]] = by_role.get(f["role"], 0) + 1
             r["military_aircraft_broadcasting_now"] = by_role
+        surging = [x["text"] for x in (flights or {}).get("surges") or [] if _near(th, x.get("lat"), x.get("lon"))]
+        if surging:
+            r["flight_surges"] = surging   # several C-17s or KC-135s at one base in a short time (context, not citable)
         if moves:
-            moves.sort(key=lambda m: (-flights_mod.IMPORTANCE.get(m["role"], 0), -(parse_time(m.get("time")) or now).timestamp()))
+            moves.sort(key=lambda m: (not m.get("surge"), -flights_mod.IMPORTANCE.get(m["role"], 0),
+                                      -(parse_time(m.get("time")) or now).timestamp()))
             r["flight_movements"] = [{"id": m["id"], "role": m["role"], "what": m["text"]} for m in moves[:MAX_FLIGHTS_PER_REGION]]
         out.append(r)
     return out

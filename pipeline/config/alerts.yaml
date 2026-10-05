@@ -52,6 +52,12 @@ rules:
     channel: shin_persian
     min_severity: 1
 
+  # Several military aircraft of one kind landing at, or taking off from, one base in a short time:
+  # by default 4 or more C-17 transports or KC-135 tankers within 12 hours (the rules are in
+  # flights.yaml, `surges`). Alerted once per surge, however many more aircraft join it.
+  flight_surge:
+    enabled: true
+
   # Any new legal step: an Article 51 letter, a War Powers report, a Security Council
   # resolution, or an ICJ or ICC action.
   legal:

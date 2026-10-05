@@ -153,9 +153,10 @@ def _fetch(session, url: str) -> tuple[list[dict], float]:
     return j.get("ac") or [], float(j.get("now") or time.time() * 1000) / 1000
 
 
-def update(state: dict, session, health: dict, now: datetime, bases: list[dict]) -> int:
+def update(state: dict, session, health: dict, now: datetime, bases: list[dict], surge_rules: list[dict] | None = None) -> int:
     """Read the current military aircraft and the hijack code, keep the notable ones' positions,
-    and log their take-offs and landings at watched bases. Returns how many movements are logged."""
+    log their take-offs and landings at watched bases, and find surges (several aircraft of one kind
+    at one base in a short time). Returns how many movements are logged."""
     st = state.setdefault("flights", {"aircraft": {}, "log": {}})
     st.pop("moves", None)  # group reports for the extraction queue, until flights left the map
     try:
@@ -198,6 +199,10 @@ def update(state: dict, session, health: dict, now: datetime, bases: list[dict])
             del st["aircraft"][hexid]
     st["checked"] = iso(now)
     logged = movements(st, now, bases)
+    before = set(st.get("surges") or {})
+    for sg in surges(st, now, surge_rules):
+        if sg["id"] not in before:
+            log(f"[flights] surge: {surge_text(sg)}")
     latest = datetime.fromtimestamp(stamp, UTC)
     health[SOURCE_ID] = health_ok(SOURCE_NAME, "adsb", latest, kept, health.get(SOURCE_ID))
     log(f"[flights] {len(mil)} military aircraft listed, {len(hijack)} on the hijack code; {kept} notable kept, "
@@ -347,6 +352,96 @@ def describe(entry: dict) -> str:
     return text + "."
 
 
+# Surges (the owner, 2026-10-05: "if more than 3 C-17 fly somewhere in close timeframe, and same with
+# KC-135, have the flight tracker agent deploy an alert"): this many distinct aircraft of one kind
+# landing at, or taking off from, one watched base within `hours`. Set in flights.yaml (`surges`).
+SURGE_DEFAULTS = [{"label": "C-17 transports", "types": ["C17"], "min": 4, "hours": 12},
+                  {"label": "KC-135 tankers", "types": ["K35R", "K35E"], "min": 4, "hours": 12}]
+ALERT_HOURS = 24          # a surge is shown on the dashboard while its last movement is this recent
+
+
+def surges(st: dict, now: datetime, rules: list[dict] | None = None) -> list[dict]:
+    """Find surges in the movement log and keep them (`st["surges"]`, as long as the log). A surge
+    keeps its id as more aircraft join it, so it is alerted once."""
+    found = st.setdefault("surges", {})
+    for rule in rules or SURGE_DEFAULTS:
+        types, need = set(rule.get("types") or []), int(rule.get("min", 4))
+        span = timedelta(hours=float(rule.get("hours", 12)))
+        for way in ("to", "from"):
+            by_base: dict[str, list] = {}
+            for e in (st.get("log") or {}).values():
+                end = e.get(way)
+                t = parse_time((end or {}).get("time"))
+                if e.get("type") in types and end and t:
+                    by_base.setdefault(end["base"], []).append((t, e, end))
+            for base, rows in by_base.items():
+                rows.sort(key=lambda r: r[0])
+                i = 0
+                while i < len(rows):
+                    start = rows[i][0]
+                    group = [r for r in rows[i:] if r[0] - start <= span]
+                    hexes = {r[1]["hex"] for r in group}
+                    if len(hexes) < need:
+                        i += 1
+                        continue
+                    sid = "s" + short_hash(rule.get("label"), way, base, iso(start))[:9]
+                    end = group[0][2]
+                    rec = found.get(sid) or {"id": sid, "first_seen": iso(now)}
+                    rec.update(label=rule.get("label"), way=way, base=base, country=end.get("country"),
+                               lat=end.get("lat"), lon=end.get("lon"), count=len(hexes), first=iso(start), last=iso(group[-1][0]),
+                               callsigns=sorted({r[1].get("callsign") for r in group if r[1].get("callsign")})[:12],
+                               hexes=sorted(hexes), updated=iso(now))
+                    if way == "from":
+                        rec["onward"] = _onward([r[1] for r in group])
+                    found[sid] = rec
+                    i += len(group)
+    cutoff = iso(now - timedelta(hours=LOG_HOURS))
+    st["surges"] = {k: v for k, v in found.items() if v.get("last", "") >= cutoff}
+    return list(st["surges"].values())
+
+
+def _onward(entries: list[dict]) -> dict:
+    """Where aircraft that took off together went: landings seen, else the way most were heading."""
+    landed: dict[str, int] = {}
+    ways: dict[str, int] = {}
+    for e in entries:
+        if e.get("to") and e["to"]["base"] != e["from"]["base"]:
+            landed[e["to"]["base"]] = landed.get(e["to"]["base"], 0) + 1
+        elif e.get("last") and haversine_km(e["from"]["lat"], e["from"]["lon"], e["last"]["lat"], e["last"]["lon"]) > 100:
+            w = _bearing(e["from"]["lat"], e["from"]["lon"], e["last"]["lat"], e["last"]["lon"])
+            ways[w] = ways.get(w, 0) + 1
+    return {"landed": landed, "heading": ways}
+
+
+def surge_text(s: dict) -> str:
+    """One plain sentence: what the transponders showed, and nothing about why."""
+    first, last = _hhmm(s["first"]), _hhmm(s["last"])
+    when = f"between {first} and {last}" if s["first"] != s["last"] else f"at {first}"
+    if s["way"] == "to":
+        text = f"{s['count']} {s['label']} landed at {s['base']}, {s['country']}, {when}"
+    else:
+        text = f"{s['count']} {s['label']} took off from {s['base']}, {s['country']}, {when}"
+        onward = s.get("onward") or {}
+        bits = [f"{n} later landed at {b}" for b, n in sorted(onward.get("landed", {}).items(), key=lambda kv: -kv[1])]
+        heading = onward.get("heading") or {}
+        if heading:
+            way, n = max(heading.items(), key=lambda kv: kv[1])
+            bits.append(f"{n} last seen heading {way}")
+        if bits:
+            text += "; " + ", ".join(bits)
+    return text + (f" ({', '.join(s['callsigns'][:6])})" if s.get("callsigns") else "") + "."
+
+
+def alerts(state: dict, now: datetime) -> list[dict]:
+    """Surges whose latest movement is within ALERT_HOURS, newest first, for the dashboard and alerts."""
+    cutoff = iso(now - timedelta(hours=ALERT_HOURS))
+    out = [{"id": s["id"], "text": surge_text(s), "time": s["last"], "count": s["count"], "label": s["label"],
+            "base": s["base"], "way": s["way"], "lat": s.get("lat"), "lon": s.get("lon"),
+            "url": MAP_LINK.format(hexes=",".join(s["hexes"]))}
+           for s in ((state.get("flights") or {}).get("surges") or {}).values() if s.get("last", "") >= cutoff]
+    return sorted(out, key=lambda a: a["time"], reverse=True)
+
+
 def for_analyst(state: dict, now: datetime) -> dict:
     """What the regional analyst is given: aircraft in the air now (role and position), and the
     logged movements with a sentence each."""
@@ -357,11 +452,15 @@ def for_analyst(state: dict, now: datetime) -> dict:
         pts = rec.get("pts") or []
         if pts and pts[-1][3] >= live:
             aircraft.append({"role": rec.get("role"), "lat": pts[-1][0], "lon": pts[-1][1]})
+    surging = alerts(state, now)
+    in_surge = {h for a in surging for h in a["url"].split("icao=", 1)[1].split(",")}
     moves = []
     for e in (st.get("log") or {}).values():
         ends = [x for x in (e.get("from"), e.get("to")) if x]
         moves.append({"id": e["id"], "role": e.get("role"), "text": describe(e), "time": (e.get("last") or {}).get("time"),
                       "places": [(x["lat"], x["lon"]) for x in ends], "url": MAP_LINK.format(hexes=e["hex"]),
-                      "label": f"{(e.get('label') or 'Aircraft').split(' (')[0]} · {(ends[0]['base'])}"})
+                      "label": f"{(e.get('label') or 'Aircraft').split(' (')[0]} · {(ends[0]['base'])}",
+                      **({"surge": True} if e["hex"] in in_surge else {})})
     moves.sort(key=lambda m: m["time"] or "", reverse=True)
-    return {"aircraft": aircraft, "movements": moves, "attribution": ATTRIBUTION, "license_url": LICENSE_URL}
+    return {"aircraft": aircraft, "movements": moves, "surges": surging,
+            "attribution": ATTRIBUTION, "license_url": LICENSE_URL}
