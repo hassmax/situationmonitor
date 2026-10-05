@@ -1,0 +1,29 @@
+name: probe
+on:
+  push:
+    branches: [claude/tender-albattani-9vfp56]
+    paths: [probe.py, probe_prompt.txt, .github/workflows/probe.yml]
+permissions:
+  contents: write
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -q -r pipeline/requirements.txt rasterio
+      - run: git clone -q --depth 1 --branch data --single-branch "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" state
+      - name: Social sources
+        run: python probe.py social
+      - name: Imagery
+        run: python probe.py imagery
+      - name: Compare with Gemini
+        env:
+          LLM_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python probe.py compare
+      - name: Keep the pictures on a scratch branch
+        run: |
+          cd probe-out && ls -la && git init -q -b probe-out && git add -A && git -c user.name=probe -c user.email=probe@example.com commit -q -m pictures && git push -q --force "https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${GITHUB_REPOSITORY}.git" probe-out:probe-out
