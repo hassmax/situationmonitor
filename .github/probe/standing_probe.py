@@ -43,3 +43,16 @@ for c in conf:
         got = out[c["id"]][t["name"]]
         print(c["id"], t["name"], {k: (len(v), sum(1 for x in v if x["hit"])) for k, v in got.items()}, flush=True)
 json.dump(out, open("standing_probe.json", "w"), ensure_ascii=False)
+
+import re
+CTRL = re.compile(r"held|control|seiz|captur|\btook\b|\btake\b|retak|retook|fell|fall of|falls|overr|siege|besieg|stronghold|occup|withdr|enter|liberat|recaptur|under\b|-run\b|takeover|expel|driv|push|advance|aux mains|contrôle|tenue|prise|pris|repris|emparé", re.I)
+for c, towns in out.items():
+    seen = set()
+    print(f"\n######## {c}")
+    for town, qs in towns.items():
+        for k, rows in qs.items():
+            for x in rows:
+                if x["t"] in seen or not CTRL.search(x["t"]):
+                    continue
+                seen.add(x["t"])
+                print(f"{'HIT ' if x['hit'] else '    '}{town} | {x['t'][:170]} | {(x['d'] or '')[5:16]}")
