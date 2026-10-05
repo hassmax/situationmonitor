@@ -2141,7 +2141,18 @@
       const quiet = s.ok && s.last_post && Date.now() - Date.parse(s.last_post) > 3 * DAY;
       const meta = s.ok ? `${PLATFORM[s.platform] || s.platform}, ${last}` : `${PLATFORM[s.platform] || s.platform}: ${s.error}`;
       return `<li><span class="dot ${s.ok ? (quiet ? "quiet" : "") : "bad"}" aria-hidden="true"></span><span><span class="name">${esc(s.name)}</span><span class="meta">${esc(meta)}</span></span></li>`;
-    }).join("");
+    }).join("") + wikiCredits();
+  }
+
+  // Wikipedia's conflict maps, read once to fill gaps in the front-line shading where the agents have
+  // no evidence (pipeline/frontline/wikipedia.py): credited here, as their licence (CC BY-SA) asks.
+  function wikiCredits() {
+    const credits = (S.data && S.data.frontline && S.data.frontline.credits) || [];
+    const day = (iso) => new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+    return credits.map((c) => `<li><span class="dot quiet" aria-hidden="true"></span><span><span class="name">`
+      + `<a href="${esc(safeUrl(c.url))}" target="_blank" rel="noopener noreferrer">Wikipedia: ${esc(c.title)}</a></span>`
+      + `<span class="meta">Read once to fill gaps in ${esc(c.name)}'s shaded territory where this site has no evidence of its own`
+      + `${c.edited ? `; map last edited ${esc(day(c.edited))}` : ""}; <a href="${esc(safeUrl(c.license_url))}" target="_blank" rel="noopener noreferrer">${esc(c.license)}</a></span></span></li>`).join("");
   }
 
   function updateFreshness() {

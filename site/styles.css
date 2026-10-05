@@ -393,6 +393,7 @@ h2 {
 .source-list .dot.quiet { background: var(--ink-3); }
 .source-list .name { color: var(--ink); }
 .source-list .meta { color: var(--ink-3); display: block; }
+.source-list a { color: inherit; text-underline-offset: 2px; }
 
 /* ------------------------------------------------------------------ feed */
 
