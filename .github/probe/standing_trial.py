@@ -1,5 +1,5 @@
 """Temporary live trial (not part of the pipeline): the new standing searches and the capture-headline
-reader on a copy of the data branch's state, outside Ukraine. Nothing is saved."""
+reader on a copy of the data branch's state, outside Ukraine. Nothing is saved.""" Run 2: headlines with the war's own words.
 import collections, json, sys
 from datetime import datetime, timezone
 sys.path.insert(0, "pipeline")
