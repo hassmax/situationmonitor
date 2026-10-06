@@ -15,7 +15,9 @@ So the check is built around each event and the few events most like it:
   over the summaries: rare words such as "Aselsan", "B-1B" or "$2.27 billion" weigh most), of any
   kind, within PAIR_WINDOW of it: in the same country, or at sea within SEA_KM of each other, or
   among statements and deals naming a party in common, from NEAR_FLOOR similarity; anywhere from
-  FAR_FLOOR (one cockpit attack on a flydubai flight was pinned to four countries). Alert groups
+  FAR_FLOOR (one cockpit attack on a flydubai flight was pinned to four countries); never strikes,
+  fighting or incidents at sea farther apart than INCIDENT_KM unless one is pinned only to a whole
+  country or sea. Alert groups
   have their own grouping and are left out; an attack wave can take in others but two waves are
   never folded together.
 - Near-identical reports of things other than strikes and fighting ("All 12 U.S. B-1B Lancer
@@ -64,12 +66,18 @@ NEW_HOURS = 36           # events this recent are compared with older ones (late
 LATE_DAYS = 14           # how far back
 KEEP_DAYS = 7
 VIOLENCE = {"strike", "ground"}   # never folded without the model: a city at war has many strikes a day
+# Incidents happen in one place: strikes and fighting this far apart, or incidents at sea, are
+# different ones unless either is pinned only to a whole country or sea (approximate). A trial on
+# 2026-10-06 joined the Ukrainian air force's guided-bomb reports for Dnipropetrovsk, Chernihiv and
+# Kharkiv, and an attack off Yemen with one in the Strait of Hormuz.
+INCIDENT_KM = {"strike": 150, "ground": 150, "naval": 600}
 STATEMENTS = {"diplomacy", "legal", "hybrid", "deployment", "transfer", "production"}
 
 PROMPT = """You check a live conflict map for duplicates. Each case is one event from the map and a few candidate events that look like it, each with an id, its kind, summary, place and time. Events are often filed under different kinds and places by different outlets: one strike as an airstrike, a missile attack and shelling; a missile test as arms production; an arms sale as diplomacy; a city, the base it is about, the capital that spoke, or the whole country. The kind and the place don't decide it.
 
 For each case, list the candidates that describe the same specific incident or statement as the event: the same strike, arrests, seizure, test, exercise, announcement, deal, meeting, visit or call, vote, filing or ruling, including follow-up coverage of it over the following days (new details, reactions, denials, a rising death toll).
 Leave out candidates that are separate incidents that resemble it (two strikes on the same city on the same day, two drills, two meetings between the same countries), that are only background to it, or when you are unsure. A response by another government or body is its own event.
+Times matter. Reports on different days are the same incident only when they clearly describe it again (follow-up coverage of the same strike, deal or move). Many kinds of report recur and are separate incidents each time: an air force's daily report of guided bombs or drones on a region, strikes on the same front, aircraft landing at the same airport, attacks on ships in the same waters. Different regions or provinces in the summaries mean different incidents.
 
 When you list any, also give:
 - "type": the kind, of those the event and the listed candidates were filed under, that best fits what happened (a missile test is "missile_drone", not arms production; an approved arms sale is "arms_transfer"; a strike that killed people is "airstrike" or "missile_drone" over "diplomacy").
@@ -143,6 +151,14 @@ def near(e: dict, f: dict) -> bool:
     return False
 
 
+def apart(e: dict, f: dict) -> bool:
+    """Two incidents too far apart to be one (INCIDENT_KM), when both are pinned to a place."""
+    limits = [INCIDENT_KM[x] for x in (_family(e), _family(f)) if x in INCIDENT_KM]
+    if not limits or e.get("approx") or f.get("approx"):
+        return False
+    return _km(e, f) > max(limits)
+
+
 def _key(a: str, b: str) -> str:
     return "|".join(sorted((a, b)))
 
@@ -156,7 +172,7 @@ def candidates(e: dict, pool: list[dict], vec: dict, late: bool = False) -> list
     follow-ups older than that, up to LATE_DAYS."""
     out = []
     for f in pool:
-        if f["id"] == e["id"] or (e.get("wave") and f.get("wave")) or f.get("alert"):
+        if f["id"] == e["id"] or (e.get("wave") and f.get("wave")) or f.get("alert") or apart(e, f):
             continue
         gap = _gap(e, f)
         if late:
