@@ -5,6 +5,7 @@ name: Heartbeat
 # are not dropped. This job stays running and starts an update whenever the last one began 14 or
 # more minutes ago, then, before GitHub's 6-hour job limit, starts its own next run. Its schedule
 # below is only a backup that restarts the chain if it ever breaks. Minutes are free (public repo).
+# It also cancels an update stuck at the deployment check (below), which would block all others.
 
 on:
   workflow_dispatch:
@@ -30,6 +31,16 @@ jobs:
         run: |
           end=$((SECONDS + 345 * 60))
           while [ "$SECONDS" -lt "$end" ]; do
+            # An update stuck "waiting" at the github-pages deployment check holds the update queue,
+            # and every run behind it is cancelled (2026-10-06: 09:11-11:28 and 18:08-22:25 UTC).
+            # The check normally clears in a second, so one waiting over 15 minutes is cancelled.
+            gh api "repos/$REPO/actions/workflows/update.yml/runs?status=waiting&per_page=10" \
+              --jq '.workflow_runs[] | "\(.id) \(.created_at)"' 2>/dev/null | while read -r id created; do
+              if [ $(( $(date +%s) - $(date -d "$created" +%s) )) -ge 900 ]; then
+                echo "$(date -u +%H:%M) update run $id has been waiting since $created; cancelling it"
+                gh api -X POST "repos/$REPO/actions/runs/$id/cancel" >/dev/null || echo "could not cancel run $id"
+              fi
+            done
             last=$(gh api "repos/$REPO/actions/workflows/update.yml/runs?per_page=1" --jq '.workflow_runs[0].created_at' || true)
             age=999999
             if [ -n "$last" ]; then age=$(( $(date +%s) - $(date -d "$last" +%s) )); fi
