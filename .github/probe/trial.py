@@ -34,10 +34,16 @@ print("   how dated:", Counter((e.get("dated") or {}).get("how") for e in ev if 
 for d in st.get("dropped_as_old", []):
     print(f"   OLD {d['match']} | listed {d['listed'][:10]} | {d['summary'][:110]}")
 
+print("== first listing of real headlines (model_rejected keeps them)")
+for r in (state.get("model_rejected") or [])[-12:]:
+    first = datecheck.first_listed(session, r["headline"])
+    print(f"   listed {r['time'][:10]} first {first.date() if first else None} | {r['headline'][:90]}")
+
 print("== same-story check (3 calls)")
 dedupe.MAX_CALLS_PER_RUN = 3
 dedupe.EXTRA_CALLS_FLOOR = 0
 st2 = copy.deepcopy(state)
+st2.setdefault("dedupe", {}).pop("failed", None)
 q, auto = dedupe.cases([e for e in events], archive.recent(Path("state"), now, dedupe.LATE_DAYS), {}, now)
 print(f"   {len(q)} events to ask about, {sum(len(c) for _, c in q)} candidates, {len(auto)} automatic folds")
 out, folded = dedupe.run(copy.deepcopy(events), st2, settings, now, extract.ask_json,

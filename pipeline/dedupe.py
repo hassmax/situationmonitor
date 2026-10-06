@@ -30,8 +30,7 @@ So the check is built around each event and the few events most like it:
   back (working set and archive), from LATE_FLOOR similarity: folded into the working-set event
   (it keeps its first date), or, when the older one is only in the archive, the new event takes
   its date, so an old story isn't shown as new.
-- Every run while questions wait, else at most every MIN_INTERVAL (RETRY after a failure), up to
-  MAX_CALLS_PER_RUN calls, within the paced daily share (`share`), never below dedupe_min_calls
+- Every run while questions wait (RETRY after a failure), up to MAX_CALLS_PER_RUN calls, within the paced daily share (`share`), never below dedupe_min_calls
   calls left today (extraction keeps priority), the extra call only with EXTRA_CALLS_FLOOR left.
 """
 from __future__ import annotations
@@ -46,7 +45,6 @@ from common import iso, log, parse_time
 from merge import FAMILY, _absorb
 
 VERSION = 2              # 2: each event with its most similar events, of any kind (2026-10-06)
-MIN_INTERVAL = timedelta(minutes=30)
 RETRY = timedelta(minutes=15)
 LOOKBACK = timedelta(hours=72)
 PAIR_WINDOW = timedelta(hours=48)
@@ -316,12 +314,11 @@ def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: in
         gone = {x["id"] for x in more}
         questions = [(e, [(s, f) for s, f in c if f["id"] not in gone]) for e, c in questions if e["id"] not in gone]
         questions = [(e, c) for e, c in questions if c]
-    done, failed = parse_time(st.get("attempt")), parse_time(st.get("failed"))
-    # While questions are waiting, every run asks; after a failed call (the model down), wait RETRY;
-    # when nothing was left waiting, check again after MIN_INTERVAL.
-    wait = timedelta(0) if st.get("backlog") else MIN_INTERVAL
-    if not questions or (done and now - done < wait) or (failed and now - failed < RETRY):
-        st["backlog"] = bool(questions) and st.get("backlog", False)
+    failed = parse_time(st.get("failed"))
+    # A question exists only for a pair not answered yet, so every run with questions asks; after a
+    # failed call (the model down), it waits RETRY.
+    if not questions or (failed and now - failed < RETRY):
+        st["backlog"] = bool(questions)
         return events, folded
     for call in range(MAX_CALLS_PER_RUN):
         batch, questions = questions[:CASES_PER_CALL], questions[CASES_PER_CALL:]
