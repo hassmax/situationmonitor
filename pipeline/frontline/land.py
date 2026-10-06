@@ -13,6 +13,7 @@ import numpy as np
 
 SHAPES = Path(__file__).resolve().parents[2] / "site" / "assets" / "countries-110m.json"
 REGIONS = Path(__file__).resolve().parent / "regions.json"
+OCCUPIED = Path(__file__).resolve().parent / "occupied.json"
 
 
 @lru_cache(maxsize=1)
@@ -73,6 +74,17 @@ def regions(country: str) -> list[dict]:
     domain): only the countries whose conflicts fill by province have any."""
     return [{"name": r["name"], "rings": [ring for poly in r["polygons"] for ring in poly]}
             for r in _regions().get(country, [])]
+
+
+@lru_cache(maxsize=1)
+def _occupied() -> dict:
+    return json.loads(OCCUPIED.read_text(encoding="utf-8"))["shapes"]
+
+
+def occupied(name: str) -> list:
+    """The rings (lon, lat) of a territory with a published, fixed outline (occupied.json, Natural
+    Earth, public domain): the West Bank, East Jerusalem, the Golan Heights ... Unknown names: []."""
+    return _occupied().get(name, [])
 
 
 def inside(rings: list, lon: float, lat: float) -> bool:

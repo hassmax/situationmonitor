@@ -357,3 +357,54 @@ conflicts:
                  Adale, Balcad/Balad, Wanlaweyn, Bulo Burde, Galkayo, Hobyo, Harardhere, El Buur/Elbur, Adan Yabaal, Moqokori, Mahas,
                  Jilib, Jamame, Bu'aale/Buale, Saakow/Saco, Bardhere/Bardera, Dinsoor/Diinsoor, Qansax Dheere, Burhakaba, Luuq, Garbaharey,
                  Tiyeglow/Tiyeeglow, Xuddur/Hudur, Wajid, Afmadow, Badhaadhe, Kudha, Sablaale, Kurtunwarey, Awdheegle, Bariire, Janaale]
+
+  - id: israel
+    name: Israeli-occupied territories
+    # The owner, 2026-10-06: "Add Israeli occupied Syria and West Bank on the map similar to Ukraine and
+    # Yemen", "And Lebanon too". Territories with a published outline (occupied.json, Natural Earth, public
+    # domain) are shaded whole (`occupied`); the ground Israel took in Lebanon and beyond the Syrian buffer
+    # zone has no published outline and comes from the agents, like every other front. Labels follow the
+    # international community's terms (UN Security Council resolutions 242, 497 and 2334; ICJ advisory
+    # opinion of 19 July 2024): "Israeli-occupied".
+    occupied:
+      - {actor: IL, shapes: [West Bank, East Jerusalem], note: "occupied since 1967"}
+      - {actor: IL, shapes: [Golan Heights, Shebaa Farms], note: "occupied since 1967 (the UN counts Shebaa Farms as Syrian Golan)"}
+    # Not the UN buffer zone's outline: Israel holds places beyond it, and Syrian-held villages lie inside it
+    # (Wikipedia's map, 6 Oct 2026). The ground taken since December 2024 in Syria and since March 2026 in
+    # Lebanon comes from Wikipedia's dots and the agents.
+    wikipedia:
+      # one map for Israel, the Palestinian territories, south Lebanon and south Syria (legend: blue Israel,
+      # red Hezbollah, dark red Syria); Israeli bases and hilltops count (Beaufort Castle, Mount Hermon), the
+      # dots in Israel itself and the West Bank are left out (`exclude`, occupied.json outlines)
+      page: "Module:Israeli-Palestinian conflict detailed map"
+      marks: {"Location dot blue.svg": IL, "Map-circle-blue.svg": IL, "Abm-blue-icon.png": IL, "Map-peak-blue.svg": IL, "4x4dot-blue.svg": IL,
+              "Location dot red.svg": HEZ, "Map-circle-red.svg": HEZ, "Location dot dark red.svg": SYG, "Location dot darkred.svg": SYG}
+      exclude: [Israel, West Bank, East Jerusalem]
+    search_context: "Israel OR Israeli OR IDF"
+    countries: [LB, SY]
+    center: [33.2, 35.7]
+    radius_km: 120
+    area_km: 2
+    step_km: 1
+    broad_km: 5
+    min_km2: 20
+    actors:
+      - {id: IL, name: Israel, controlled: Israeli-occupied, color: "#e39b5b", sources: [IL], aka: "Israeli army, IDF, Israel Defense Forces, Israeli forces, Israeli troops",
+         held_as: [Israeli, Israel, IDF, Israeli army], home: [IL]}
+      # the other sides hold their own country: their ground draws the line against Israel's but isn't shaded
+      - {id: LBN, name: the Lebanese state, controlled: Lebanese-held, color: "#5aa9e6", sources: [], aka: "Lebanese army, LAF, the Lebanese government", home: [LB]}
+      - {id: HEZ, name: Hezbollah, controlled: Hezbollah-held, color: "#5aa9e6", sources: [LB], aka: "Hezbollah, the Islamic Resistance, Amal", home: [LB]}
+      - {id: SYG, name: the Syrian government, controlled: Syrian government-held, color: "#5aa9e6", sources: [SY], aka: "Syrian army, Syrian transitional government, General Security, Damascus", home: [SY]}
+    standing:
+      - region: South Lebanon
+        country: LB
+        places: [Khiam/El Khiam/Al-Khiam, Maroun al-Ras/Maroun el-Ras, Meiss al-Jabal/Mays al-Jabal/Meiss el-Jabal, Kfar Kila/Kafr Kila,
+                 Odaisseh/Adaisseh/Al-Adaisseh, Markaba, Houla, Aitaroun/Aytaroun, Yaroun, Aita al-Shaab/Ayta ash-Shab, Ramyah/Ramya, Naqoura/Al-Naqoura,
+                 Alma al-Shaab/Alma ash-Shaab, Dhayra/Duhayra, Bint Jbeil, Blida, Rmeish, Debel, Ain Ebel, Marjayoun/Marjeyoun, Qlayaa/Klayaa,
+                 Deir Mimas, Wazzani/Al-Wazzani, Taybeh/Taibeh, Rab Thalathin, Kfarchouba/Kfar Shouba, Shebaa, Hebbariyeh, Labbouneh,
+                 Yarin, Marwahin, Shamaa/Chamaa, Tayr Harfa, Beit Lif, Ayta al-Jabal, Kfar Hamam]
+      - region: Quneitra and Daraa
+        country: SY
+        places: [Quneitra/Al-Qunaytirah, Khan Arnabah, Madinat al-Baath/Baath City, Hader/Hadar/Hadr, Jubata al-Khashab/Jubata al-Khashb,
+                 Beit Jinn, Mazraat Beit Jinn, Hamidiyah/Al-Hamidiyah, Rafid, Al-Muallaqa, Ruwayhinah/Al-Rawihina, Kudnah/Kodana,
+                 Saida al-Hanout, Ma'ariyah/Maariyah, Jamlah/Jamla, Abidin, Kawkab, Ain al-Tineh, Hadar al-Sheikh]
