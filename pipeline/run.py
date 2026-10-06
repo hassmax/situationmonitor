@@ -255,7 +255,7 @@ def main() -> int:
     events = corrections.drop_reports(events, fixes)  # before scoring, so confidence is recomputed
     merge.apply_status(events, cells)
     # Old articles listed with a fresh date: the article's own publication date (no model calls).
-    events = datecheck.check(events, session, state, t0)
+    events = datecheck.check(events, session, state, t0, {e["id"] for e in events} - known)
     # Old stories that arrived with a fresh date are dropped (see recency.py).
     if not args.no_llm:
         events = recency.check(events, {e["id"] for e in events} - known, session, extract.ask_json, state, settings, t0)

@@ -120,12 +120,16 @@ def _distinct(results: list[dict]) -> list[dict]:
 def _evidence(session, e: dict):
     """(recent on-topic headlines, older headlines), or None if a search failed."""
     t = parse_time(e.get("time"))
-    q = _query(e.get("summary", ""))
+    # the article's own headline when the report kept it (datecheck._first_news), else the summary:
+    # the model's paraphrase found other stories ("Sri Lankan troops in Russian exercise")
+    title = next((r.get("title") for r in sorted(e.get("reports", []), key=lambda r: r.get("time") or "")
+                  if r.get("title")), None)
+    q = _query(_headline(title) if title else e.get("summary", ""))
     if not t or len(q.split()) < 3:
         return [], []
     own = {r.get("url") for r in e.get("reports", [])}
     outlets = {_outlet(r.get("source")) for r in e.get("reports", [])} - {""}
-    rw = _words(e.get("summary", ""))
+    rw = _words(e.get("summary", "")) | (_words(_headline(title)) if title else set())
     recent = _search(session, f"{q} after:{(t - timedelta(days=RECENT_DAYS)).strftime('%Y-%m-%d')}")
     if recent is None:
         return None
@@ -151,16 +155,20 @@ def _outlet_of(title: str) -> str:
 
 def held(e: dict) -> bool:
     """Flagged "possibly an old story" until a second source reports it: a notable news-only event
-    from a single source whose check found older coverage of the topic and either no current
-    coverage or an article whose own date couldn't be read. A March report of Houthi missiles at
-    Israel, relisted in September by a site that blocks the date check, had one "current" match."""
+    from a single source whose check found older coverage of the topic and no current coverage
+    from another outlet, or at most one such headline when the article's own date couldn't be
+    read. A March report of Houthi missiles at Israel, relisted in September by a site that blocks
+    the date check, had one "current" match. More than that is current coverage, dated or not:
+    until 2026-10-06 an unreadable date flagged stories with 11 to 17 current headlines (all 12
+    B-1B bombers leaving RAF Fairford, explosions in the Korean DMZ), half of the 88 flagged."""
     cov = e.get("coverage") or {}
     dated = e.get("dated") or {}
     undated = int(dated.get("tries", 0)) >= UNDATED_TRIES and not dated.get("published")
+    current = int(cov.get("current") or 0)
     groups = {r.get("group") or r.get("source") for r in e.get("reports", [])}
     # One older on-topic headline is thin evidence for a recurring kind of story (Saudi airstrikes
     # in Saada); and a corroborated event (GDELT's nearby coverage counts) isn't flagged at all.
-    return (int(cov.get("older") or 0) >= HOLD_MIN_OLDER and (not cov.get("current") or undated)
+    return (int(cov.get("older") or 0) >= HOLD_MIN_OLDER and (current == 0 or (undated and current <= 1))
             and int(e.get("severity") or 1) >= HOLD_MIN_SEVERITY and len(groups) < 2 and not e.get("alert")
             and e.get("status") != "corroborated")
 
