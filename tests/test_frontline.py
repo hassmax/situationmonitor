@@ -730,3 +730,48 @@ def test_dots_named_through_a_lookup_table_are_read_across_both_pages():
         "Novobakhmutivka": ("RU", "assessed"), "Druzhkivka": ("UA", "assessed"), "Melitopol": ("RU", "assessed"),
         "Rodynske": (None, "contested")}                       # Kyiv is far from the front; arcs and the road map left out
     assert [p["name"] for p in got].count("Melitopol") == 1     # listed on both pages, kept once
+
+
+def israel_conflict():
+    import yaml
+    from pathlib import Path
+    conf = yaml.safe_load((Path(__file__).resolve().parents[1] / "pipeline/config/frontlines.yaml").read_text())
+    return next(c for c in conf["conflicts"] if c["id"] == "israel")
+
+
+def test_occupied_territories_with_a_published_outline_are_shaded_whole():
+    import math
+    import mapshapes
+    from frontline import cartographer
+    inside = mapshapes._inside
+    c = israel_conflict()
+    layers = cartographer.areas([], c)
+    assert len(layers) == 1
+    held = layers[0]
+    assert held["label"] == "Israeli-occupied" and held["source"] == "Natural Earth's outlines"
+    for lon, lat in [(35.2063, 31.9038), (35.0998, 31.5326), (35.2345, 31.7767), (35.6893, 32.9925)]:
+        assert inside(held["polygons"], lon, lat)            # Ramallah, Hebron, the Old City, Katzrin
+    for lon, lat in [(34.78, 32.08), (35.20, 31.78), (35.57, 33.207), (36.29, 33.51)]:
+        assert not inside(held["polygons"], lon, lat)        # Tel Aviv, West Jerusalem, Kiryat Shmona, Damascus
+    kx = 111.32 * math.cos(math.radians(32.5))
+    km2 = sum(cartographer._ring_km2(p[0], kx, 110.57) for p in held["polygons"])
+    assert 6400 < km2 < 7400                                 # West Bank 5,655, East Jerusalem ~70, Golan ~1,200
+    # a settlement the agents published for another side carves the outline there (their evidence wins)
+    P = lambda name, lat, lon, holder, country: {"name": name, "conflict": "israel", "country": country, "lat": lat, "lon": lon,
+                                                 "status": "assessed", "holder": holder, "standing": False,
+                                                 "last": "2026-10-06T00:00:00Z"}
+    carved = cartographer.areas([P("Jericho", 31.857, 35.444, "SYG", "SY")], c)[0]
+    assert not inside(carved["polygons"], 35.444, 31.857) and inside(carved["polygons"], 35.2063, 31.9038)
+    # an Israeli-held village in south Lebanon shades the ground around it; Hezbollah-held ground isn't shown
+    south = cartographer.areas([P("Khiam", 33.327, 35.612, "IL", "LB"), P("Nabatieh", 33.378, 35.483, "HEZ", "LB")], c)
+    assert len(south) == 1 and inside(south[0]["polygons"], 35.612, 33.327) and not inside(south[0]["polygons"], 35.483, 33.378)
+
+
+def test_a_wikipedia_map_of_several_countries_leaves_out_dots_in_the_excluded_outlines():
+    from frontline import wikipedia
+    c = israel_conflict()
+    pts = [{"name": n, "lat": la, "lon": lo, "holder": "IL", "status": "assessed"} for n, la, lo in [
+        ("Haifa", 32.817, 34.983), ("Metula", 33.279, 35.574), ("Majdal Shams", 33.267, 35.767), ("Ramallah", 31.904, 35.206),
+        ("Khiam", 33.327, 35.612), ("Hader", 33.279, 35.830), ("Naqoura", 33.118, 35.14)]]
+    got = {p["name"]: p["country"] for p in wikipedia._placed(pts, c)}
+    assert got == {"Khiam": "LB", "Hader": "SY", "Naqoura": "LB"}     # Israel itself (Metula just off NE's border), Golan, West Bank out

@@ -18,6 +18,11 @@
 #                   country (Crimea, inside Russia) that count as this one
 #   min_km2, smooth_km  specks smaller than min_km2 go to whoever surrounds them (default 1500);
 #                   outlines are smoothed over smooth_km (default 1.5 x area_km)
+#   step_km         the grid's smallest cell (default 3 km; 1 for the small Israeli-occupied areas)
+#   occupied        [{actor, shapes}]: territories with a fixed, published outline (pipeline/frontline/
+#                   occupied.json, Natural Earth, public domain) that go whole to the actor, unsmoothed,
+#                   except around a settlement the agents published for another side: only for
+#                   occupations the international community itself names, never estimated lines
 #   fill: regions   shade whole provinces: a province holding an assessed `standing` town is shaded
 #                   whole, split halfway between the two sides' settlements in it
 #                   (pipeline/frontline/regions.json, Natural Earth admin-1, public domain)
@@ -40,7 +45,8 @@
 #                   `page`, the Wikipedia "detailed map" module; `marks`, which of its dot files stand
 #                   for which side here (from the map's legend; others are left out); `near`, keep the
 #                   listed sides' dots only within km of another side's; `reach_km`, how far each of
-#                   its towns shades (else area_km), or per side ({RU: 25}); `page` may be a list of modules
+#                   its towns shades (else area_km), or per side ({RU: 25}); `page` may be a list of modules;
+#                   `exclude`, outlines (occupied.json) whose dots are left out (a map that covers Israel too)
 #   search_french   also search Google News in French (eastern DRC, the Sahel: most reporting is French)
 #   actors          the sides, each with:
 #     id, name      id used by the agents, and the name used in the reviewer's notes
