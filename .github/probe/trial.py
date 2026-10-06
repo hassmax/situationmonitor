@@ -53,3 +53,4 @@ out, folded = dedupe.run(copy.deepcopy(events), st2, settings, now, extract.ask_
                          extract.calls_remaining(st2, settings, now), set(),
                          archive.recent(Path("state"), now, dedupe.LATE_DAYS), share=3)
 print(f"   folded {len(folded)}; events {len(events)} -> {len(out)}")
+# run 4
