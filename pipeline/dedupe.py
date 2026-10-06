@@ -152,11 +152,12 @@ def near(e: dict, f: dict) -> bool:
 
 
 def apart(e: dict, f: dict) -> bool:
-    """Two incidents too far apart to be one (INCIDENT_KM), when both are pinned to a place."""
-    limits = [INCIDENT_KM[x] for x in (_family(e), _family(f)) if x in INCIDENT_KM]
-    if not limits or e.get("approx") or f.get("approx"):
+    """Two incidents too far apart to be one (INCIDENT_KM), when both are incidents pinned to a
+    place (a test reported from Pyongyang and the launch pinned to the sea it landed in may be one)."""
+    fa, fb = _family(e), _family(f)
+    if fa not in INCIDENT_KM or fb not in INCIDENT_KM or e.get("approx") or f.get("approx"):
         return False
-    return _km(e, f) > max(limits)
+    return _km(e, f) > max(INCIDENT_KM[fa], INCIDENT_KM[fb])
 
 
 def _key(a: str, b: str) -> str:

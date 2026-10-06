@@ -165,3 +165,16 @@ def test_budget_floors_shares_hidden_events_and_the_wait_after_a_failure():
     model = Model()
     dedupe.run(many, {}, SETTINGS, NOW, model, remaining=60, skip=set())   # low budget: one call, the rest waits
     assert len(model.calls) == 1
+
+
+def test_incidents_far_apart_are_never_candidates_unless_one_is_pinned_broadly():
+    kab = [ev("k1", "The Ukrainian Air Force reported guided aerial bombs launched over Dnipropetrovsk Oblast.", "airstrike",
+              "UA", "Dnipropetrovsk Oblast", 6, 48.45, 35.05),
+           ev("k2", "The Ukrainian Air Force reported guided aerial bombs launched over Kharkiv Oblast.", "airstrike",
+              "UA", "Kharkiv Oblast", 3, 49.99, 36.23)]
+    assert dedupe.apart(*kab)                                            # ~190 km: two reports
+    broad = dict(kab[1], approx=True, place="Ukraine")
+    assert not dedupe.apart(kab[0], broad)                               # a whole-country pin may be either
+    sea = [ev("y", "Explosions were reported near a ship off Yemen's coast.", "naval", None, "Gulf of Aden", 5, 12.6, 45.0),
+           ev("h", "A security incident was reported near the Strait of Hormuz.", "naval", None, "Strait of Hormuz", 2, 26.6, 56.4)]
+    assert dedupe.apart(*sea)
