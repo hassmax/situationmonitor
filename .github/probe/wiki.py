@@ -24,3 +24,8 @@ print("COUNTS", Counter((p["country"], p["holder"] or "contested") for p in pts)
 print("POINTS", json.dumps(pts, ensure_ascii=False))
 purple = [m.group(0)[:200] for m in re.finditer(r"\{[^{}]*purple[^{}]*\}", text)]
 print("PURPLE", len(purple), purple[:8])
+
+# the dots, compact, as annotations (readable through GitHub's API): name|lat|lon|holder-or-contested;...
+rows = ";".join(f"{p['name'].replace(';', ',').replace('|', '/')}|{p['lat']:.5f}|{p['lon']:.5f}|{p['holder'] or 'contested'}|{p['country']}" for p in pts)
+for i in range(0, len(rows), 3500):
+    print(f"::notice title=dots {i // 3500}::{rows[i:i + 3500]}")

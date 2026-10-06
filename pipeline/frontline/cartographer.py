@@ -318,7 +318,8 @@ def areas(places: list[dict], conflict: dict) -> list[dict]:
     masks = {c: land.mask(xs, ys, [ISO_NUMERIC[c]]) for c in conflict["countries"] if c in ISO_NUMERIC}
     on_land = np.logical_or.reduce(list(masks.values())) if masks else np.ones(gx.shape, dtype=bool)
     fixed_masks = [(h, land.rings_mask(xs, ys, rings)) for h, rings in fixed]
-    for _, m in fixed_masks:      # a fixed outline is land wherever the globe's coarse map puts it
+    for i, (_, m) in enumerate(fixed_masks):   # a fixed outline is land, wherever the globe's coarse map puts it
+        masks[f"outline {i}"] = m
         on_land = on_land | m
     span = max(reach + [area])
 
@@ -340,7 +341,7 @@ def areas(places: list[dict], conflict: dict) -> list[dict]:
         j = np.unravel_index(np.argmin(np.where(here, d, np.inf)), d.shape)
         if d[j] > limit:
             return None
-        own = next(m[sl] for m in masks.values() if m[sl][j]) if masks else here
+        own = next((m[sl] for m in masks.values() if m[sl][j]), here)
         return sl, np.where(own, d, BIG)
 
     # a side's settlements in its own country (Russian-held villages in Russia) hold ground like any

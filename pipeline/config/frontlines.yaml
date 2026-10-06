@@ -379,7 +379,7 @@ conflicts:
       page: "Module:Israeli-Palestinian conflict detailed map"
       marks: {"Location dot blue.svg": IL, "Map-circle-blue.svg": IL, "Abm-blue-icon.png": IL, "Map-peak-blue.svg": IL, "4x4dot-blue.svg": IL,
               "Location dot red.svg": HEZ, "Map-circle-red.svg": HEZ, "Location dot dark red.svg": SYG, "Location dot darkred.svg": SYG}
-      exclude: [Israel, West Bank, East Jerusalem]
+      exclude: [Israel, West Bank, East Jerusalem, Golan Heights, Shebaa Farms]
     search_context: "Israel OR Israeli OR IDF"
     countries: [LB, SY]
     center: [33.2, 35.7]
