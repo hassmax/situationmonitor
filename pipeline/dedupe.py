@@ -75,7 +75,7 @@ When you list any, also give:
 - "type": the kind, of those the event and the listed candidates were filed under, that best fits what happened (a missile test is "missile_drone", not arms production; an approved arms sale is "arms_transfer"; a strike that killed people is "airstrike" or "missile_drone" over "diplomacy").
 - "summary": one neutral sentence of at most 25 words stating what they agree on, with the most recent figures; only facts in the summaries, keeping attributions ("Russian MoD claims", "reportedly"); never add a number, place, or name they don't give.
 
-Reply with one JSON object and nothing else, one entry for every case ("same": [] when none):
+Reply with one JSON object and nothing else, one entry for every case; a case with none is just {"i": <case number>, "same": []}:
 {"results": [{"i": <case number>, "same": ["<candidate id>", ...], "type": "<kind>", "summary": "<one sentence>"}]}"""
 
 _STOP = set("""the a an of in on at to for and or with by from as is are was were be been being has have had that this
@@ -337,7 +337,9 @@ def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: in
             questions = batch + questions
             break
         payload = [{"i": n, "event": _show(e), "candidates": [_show(f) for _, f in c]} for n, (e, c) in enumerate(batch)]
-        reply = ask(PROMPT, json.dumps({"cases": payload}, ensure_ascii=False), state, settings, now, max_tokens=3000,
+        # reasoning models (the outside providers' gpt-oss) spend part of max_tokens thinking: 3,000
+        # cut a 15-case answer off at 1,400 characters in a trial (2026-10-06)
+        reply = ask(PROMPT, json.dumps({"cases": payload}, ensure_ascii=False), state, settings, now, max_tokens=8000,
                     purpose="dedupe")
         if not isinstance(reply, dict) or not isinstance(reply.get("results"), list):
             st["failed"] = iso(now)
