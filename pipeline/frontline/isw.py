@@ -5,8 +5,8 @@ map data, whose terms forbid reuse without written permission.
 
 - Which reports: ISW's sitemap (one request an hour, CHECK_EVERY) lists its research by date. The
   series in SERIES are read: the Russian Offensive Campaign Assessment and the Russian Occupation
-  Update (Ukraine) and the Iran Update (the Houthi-Saudi war in Yemen). The Africa File (Sudan, the
-  Sahel, eastern DRC, Somalia, Ethiopia) is published by ISW's partner, the Critical Threats Project,
+  Update (Ukraine) and the Iran Update (the Houthi-Saudi war in Yemen; Israel in Lebanon and
+  Syria). The Africa File (Sudan, the Sahel, eastern DRC, Somalia, Ethiopia) is published by ISW's partner, the Critical Threats Project,
   on criticalthreats.org only (never in ISW's sitemap, and its addresses end, not start, with
   "africa-file-<date>", so it was never read until 2026-10-04): its list page carries the reports as
   data (CTP_LIST, `INI_LIST`: slug, title, publication time). Up front, the last BACKFILL of
@@ -50,7 +50,7 @@ TIMEOUT = 30
 SERIES = {
     "russian-offensive-campaign-assessment": ("Russian Offensive Campaign Assessment", ["ukraine"]),
     "russian-occupation-update": ("Russian Occupation Update", ["ukraine"]),
-    "iran-update": ("Iran Update", ["yemen"]),
+    "iran-update": ("Iran Update", ["yemen", "israel"]),
 }
 MONTHS = "january|february|march|april|may|june|july|august|september|october|november|december"
 CONTROL_RE = re.compile(

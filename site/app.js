@@ -146,6 +146,8 @@
     for (const o of list || []) { const d = km(o.lat, o.lon, p.lat, p.lon); if (d < bd) { best = o; bd = d; } }
     return best;
   }
+  // the n nearest of a list to a point
+  const nearestN = (list, p, n) => (list || []).map((o) => [km(o.lat, o.lon, p.lat, p.lon), o]).sort((a, b) => a[0] - b[0]).slice(0, n).map((x) => x[1]);
   function slerp(a, b, t) {
     const [la1, lo1, la2, lo2] = [a.lat, a.lon, b.lat, b.lon].map(toRad);
     const d = 2 * Math.asin(Math.sqrt(Math.sin((la2 - la1) / 2) ** 2 + Math.cos(la1) * Math.cos(la2) * Math.sin((lo2 - lo1) / 2) ** 2));
@@ -637,6 +639,7 @@
     .ringAltitude(0.006);
   const ARC = {
     strike: { dash: 0.5, gap: 0.18 }, strikeApprox: { dash: 0.34, gap: 0.28 },
+    barrage: { dash: 0.035, gap: 0.05 },  // a massive barrage: a stream of small dashes from each usual launch area
     flow: { dash: 1, gap: 0 }, flowDashed: { dash: 0.12, gap: 0.07 }, particles: { dash: 0.012, gap: 0.11 },
     track: { dash: 0.06, gap: 0.04 }, plan: { dash: 0.2, gap: 0.14 }, hit: { dash: 1, gap: 0 },
     shot: { dash: 0.14, gap: 4 },  // one bright dash that runs a launch line once (playLaunches)
@@ -1522,14 +1525,17 @@
     launchTimers.forEach(clearTimeout);
     launchTimers = [];
     if (reduceMotion || !S.layers.paths) return;
-    const paths = attackPaths([e]).slice(0, 16);
+    const all = attackPaths([e]);
+    const barrage = all.some((a) => a.barrage);
+    const paths = all.slice(0, barrage ? 32 : 16);
     if (!paths.length) return;
     const lead = Math.max(150, flight - 100);  // let the camera arrive first
+    const gap = barrage ? 70 : 160;            // a barrage's lines fire close together
     paths.forEach((a, i) => {
       const ms = clamp(700 + (a.dist || 500) * 0.8, 900, 2400);
       launchTimers.push(setTimeout(() => {
         const shot = { sLat: a.sLat, sLng: a.sLng, eLat: a.eLat, eLng: a.eLng, kind: "shot", ms, seed: 1,
-          color: rgba([255, 226, 204], a.kind === "strikeApprox" ? 0.75 : 1), stroke: a.kind === "strikeApprox" ? 0.9 : 1.3 };
+          color: rgba([255, 226, 204], a.kind === "strike" ? 1 : 0.75), stroke: a.kind === "strike" ? 1.3 : 0.9 };
         extraArcs.add(shot);
         pushArcs();
         launchTimers.push(setTimeout(() => {
@@ -1537,7 +1543,7 @@
           pushArcs();
           flashRing(a.eLat, a.eLng, CAT_RGB.strike, 1.8, 900);
         }, ms * 1.04));
-      }, lead + i * 160));
+      }, lead + i * gap));
     });
   }
 
@@ -1671,17 +1677,32 @@
   }
 
   // ------------------------------------------------------------------ build layers
+  // A massive barrage (BARRAGE or more drones and missiles reported launched, as in the strikes of
+  // well over a thousand drones between Russia and Ukraine in October 2026) gets more lines: each
+  // place hit is reached from several of the attacker's usual launch areas, more the bigger the
+  // barrage, drawn as a faint stream of small dashes. They stay assumed launch areas (no report
+  // names them) and end only at reported places; launch sites a report names are drawn as before.
+  const BARRAGE = 100;
+  const MAX_BARRAGE_LINES = 40;   // per attack
+  const barrageFan = (e) => (e.launched >= 1000 ? 5 : e.launched >= 400 ? 4 : e.launched >= BARRAGE ? 3 : 1);
   function attackPaths(events) {
     const arcs = [];
     if (!S.layers.paths) return arcs;
-    const push = (e, o, d, approx) => {
+    const push = (e, o, d, approx, barrage) => {
       const dist = km(o.lat, o.lon, d.lat, d.lon);
       if (dist < 25 || (approx && dist > 1800)) return;
       const dim = dimOf(e.id === S.selectedId);
       const a = Math.min(1, STATUS[e.status].alpha * fade(e) * (approx ? 0.65 : 1.15)) * dim;
-      arcs.push(keyed({ ref: e, sLat: o.lat, sLng: o.lon, eLat: d.lat, eLng: d.lon, kind: approx ? "strikeApprox" : "strike",
-        color: [rgba(CAT_RGB.strike, 0.12 * dim), rgba(CAT_RGB.strike, a)], stroke: approx ? 0.26 : 0.42,
-        ms: approx ? 3600 : 2200, seed: Math.random(), dist }, `atk|${e.id}|${o.lat},${o.lon}>${d.lat},${d.lon}`));
+      arcs.push(keyed({ ref: e, sLat: o.lat, sLng: o.lon, eLat: d.lat, eLng: d.lon, kind: barrage ? "barrage" : approx ? "strikeApprox" : "strike",
+        color: [rgba(CAT_RGB.strike, 0.12 * dim), rgba(CAT_RGB.strike, a)], stroke: barrage ? 0.3 : approx ? 0.26 : 0.42,
+        ms: barrage ? 2600 + Math.random() * 1600 : approx ? 3600 : 2200, seed: Math.random(), dist, barrage: !!barrage },
+        `atk|${e.id}|${o.lat},${o.lon}>${d.lat},${d.lon}`));
+    };
+    // lines from the attacker's usual launch areas: one per place hit, or several in a massive barrage
+    const assumed = (e, d) => {
+      const fan = barrageFan(e);
+      const from = fan > 1 ? nearestN(ANCHORS[e.attacker], d, fan) : [nearest(ANCHORS[e.attacker], d)];
+      from.forEach((o) => push(e, o, d, true, fan > 1));
     };
     for (const e of events) {
       if (arcs.length >= 180) break;
@@ -1690,14 +1711,16 @@
       // a launch "from Yemen" names no site: the country's middle is placed in the Hadramawt desert
       // (government-held), so the line comes from the attacker's usual launch areas instead (2026-10-05)
       const origins = originsOf(e).filter((o) => !wholeCountry(o, e.attacker));
+      const start = arcs.length;
       if (e.wave) {
         for (const d of (e.targets.length ? e.targets.slice(0, 16) : [e])) {
           const o = nearest(origins, d);
           if (o) push(e, o, d, false);
-          else if (ANCHORS[e.attacker]) push(e, nearest(ANCHORS[e.attacker], d), d, true);
+          else if (ANCHORS[e.attacker]) assumed(e, d);
         }
       } else if (origins.length) origins.slice(0, 3).forEach((o) => push(e, o, e, false));
-      else if (e.type === "missile_drone" && ANCHORS[e.attacker]) push(e, nearest(ANCHORS[e.attacker], e), e, true);
+      else if (e.type === "missile_drone" && ANCHORS[e.attacker]) assumed(e, e);
+      if (arcs.length - start > MAX_BARRAGE_LINES) arcs.length = start + MAX_BARRAGE_LINES;
     }
     return arcs;
   }
@@ -2379,7 +2402,7 @@
       ${e.targets.length ? `<ul class="targets">${e.targets.map((x) => `<li><button class="target" type="button" data-goto="${x.lat},${x.lon}"><span>${esc(x.place || "Unnamed place")}</span>
         <span class="target-meta">${x.reports} ${x.reports === 1 ? "report" : "reports"}${x.killed ? `, ${x.killed} killed` : ""}</span></button></li>`).join("")}</ul>` : `<p class="muted">No specific locations reported yet.</p>`}
       <h2 class="reports-title">Launch areas</h2>
-      <p class="muted">${origins.length ? esc(origins.map((o) => o.place || "unnamed site").join(", ")) : "Not named in the reports so far. Lines on the map start from the nearest known launch area and are drawn faint."}</p>` : "";
+      <p class="muted">${origins.length ? esc(origins.map((o) => o.place || "unnamed site").join(", ")) : (barrageFan(e) > 1 ? "Not named in the reports so far. For a barrage this large, lines on the map start from several of the attacker's known launch areas and are drawn faint." : "Not named in the reports so far. Lines on the map start from the nearest known launch area and are drawn faint.")}</p>` : "";
     const alertBlock = e.alert ? `
       <p class="muted">Warnings that drones or missiles were in flight, grouped into one marker per country per day. They show where a threat was reported heading, not what was hit. Strikes and interceptions appear as their own events.</p>
       <h2 class="reports-title">Places named (${e.targets.length})</h2>

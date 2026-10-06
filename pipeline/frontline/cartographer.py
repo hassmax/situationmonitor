@@ -15,6 +15,9 @@ territorial control, and then adjust when agents or news indicates territorial c
 - Shading stays on land. Ground a side holds in its own country (`home`) isn't shown; `counts_as`
   puts Crimea, which the globe's map draws inside Russia, back in Ukraine.
 - Fighting inside settlements is hatched ("Contested") only where it forms a sizeable zone.
+- Territories with a fixed, published outline (`occupied` in frontlines.yaml: the West Bank, East
+  Jerusalem, the Golan Heights; occupied.json, Natural Earth) go whole to their holder, unsmoothed,
+  except around a settlement the agents published for another side.
 
 The settlements themselves are published too (`places`), with the Wikipedia credits.
 """
@@ -244,6 +247,16 @@ def _pieces(xs: np.ndarray, ys: np.ndarray, conflict: dict) -> np.ndarray:
     return out
 
 
+def _fixed(conflict: dict) -> list[tuple[str, list]]:
+    """(actor, rings) for each `occupied` territory of the conflict that has an outline."""
+    out = []
+    for o in conflict.get("occupied") or []:
+        rings = [r for name in o.get("shapes") or [] for r in land.occupied(name)]
+        if rings and ledger.actor(conflict, o.get("actor")):
+            out.append((o["actor"], rings))
+    return out
+
+
 def _ring_km2(ring: list, kx: float, ky: float) -> float:
     a = np.asarray(ring, dtype=float)
     x, y = a[:, 0] * kx, a[:, 1] * ky
@@ -270,7 +283,8 @@ def areas(places: list[dict], conflict: dict) -> list[dict]:
            if p["conflict"] == conflict["id"] and controller(p)]
     fought = [p for p in places if p["conflict"] == conflict["id"] and p["status"] == "contested"]
     rest = conflict.get("rest") or {}
-    if not [p for p in ctl if not _home(p, conflict)] and not fought and not rest:
+    fixed = _fixed(conflict)
+    if not [p for p in ctl if not _home(p, conflict)] and not fought and not rest and not fixed:
         return []
     area = float(conflict.get("area_km") or DEFAULT_AREA_KM)
     broad = float(conflict.get("broad_km") or DEFAULT_BROAD_KM)
@@ -282,15 +296,15 @@ def areas(places: list[dict], conflict: dict) -> list[dict]:
     rest_rings = [r for c in rest.get("countries") or [] for r in land._rings().get(ISO_NUMERIC.get(c, ""), [])]
     pts = ctl + fought
     lons = [p["lon"] for p in pts] + [x for r, _ in provinces for ring in r["rings"] for x, _ in ring] \
-        + [float(x) for r in rest_rings for x in r[:, 0]]
+        + [float(x) for r in rest_rings for x in r[:, 0]] + [x for _, rings in fixed for ring in rings for x, _ in ring]
     lats = [p["lat"] for p in pts] + [y for r, _ in provinces for ring in r["rings"] for _, y in ring] \
-        + [float(y) for r in rest_rings for y in r[:, 1]]
+        + [float(y) for r in rest_rings for y in r[:, 1]] + [y for _, rings in fixed for ring in rings for _, y in ring]
     lat0 = (min(lats) + max(lats)) / 2
     kx, ky = 111.32 * math.cos(math.radians(lat0)), 110.57          # km per degree
     pad = max(reach + [area]) + 3 * smooth
     w, e = min(lons) - pad / kx, max(lons) + pad / kx
     s, n = min(lats) - pad / ky, max(lats) + pad / ky
-    step = min(max(area / 2, MIN_STEP_KM), MAX_STEP_KM)
+    step = min(max(area / 2, float(conflict.get("step_km") or MIN_STEP_KM)), MAX_STEP_KM)
     nx, ny = int((e - w) * kx / step) + 2, int((n - s) * ky / step) + 2
     if nx * ny > MAX_CELLS:
         f = math.sqrt(nx * ny / MAX_CELLS)
@@ -303,6 +317,10 @@ def areas(places: list[dict], conflict: dict) -> list[dict]:
     # the land of each of the conflict's countries: a settlement holds ground only in its own country
     masks = {c: land.mask(xs, ys, [ISO_NUMERIC[c]]) for c in conflict["countries"] if c in ISO_NUMERIC}
     on_land = np.logical_or.reduce(list(masks.values())) if masks else np.ones(gx.shape, dtype=bool)
+    fixed_masks = [(h, land.rings_mask(xs, ys, rings)) for h, rings in fixed]
+    for i, (_, m) in enumerate(fixed_masks):   # a fixed outline is land, wherever the globe's coarse map puts it
+        masks[f"outline {i}"] = m
+        on_land = on_land | m
     span = max(reach + [area])
 
     def window(lon, lat, km):
@@ -323,13 +341,14 @@ def areas(places: list[dict], conflict: dict) -> list[dict]:
         j = np.unravel_index(np.argmin(np.where(here, d, np.inf)), d.shape)
         if d[j] > limit:
             return None
-        own = next(m[sl] for m in masks.values() if m[sl][j]) if masks else here
+        own = next((m[sl] for m in masks.values() if m[sl][j]), here)
         return sl, np.where(own, d, BIG)
 
     # a side's settlements in its own country (Russian-held villages in Russia) hold ground like any
     # other, so the line against the other side comes out right, but that ground isn't shown
     side_of = [(p["holder"], _home(p, conflict)) for p in ctl]
-    sides = sorted(set(side_of) | ({(rest["actor"], False)} if rest.get("actor") else set()))
+    sides = sorted(set(side_of) | ({(rest["actor"], False)} if rest.get("actor") else set())
+                   | {(h, False) for h, _ in fixed})
     near = {h: np.full(gx.shape, BIG) for h in sides}      # km to the side's nearest settlement
     inside = {h: np.full(gx.shape, BIG) for h in sides}    # <= 0 within a settlement's reach
     for i, p in enumerate(ctl):
@@ -384,6 +403,12 @@ def areas(places: list[dict], conflict: dict) -> list[dict]:
             if p.get("previous") and p["previous"] != p["holder"]:
                 taken[sl] |= (d <= area) & (labels[sl] == k)
     kept = taken.copy()     # kept for the agents' evidence: not smoothed away
+    for h, m in fixed_masks:  # fixed outlines: whole, unsmoothed, except near another side's own settlements
+        k = sides.index((h, False))
+        m = m & ~np.logical_or.reduce([own[j] for j in own if j != k] + [np.zeros(gx.shape, dtype=bool)])
+        labels[m] = k
+        kept |= m
+        own[k] |= m
     for k in range(len(sides)):
         parts = _components(labels == k)
         if not parts:
@@ -423,16 +448,19 @@ def areas(places: list[dict], conflict: dict) -> list[dict]:
         g = np.where(valid, np.maximum(0.5 - b, rival - b), 1.0)
         g = np.where(kept, np.where(labels == k, -0.5, 0.5), g)
         mine = kept & (labels == k)
-        polys = _keep(_polygons(xs, ys, g, tol), min_km2 / 2, kx, ky, list(zip(gx[mine], gy[mine])))
+        polys = _keep(_polygons(xs, ys, g, tol), min_km2 / 2, kx, ky, list(zip(gx[mine], gy[mine])), 2 * cell_km2)
         if not polys:
             continue
         h = sides[k][0]
         a = ledger.actor(conflict, h)
         members = [p for p, sd in zip(ctl, side_of) if sd == sides[k]]
         label = (a.get("controlled") or f"Held by {a['name']}") if a else "Held"
+        source = _source(members) if members else "This site's assessment"
+        if any(fh == h for fh, _ in fixed):
+            source = "Natural Earth's outlines" + (f"; {source}" if members else "")
         layers.append({"id": f"fl-{conflict['id']}-assessed-{h}", "label": label, "style": STYLE["assessed"],
                        "color": a["color"] if a else None, "country": None, "conflict": conflict["id"],
-                       "source": _source(members) if members else "This site's assessment",
+                       "source": source,
                        "assessment": True, "area_km": area, "reach_km": broad,
                        "as_of": max((p["last"] for p in members), default=None), "settlements": len(members),
                        "polygons": polys})
@@ -459,12 +487,14 @@ def areas(places: list[dict], conflict: dict) -> list[dict]:
     return layers
 
 
-def _keep(polys: list, floor: float, kx: float, ky: float, keep: list = ()) -> list:
-    """Polygons of floor km² or more (or holding one of the `keep` points), without holes smaller
-    than floor: smoothing leftovers."""
+def _keep(polys: list, floor: float, kx: float, ky: float, keep: list = (), crumb: float = 0.0) -> list:
+    """Polygons of floor km² or more (or holding one of the `keep` points, unless under `crumb`
+    km²: a lone grid cell cut off a fixed outline's narrow neck), without holes smaller than floor:
+    smoothing leftovers."""
     out = []
     for rings in polys:
-        if _ring_km2(rings[0], kx, ky) < floor and not any(land.inside([rings[0]], x, y) for x, y in keep):
+        size = _ring_km2(rings[0], kx, ky)
+        if size < floor and (size < crumb or not any(land.inside([rings[0]], x, y) for x, y in keep)):
             continue
         out.append([rings[0]] + [h for h in rings[1:] if _ring_km2(h, kx, ky) >= floor])
     return out

@@ -41,6 +41,7 @@ LICENSE_URL = "https://creativecommons.org/licenses/by-sa/4.0/"
 UA = "GlobalSituationMonitor/1.0 (https://github.com/hassmax/situationmonitor)"
 VERSION = 1
 MAX_AGE = timedelta(days=120)
+EXCLUDE_KM = 1.5         # how close to an `exclude` outline a dot counts as inside it
 COAST_KM = 50            # a coastal town just off the globe's coarse coastline still counts as on land
 CONTESTED_RE = re.compile(r"^80x80-[a-z]+-[a-z]+-anim\.gif$")
 
@@ -130,14 +131,26 @@ def _near_only(points: list[dict], rule: dict | None) -> list[dict]:
     return [p for p in points if p["holder"] not in sides or any(_km(p, o) <= km for o in others)]
 
 
+def _excluded(p: dict, outlines: list) -> bool:
+    """Inside one of the outlines, or within EXCLUDE_KM of its edge (Natural Earth's 1:10m border
+    runs a few hundred metres off: Metula, on Israel's border, falls just outside it)."""
+    return any(land.inside(rings, p["lon"], p["lat"])
+               or any(_km(p, {"lon": x, "lat": y}) <= EXCLUDE_KM for r in rings for x, y in r) for rings in outlines)
+
+
 def _placed(points: list[dict], conflict: dict) -> list[dict]:
-    """Points within the conflict's radius, each given the conflict country it lies in."""
+    """Points within the conflict's radius, each given the conflict country it lies in; points in
+    the outlines named under `exclude` (occupied.json: Israel's own towns, on a map that covers
+    Israel, Lebanon and Syria) are left out."""
     from geo import ISO_NUMERIC
     rings = {c: land._rings().get(ISO_NUMERIC.get(c, ""), []) for c in conflict["countries"]}
     center = {"lat": conflict["center"][0], "lon": conflict["center"][1]}
+    outlines = [land.occupied(n) for n in (conflict.get("wikipedia") or {}).get("exclude") or []]
     out = []
     for p in points:
         if conflict.get("radius_km") and _km(p, center) > conflict["radius_km"]:
+            continue
+        if outlines and _excluded(p, outlines):
             continue
         country = next((c for c, rs in rings.items() if rs and land.inside(rs, p["lon"], p["lat"])), None)
         if not country:   # just off the coarse coastline: the nearest conflict country, if close
