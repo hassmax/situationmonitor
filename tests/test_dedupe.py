@@ -81,7 +81,7 @@ def test_each_pair_is_asked_once_and_close_pairs_get_one_second_look():
     assert len(model.calls) == 1                                         # nothing new to ask
     dedupe.run(fresh(), state, SETTINGS, NOW + timedelta(hours=7), model, remaining=100, skip=set())
     again = {(c["event"]["id"], f["id"]) for c in model.calls[1] for f in c["candidates"]}
-    assert again and all(dedupe._cos(*map(dedupe._vectors(fresh()).get, p)) >= dedupe.SECOND_LOOK_MIN for p in again)
+    assert again and all(dedupe._score(*map(dedupe._vectors(fresh()).get, p)) >= dedupe.SECOND_LOOK_MIN for p in again)
     dedupe.run(fresh(), state, SETTINGS, NOW + timedelta(hours=14), model, remaining=100, skip=set())
     assert len(model.calls) == 2                                         # two answers: settled
 
@@ -135,14 +135,17 @@ def test_an_attack_wave_takes_in_a_duplicate_and_two_waves_stay_apart():
     assert [e["id"] for e in folded] == ["p"]
 
 
-def test_a_late_report_of_an_archived_story_takes_its_date():
+def test_a_late_report_restores_the_archived_identity_date_and_reports():
     archived = ev("old", "Sri Lankan troops took part in a joint counter-terrorism exercise in Russia.", "deployment", "RU",
                   "Moscow", 24 * 8, 55.7, 37.6)
     new = ev("new", "Sri Lankan troops participated in a joint anti-terrorist military exercise in Russia.", "deployment",
              "RU", "Moscow", 2, 55.7, 37.6)
     model = Model({"new": {"old"}})
     out, folded = dedupe.run([new] + background(), {}, SETTINGS, NOW, model, remaining=100, skip=set(), history=[archived])
-    assert out[0]["time"] == archived["time"] and folded == []
+    kept = next(e for e in out if e["id"] == "old")
+    assert kept["time"] == archived["time"] and kept["updated"] == new["updated"]
+    assert {r["url"] for r in kept["reports"]} == {"u-old", "u-new"}
+    assert [e["id"] for e in folded] == ["new"]
 
 
 def test_budget_floors_shares_hidden_events_and_the_wait_after_a_failure():

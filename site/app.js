@@ -1093,7 +1093,7 @@
       <ul class="fly-rows">${byLatest(places).map((t, i) => `<li style="--i:${Math.min(i, 10)}"><button type="button" data-open="${esc(e.id)}" data-place="${t.lat},${t.lon}"><span><b>${esc(t.place)}</b>${t.reports > 1 ? ` ${t.reports} ${e.alert ? "alerts" : "reports"}` : ""}</span><time>${latestOf(t) ? esc(agoShort(Date.parse(latestOf(t)))) : ""}</time></button></li>`).join("")}</ul>` : "";
     return `<div class="tip"><div class="tip-meta">${eventIcon(e)}<b>${esc(typeLabel(e))}</b><span>${esc(metaLine(e))}</span></div>
       <div class="tip-sum">${esc(e.summary)}</div>
-      <div class="tip-foot"><span class="conf-text conf-${STATUS[e.status].conf}">${esc(STATUS[e.status].label)}</span>${e.possibly_old ? "<span>Possibly an old story</span>" : ""}${extra}${quick && n ? `<span>${n} ${n === 1 ? "source" : "sources"}</span>` : ""}<span>${esc(ago(e._t))}</span></div>
+      <div class="tip-foot"><span class="conf-text conf-${STATUS[e.status].conf}">${esc(STATUS[e.status].label)}</span>${e.possibly_old ? "<span>Possibly an old story</span>" : ""}${extra}${quick && n ? `<span>${n} ${n === 1 ? "source" : "sources"}</span>` : ""}<span>${esc(ago(e._t))}</span>${hasFollowup(e) ? `<span>Updated ${esc(ago(e._tu))}</span>` : ""}</div>
       ${list}${quick ? `<div class="tip-hint">${canHover() ? "Click for details" : "Tap for details"}</div>` : ""}</div>`;
   }
   // A count bubble: every event it holds, most important first, each one a button that opens it.
@@ -1420,8 +1420,8 @@
     if (DEMO && data.generated_at) shiftDemo(data);
     data.events = (data.events || []).filter((e) => STATUS[e.status] && isFinite(e.lat) && isFinite(e.lon));
     for (const e of data.events) {
-      e._t = Date.parse(e.time || e.updated);   // when it happened: drives the time window, sorting, and "new"
-      e._tu = Date.parse(e.updated || e.time);  // last report, shown in the detail view
+      e._t = Date.parse(e.time || e.updated);   // original occurrence: sorting, animation, and "new"
+      e._tu = Date.parse(e.updated || e.time);  // reporting activity keeps an incident on the map
       e.targets = Array.isArray(e.targets) ? e.targets.filter((t) => isFinite(t.lat) && isFinite(t.lon)) : [];
       const t = e.transfer || {};
       e._search = [e.summary, e.place, e.targets.map((x) => x.place).join(" "), typeLabel(e), countryName(e.attacker),
@@ -1453,7 +1453,7 @@
     const before = S.data ? new Set(S.data.events.map((e) => e.id)) : null;
     S.data = data;
     if (before) {
-      const fresh = data.events.filter((e) => !before.has(e.id) && onMap(e) && passes(e));
+      const fresh = data.events.filter((e) => !before.has(e.id) && onMap(e) && passes(e) && isNew(e));
       if (fresh.length) {
         announce(`${fresh.length} new ${fresh.length === 1 ? "event" : "events"} added`);
         // they slide into the feed; only on this render, so later redraws don't replay it
@@ -1473,7 +1473,7 @@
     if (S.firstLoad) {
       S.firstLoad = false;
       // Opens on the last 24 hours; if that's empty, widen to 3 days so the first view isn't blank.
-      if (!data.events.some((e) => onMap(e) && e._t >= Date.now() - 24 * HOUR)) { setWindow(72); render(); }
+      if (!data.events.some((e) => onMap(e) && activityTime(e) >= Date.now() - 24 * HOUR)) { setWindow(72); render(); }
       const hash = decodeURIComponent(location.hash.slice(1));
       if (hash && data.events.some((e) => e.id === hash)) select(hash, true);
       else if (/^CVN-\d{2}$/.test(hash) && S.fleet.some((c) => c.hull === hash)) selectCarrier(hash, true);
@@ -1527,7 +1527,7 @@
     world.pointOfView({ lat: h.lat, lng: h.lon, altitude: isMobile() ? h.altitude + 0.5 : h.altitude }, reduceMotion ? 0 : 2800);
     const span = { 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[S.windowH];
     const toast = $("#focusToast");
-    toast.innerHTML = `<span class="focus-k">Most active now</span> <strong>${esc(h.theater)}</strong> <span>${h.n} ${h.n === 1 ? "event" : "events"} in the last ${span}, led by ${esc(typeLabel(h.top).toLowerCase())}${h.top.place ? ` near ${esc(h.top.place)}` : ""}</span>`;
+    toast.innerHTML = `<span class="focus-k">Most active now</span> <strong>${esc(h.theater)}</strong> <span>${h.n} ${h.n === 1 ? "event" : "events"} with reports in the last ${span}, led by ${esc(typeLabel(h.top).toLowerCase())}${h.top.place ? ` near ${esc(h.top.place)}` : ""}</span>`;
     toast.hidden = false;
     toast.classList.remove("is-out");
     setTimeout(() => toast.classList.add("is-out"), 7000);
@@ -1545,8 +1545,11 @@
   const matches = (e) => words().every((w) => e._search.includes(w));
   const unlisted = () => new Set(S.theaters.filter((t) => t.listed === false).map((t) => t.id));
   const theaterShown = (id) => S.theaterOn.has(id) || unlisted().has(id);
+  // Follow-up coverage keeps the same incident visible. It never resets its occurrence or "new".
+  const activityTime = (e) => e.alert || e.possibly_old || !onMap(e) ? e._t : Math.max(e._t, e._tu || e._t);
+  const hasFollowup = (e) => !e.alert && !e.possibly_old && onMap(e) && e._tu >= e._t + DAY;
   function passes(e, ignoreTheater = false) {
-    if (e._t < Date.now() - S.windowH * HOUR) return false;
+    if (activityTime(e) < Date.now() - S.windowH * HOUR) return false;
     if (!ignoreTheater && !theaterShown(e.theater)) return false;
     if (!S.statusOn.has(e.status)) return false;
     if (S.off.has(legendKey(e))) return false;
@@ -2113,7 +2116,7 @@
     const span = { 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[S.windowH];
     const fighting = events.filter(onMap);
     const now = [fighting.length, fighting.filter((e) => e.status === "corroborated").length];
-    $("#tally").innerHTML = `<strong>${now[0]}</strong> events in the last ${span}, <strong>${now[1]}</strong> corroborated`;
+    $("#tally").innerHTML = `<strong>${now[0]}</strong> events with reports in the last ${span}, <strong>${now[1]}</strong> corroborated`;
     // counts tick up or down to their new values
     if (tallyWas && !reduceMotion && (tallyWas[0] !== now[0] || tallyWas[1] !== now[1])) {
       const els = [...$("#tally").querySelectorAll("strong")], from = tallyWas.slice(), t0 = performance.now();
@@ -2131,6 +2134,7 @@
   // ------------------------------------------------------------------ feed and side lists
   function itemHtml(e, names) {
     const extra = [];
+    if (hasFollowup(e)) extra.push(`Updated ${ago(e._tu)}`);
     if (e.alert) extra.push(alertsText(e));
     if ((e.wave || e.alert) && e.targets.length) extra.push(`${e.targets.length} ${e.targets.length === 1 ? "location" : "locations"}`);
     if (e.wave && e.launched) extra.push(`${e.launched} launched`);
@@ -2310,7 +2314,7 @@
     });
     const byStatus = {};
     for (const e of S.data.events) {
-      if (!onMap(e) || e._t < now - S.windowH * HOUR || !theaterShown(e.theater)) continue;
+      if (!onMap(e) || activityTime(e) < now - S.windowH * HOUR || !theaterShown(e.theater)) continue;
       byStatus[e.status] = (byStatus[e.status] || 0) + 1;
     }
     document.querySelectorAll("[data-status-count]").forEach((el) => { el.textContent = byStatus[el.dataset.statusCount] || 0; });
@@ -2533,6 +2537,7 @@
       <p class="detail-where">${where}</p>
       <dl class="event-times"><div><dt>${e.alert ? "First warning" : "Event time"}</dt><dd><time datetime="${esc(e.time || e.updated)}" title="${esc(new Date(e._t).toUTCString())}">${esc(fmtEvidenceTime(e._t))}</time></dd></div>
         <div><dt>Latest report</dt><dd><time datetime="${esc(e.updated || e.time)}" title="${esc(new Date(e._tu).toUTCString())}">${esc(fmtEvidenceTime(e._tu))}</time></dd></div></dl>
+      ${hasFollowup(e) ? '<p class="muted">Ongoing coverage of this event is grouped here. Recent reports keep it on the map; the event time stays at its original date.</p>' : ""}
       ${e.possibly_old ? `<div class="verdict verdict--doubt"><span class="conf-swatch conf-dashed" aria-hidden="true"></span><div><strong>Possibly an old story</strong><p>Only one outlet has this, and a news search found earlier coverage of the same topic but nothing current from other outlets. It may be an old article republished with a new date. It stays on the map, quieter, and is confirmed if another source reports it.</p></div></div>` : ""}
       <div class="verdict"><span class="conf-swatch conf-${STATUS[e.status].conf}" aria-hidden="true"></span><div><strong>${esc(STATUS[e.status].label)}</strong><p>${esc(STATUS[e.status].note(e.sources_count, e.news_nearby))}</p></div></div>
       ${facts.length ? `<div class="facts">${facts.join("")}</div>` : ""}

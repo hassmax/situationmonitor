@@ -232,9 +232,9 @@ def main() -> int:
         cells = []
         health.pop("gdelt", None)
 
-    # 6. Geocode, merge, score. Records about events that happened long ago are recaps, not news.
+    # 6. Geocode, merge, score. Fresh coverage can belong to an incident several days old.
     fresh_records = [r for r in records if hours_since(r.get("happened") or r["item"]["time"], t0)
-                     <= r["item"].get("max_age_h", settings["max_item_age_hours"])]
+                     <= max(r["item"].get("max_age_h", settings["max_item_age_hours"]), dedupe.LATE_DAYS * 24)]
     if len(fresh_records) < len(records):
         log(f"[extract] dropped {len(records) - len(fresh_records)} reports about older events")
     records = fresh_records
@@ -250,6 +250,7 @@ def main() -> int:
     if not args.no_llm:
         events = merge.split_mixed_talks(events, state, extract.ask_json, settings, t0)
     known = {e["id"] for e in events}
+    merge.mine_incidents(events)  # ground mine blasts are not missile/drone attack waves
     merge.drone_strikes(candidates)  # drone and missile attacks filed as airstrikes, before they join waves
     events = merge.merge(events, candidates)
     events, folded = merge.consolidate(events, hidden)
@@ -270,12 +271,16 @@ def main() -> int:
         # Same story reported in different words or places: at most one model call an hour.
         # New events are also compared with older ones, archived ones included (late follow-ups).
         events, same = dedupe.run(events, state, settings, t0, extract.ask_json,
-                                  extract.calls_remaining(state, settings, t0), hidden,
-                                  archive.recent(state_dir, t0, dedupe.LATE_DAYS),
+                                  extract.calls_remaining(state, settings, t0), hidden | cfg.removed,
+                                  archive.recent(state_dir, t0, dedupe.LATE_DAYS,
+                                                 [s for group in ("rss", "bluesky", "telegram") for s in cfg.sources[group]]
+                                                 + list(cfg.outlets.values())),
                                   share=extract.share_left(state, settings, t0, "dedupe"))
         folded += same
         if same:
             merge.apply_status(events, cells)
+    # A follow-up may have restored an archived event. Apply the working-set cap to it too.
+    events = merge.prune(events, t0, settings["event_retention_days"], settings["max_events"])
 
     # 7. Regional analyst: what is changing in each region, at most one model call an hour
     # Hidden events are left out and edits applied; everything below uses this published list.
@@ -344,7 +349,7 @@ def main() -> int:
     for d in state.get("dropped_as_old", []):
         if d.get("event"):
             taken_down[d["event"]["id"]] = archive._day(d["event"])
-    written = archive.update(state_dir, published, taken_down, fleet.public(state, t0), t0)
+    written = archive.update(state_dir, published, taken_down, fleet.public(state, t0), t0, events)
     log(f"[archive] {written} files updated")
 
     # 11. Write

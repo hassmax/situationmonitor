@@ -28,8 +28,11 @@
             if (!list || window.__appReady || !list.querySelector(".skel")) return;
             var esc = function (t) { return String(t == null ? "" : t).replace(/[&<>"']/g, function (c) { return "&#" + c.charCodeAt(0) + ";"; }); };
             var now = Date.now(), ago = function (t) { var m = Math.max(0, (now - t) / 60000); return m < 60 ? Math.round(m) + "m" : m < 1440 ? Math.round(m / 60) + "h" : Math.round(m / 1440) + "d"; };
-            var evs = (r.data.events || []).map(function (e) { return { e: e, t: Date.parse(e.time || e.updated) }; })
-              .filter(function (x) { return x.t > now - 864e5; }).sort(function (a, b) { return b.t - a.t; }).slice(0, 30);
+            var evs = (r.data.events || []).map(function (e) {
+              var t = Date.parse(e.time || e.updated);
+              var marker = e.type !== "arms_transfer" || !e.transfer || e.transfer.kind === "interdiction";
+              return { e: e, t: t, activity: e.alert || e.possibly_old || !marker ? t : Math.max(t, Date.parse(e.updated || e.time)) };
+            }).filter(function (x) { return x.activity > now - 864e5; }).sort(function (a, b) { return b.t - a.t; }).slice(0, 30);
             if (!evs.length) return;
             list.innerHTML = evs.map(function (x) {
               return '<li><div class="item item-pre"><span></span><span><span class="item-meta"><span class="item-place">' + esc(x.e.place) +
