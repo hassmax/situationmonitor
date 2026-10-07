@@ -267,6 +267,23 @@ def pin_commands(events: list[dict]) -> int:
             if dest and to.get("place") != dest[0]:
                 t["to"] = {"place": dest[0], "lat": dest[1], "lon": dest[2], "region": True}
                 changed += 1
+            # a route that starts at a command or a whole region starts in that region, drawn faint and
+            # labelled ("CENTCOM" was drawn from Nepal: the model gave its Tampa headquarters with the
+            # longitude's sign flipped; "Africa" from the continent's middle, in Chad; 2026-10-07)
+            src = t.get("from") or {}
+            if src.get("place") and not src.get("region"):
+                c = _command(src["place"])
+                r = None if c else region_anchor(src["place"])
+                if c:
+                    t["from"] = {"place": c[0], "lat": c[1], "lon": c[2], "region": True}
+                    changed += 1
+                elif r:
+                    t["from"] = {"place": src["place"], "lat": r[0], "lon": r[1], "region": True}
+                    changed += 1
+            if to.get("place") and not to.get("region") and t.get("to") is to and region_anchor(to["place"]):
+                r = region_anchor(to["place"])
+                t["to"] = {"place": to["place"], "lat": r[0], "lon": r[1], "region": True}
+                changed += 1
     return changed
 
 

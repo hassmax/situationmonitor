@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import alerts  # noqa: E402
 import analyst  # noqa: E402
 import archive  # noqa: E402
+import audit  # noqa: E402
 import config as config_mod  # noqa: E402
 import corrections  # noqa: E402
 import datecheck  # noqa: E402
@@ -249,12 +250,15 @@ def main() -> int:
     if not args.no_llm:
         events = merge.split_mixed_talks(events, state, extract.ask_json, settings, t0)
     known = {e["id"] for e in events}
+    merge.drone_strikes(candidates)  # drone and missile attacks filed as airstrikes, before they join waves
     events = merge.merge(events, candidates)
     events, folded = merge.consolidate(events, hidden)
     events, launches = merge.launch_sites(events, hidden)  # "fired from Wonsan": a launch area, not a target
     folded += launches
     geo.pin_commands(events)  # events placed at a US command go to its region (not its headquarters)
     merge.own_procurement(events)  # a country buying from its own industry is arms production, not a route
+    merge.carrier_moves(events)  # a carrier's own move is shown by its track, not as a supply route
+    merge.drone_strikes(events)  # stored drone and missile attacks filed as airstrikes
     events = merge.prune(events, t0, settings["event_retention_days"], settings["max_events"])
     events = corrections.drop_reports(events, fixes)  # before scoring, so confidence is recomputed
     merge.apply_status(events, cells)
@@ -326,6 +330,12 @@ def main() -> int:
     outside = providers.summary(state, t0)
     if outside:
         log(f"[budget] outside providers today: {outside}")
+
+    # Checks for mistakes in what the map shows (audit.py, no model calls); the twice-daily sweep reads them
+    try:
+        audit.run(published, fleet.public(state, t0), state, t0)
+    except Exception as exc:  # noqa: BLE001 - a check must never stop the update
+        log(f"[audit] failed: {exc}")
 
     # 10. Archive on the data branch: one file per day, rewritten only when that day changed
     taken_down = {str(i): None for i in cfg.removed}
