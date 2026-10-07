@@ -112,15 +112,36 @@
   const regionWords = (e) => [EUROPE.has(e.country) || (e.theater === "nato_east" && !e.country) ? "europe european" : "", THEATER_WORDS[e.theater] || ""].join(" ");
   const countryName = (code) => { if (!code) return ""; try { return (regionNames && regionNames.of(code)) || code; } catch (_) { return code; } };
 
-  // Known launch areas, used only when a report doesn't name one (those lines are drawn faint).
+  // Known launch areas and watched airbases used as faint, approximate origins when reports name none.
+  // Airbase coordinates match pipeline/config/flights.yaml; assumed lines are limited to nearby events.
   const ANCHORS = {
     RU: [["Kursk", 51.73, 36.19], ["Oryol", 52.97, 36.06], ["Bryansk", 53.24, 34.36], ["Belgorod", 50.6, 36.6],
       ["Millerovo", 48.92, 40.4], ["Primorsko-Akhtarsk", 46.05, 38.17], ["Hvardiiske, Crimea", 45.12, 33.97]],
     UA: [["Sumy", 50.91, 34.8], ["Chernihiv", 51.5, 31.29], ["Kharkiv", 49.99, 36.23], ["Zaporizhzhia", 47.84, 35.14], ["Mykolaiv", 46.97, 32.0]],
-    IR: [["Kermanshah", 34.31, 47.07], ["Tabriz", 38.08, 46.29], ["Isfahan", 32.65, 51.67], ["Bandar Abbas", 27.18, 56.27]],
+    IR: [["Kermanshah", 34.31, 47.07], ["Tabriz", 38.08, 46.29], ["Isfahan", 32.65, 51.67], ["Bandar Abbas", 27.8, 56.25]],
     YE: [["Sanaa", 15.37, 44.19], ["Hodeidah", 14.8, 42.95], ["Saada", 16.94, 43.76]],
     LB: [["Nabatieh", 33.38, 35.48], ["Tyre", 33.27, 35.2]],
-    IL: [["southern Israel", 31.25, 34.79], ["northern Israel", 32.8, 35.1]],
+    IL: [["southern Israel", 31.25, 34.79], ["northern Israel", 32.8, 35.1], ["Nevatim Air Base", 31.208, 35.012]],
+    GB: [["RAF Fairford", 51.682, -1.790], ["RAF Lakenheath", 52.409, 0.561], ["RAF Mildenhall", 52.362, 0.486], ["RAF Brize Norton", 51.750, -1.584]],
+    DE: [["Ramstein Air Base", 49.437, 7.600], ["Spangdahlem Air Base", 49.973, 6.692]],
+    IT: [["Aviano Air Base", 46.032, 12.597], ["Sigonella", 37.402, 14.922]],
+    ES: [["Morón Air Base", 37.175, -5.616], ["Rota", 36.645, -6.349]],
+    GR: [["Souda Bay", 35.533, 24.150]],
+    PL: [["Rzeszów-Jasionka", 50.110, 22.019]],
+    RO: [["Mihail Kogălniceanu", 44.362, 28.488]],
+    NO: [["Ørland", 63.699, 9.604]],
+    TR: [["Incirlik Air Base", 37.002, 35.426]],
+    CY: [["RAF Akrotiri", 34.590, 32.988]],
+    JO: [["Muwaffaq Salti Air Base", 31.827, 36.782]],
+    SA: [["Prince Sultan Air Base", 24.063, 47.580]],
+    QA: [["Al Udeid Air Base", 25.117, 51.315]],
+    AE: [["Al Dhafra Air Base", 24.248, 54.548]],
+    KW: [["Ali Al Salem Air Base", 29.347, 47.521]],
+    DJ: [["Camp Lemonnier", 11.547, 43.159]],
+    US: [["Eielson Air Force Base", 64.666, -147.101], ["Joint Base Pearl Harbor-Hickam", 21.319, -157.922]],
+    JP: [["Kadena Air Base", 26.356, 127.768], ["Misawa Air Base", 40.703, 141.368], ["Yokota Air Base", 35.749, 139.348]],
+    KR: [["Osan Air Base", 37.090, 127.030]],
+    AU: [["RAAF Base Tindal", -14.521, 132.378], ["RAAF Base Amberley", -27.640, 152.712]],
     // North Korea's usual launch areas: Sunan (Pyongyang), the Wonsan coast, Sohae, Sinpo
     KP: [["Pyongyang", 39.2, 125.67], ["Wonsan", 39.17, 127.48], ["Sohae", 39.66, 124.71], ["Sinpo", 40.03, 128.18]],
   };
@@ -1700,46 +1721,55 @@
   // place hit is reached from several of the attacker's usual launch areas, more the bigger the
   // barrage, drawn as a faint stream of small dashes. They stay assumed launch areas (no report
   // names them) and end only at reported places; launch sites a report names are drawn as before.
-  const BARRAGE = 100;
   const LAUNCHED = new Set(["missile_drone", "air_defense", "airstrike"]);   // kinds drawn with launch lines
   const MAX_BARRAGE_LINES = 40;   // per attack
-  const barrageFan = (e) => (e.launched >= 1000 ? 5 : e.launched >= 400 ? 4 : e.launched >= BARRAGE ? 3 : 1);
+  // A reported launch count adds one visual path per 25 items, capped to keep busy maps readable.
+  const launchPathCount = (e) => Number.isFinite(Number(e.launched)) && Number(e.launched) > 0
+    ? clamp(Math.ceil(Number(e.launched) / 25), 1, MAX_BARRAGE_LINES) : 1;
   function attackPaths(events) {
     const arcs = [];
     if (!S.layers.paths) return arcs;
-    const push = (e, o, d, approx, barrage) => {
+    const push = (e, o, d, approx, barrage, line = 0) => {
       const dist = km(o.lat, o.lon, d.lat, d.lon);
       if (dist < 25 || (approx && dist > 1800)) return;
       const dim = dimOf(e.id === S.selectedId);
       const a = Math.min(1, STATUS[e.status].alpha * fade(e) * (approx ? 0.65 : 1.15)) * dim;
+      const pathKey = `atk|${e.id}|${o.lat},${o.lon}>${d.lat},${d.lon}`;
       arcs.push(keyed({ ref: e, sLat: o.lat, sLng: o.lon, eLat: d.lat, eLng: d.lon, kind: barrage ? "barrage" : approx ? "strikeApprox" : "strike",
         color: [rgba(CAT_RGB.strike, 0.12 * dim), rgba(CAT_RGB.strike, a)], stroke: barrage ? 0.3 : approx ? 0.26 : 0.42,
-        ms: barrage ? 2600 + Math.random() * 1600 : approx ? 3600 : 2200, seed: Math.random(), dist, barrage: !!barrage },
-        `atk|${e.id}|${o.lat},${o.lon}>${d.lat},${d.lon}`));
+        ms: barrage ? 2600 + Math.random() * 1600 : approx ? 3600 : 2200, seed: (Math.random() + line * 0.618) % 1, dist, barrage: !!barrage },
+        barrage ? `${pathKey}|${line}` : pathKey));
     };
-    // lines from the attacker's usual launch areas: one per place hit, or several in a massive barrage
-    const assumed = (e, d) => {
-      const fan = barrageFan(e);
-      const from = fan > 1 ? nearestN(ANCHORS[e.attacker], d, fan) : [nearest(ANCHORS[e.attacker], d)];
-      from.forEach((o) => push(e, o, d, true, fan > 1));
+    // Repeated dashed paths show reported volume; they remain approximate routes, not observed tracks.
+    const assumed = (e, d, count = launchPathCount(e), first = 0, barrage = count > 1) => {
+      const anchors = ANCHORS[e.attacker] || [];
+      const from = nearestN(anchors, d, Math.min(count, anchors.length));
+      if (!from.length) return;
+      for (let i = 0; i < count; i++) push(e, from[i % from.length], d, true, barrage, first + i);
     };
     for (const e of events) {
       if (arcs.length >= 180) break;
-      // a wave is a drone and missile attack unless corrected (a landmine blast retyped as an explosion);
-      // airstrikes come from the attacker's known launch areas too (Russian strikes on Ukraine, 2026-10-07)
+      // Drone/missile waves and airstrikes can use configured nearby launch areas when none are named.
       if (!LAUNCHED.has(e.type) && !originsOf(e).length) continue;
-      // a launch "from Yemen" names no site: the country's middle is placed in the Hadramawt desert
-      // (government-held), so the line comes from the attacker's usual launch areas instead (2026-10-05)
+      // A launch "from Yemen" names no site: skip the country center and use known Houthi areas instead.
       const origins = originsOf(e).filter((o) => !wholeCountry(o, e.attacker));
       const start = arcs.length;
       if (e.wave) {
-        for (const d of (e.targets.length ? e.targets.slice(0, 16) : [e])) {
+        const targets = (e.targets.length ? e.targets.slice(0, 16) : [e]);
+        const total = Math.min(MAX_BARRAGE_LINES, Math.max(targets.length, launchPathCount(e)));
+        const barrage = launchPathCount(e) > 1;
+        for (let i = 0; i < total; i++) {
+          const d = targets[i % targets.length];
           const o = nearest(origins, d);
-          if (o) push(e, o, d, false);
-          else if (ANCHORS[e.attacker]) assumed(e, d);
+          if (o) push(e, o, d, false, barrage, i);
+          else assumed(e, d, 1, i, barrage);
         }
-      } else if (origins.length) origins.slice(0, 3).forEach((o) => push(e, o, e, false));
-      else if ((e.type === "missile_drone" || e.type === "airstrike") && ANCHORS[e.attacker]) assumed(e, e);
+      } else if (origins.length) {
+        const named = nearestN(origins, e, Math.min(3, origins.length));
+        const total = Math.min(MAX_BARRAGE_LINES, Math.max(named.length, launchPathCount(e)));
+        const barrage = launchPathCount(e) > 1;
+        for (let i = 0; i < total; i++) push(e, named[i % named.length], e, false, barrage, i);
+      } else if (e.type === "missile_drone" || e.type === "airstrike") assumed(e, e);
       if (arcs.length - start > MAX_BARRAGE_LINES) arcs.length = start + MAX_BARRAGE_LINES;
     }
     return arcs;
