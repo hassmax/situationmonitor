@@ -11,6 +11,7 @@ Archive files are kept forever.
 from __future__ import annotations
 
 import json
+import re
 from datetime import timedelta
 from pathlib import Path
 
@@ -34,7 +35,7 @@ def _write_if_changed(path: Path, text: str) -> bool:
     return True
 
 
-def recent(root: Path, now, days: int) -> list[dict]:
+def recent(root: Path, now, days: int, sources: list[dict] | None = None) -> list[dict]:
     """Archived events from the last `days` days (by when they happened), for comparing new events
     with stories already reported (dedupe.late_cases). Unreadable files are skipped."""
     folder, out = Path(root) / "archive", []
@@ -44,20 +45,41 @@ def recent(root: Path, now, days: int) -> list[dict]:
             out += json.loads(path.read_text(encoding="utf-8")).get("events", [])
         except (OSError, ValueError):
             continue
+    # Old archive files contain only public reports. Recover known newsroom groups by name;
+    # unknown names share one weak group rather than masquerading as independent sources.
+    def source_key(name):
+        return re.sub(r"\s+\(via google news\)$", "", str(name or "").strip().casefold())
+
+    names = {source_key(s["name"]): s for s in sources or [] if s.get("name")}
+    for e in out:
+        for r in e.get("reports") or []:
+            source = names.get(source_key(r.get("source"))) or {}
+            r.setdefault("group", source.get("group") or "google-news")
+            r.setdefault("weight", source.get("weight", 1))
+            if source.get("side"):
+                r["side"] = source["side"]
     return out
 
 
-def update(root: Path, published: list[dict], removed: dict[str, str | None], fleet: list[dict], now) -> int:
+def update(root: Path, published: list[dict], removed: dict[str, str | None], fleet: list[dict], now,
+           internal: list[dict] | None = None) -> int:
     """Write changed day files under root/archive. `removed` maps taken-down event ids to their
     day (or None if unknown). Returns the number of files written."""
     folder = Path(root) / "archive"
     current: dict[str, str] = {}
     by_day: dict[str, list[dict]] = {}
+    evidence = {e["id"]: {r["url"]: r for r in e.get("reports") or []} for e in internal or []}
     for e in published:
         d = _day(e)
         if d:
             current[e["id"]] = d
-            by_day.setdefault(d, []).append(e)
+            # Keep source-group metadata for restoring this identity on a later follow-up.
+            # Use only published reports, so a correction's removals stay removed.
+            reports = [{**r, **{k: evidence.get(e["id"], {}).get(r["url"], {}).get(k)
+                                for k in ("group", "weight")
+                                if evidence.get(e["id"], {}).get(r["url"], {}).get(k) is not None}}
+                       for r in e.get("reports") or []]
+            by_day.setdefault(d, []).append({**e, "reports": reports})
     days = set(by_day) | {d for d in removed.values() if d}
     written = 0
     for day in sorted(days):

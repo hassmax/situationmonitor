@@ -98,9 +98,27 @@ def wave_day(t: str) -> str:
     return (parse_time(t) - timedelta(hours=9)).strftime("%Y-%m-%d")
 
 
+_MINE_BLAST = re.compile(r"\b(?:land[ -]?mines?|mine\s+(?:blast|explosion))\b", re.IGNORECASE)
+_AIR_WEAPON = re.compile(r"\b(?:missiles?|drones?|uavs?|shaheds?|rockets?)\b", re.IGNORECASE)
+
+
+def _ground_mine(c: dict) -> bool:
+    texts = [c.get("summary") or ""] + [r.get("summary") or "" for r in c.get("reports") or []]
+    return any(_MINE_BLAST.search(t) for t in texts) and not any(_AIR_WEAPON.search(t) for t in texts)
+
+
+def mine_incidents(events: list[dict]) -> None:
+    """Repair landmine blasts previously filed as missile/drone waves, preserving identity."""
+    for e in events:
+        if e.get("wave") and _ground_mine(e):
+            e["type"] = "explosion"
+            for field in ("wave", "wave_key", "targets", "launched", "intercepted"):
+                e.pop(field, None)
+
+
 def _is_wave(c: dict) -> bool:
     # a launch into a named sea is a wave too, whatever country (or none) the report gives it
-    return (c["type"] in WAVE_TYPES and bool(c.get("attacker")) and bool(c.get("country") or sea_exact(c.get("place")))
+    return (c["type"] in WAVE_TYPES and not _ground_mine(c) and bool(c.get("attacker")) and bool(c.get("country") or sea_exact(c.get("place")))
             and c["attacker"] != c.get("country"))
 
 
@@ -399,7 +417,7 @@ def _wave_for(events: list[dict], cand: dict, attacker: str | None) -> dict | No
 def _hit_in_wave(events: list[dict], cand: dict) -> dict | None:
     """A strike report that names no attacker ("drones hit Erbil") joins an attack wave on the
     same country when it hit one of the wave's places."""
-    if cand["type"] not in WAVE_TYPES or not cand.get("country") or cand.get("attacker") or cand.get("approx"):
+    if cand["type"] not in WAVE_TYPES or _ground_mine(cand) or not cand.get("country") or cand.get("attacker") or cand.get("approx"):
         return None
     wave = _wave_for(events, cand, None)
     if wave and any(haversine_km(t["lat"], t["lon"], cand["lat"], cand["lon"]) <= TARGET_MERGE_KM
@@ -429,7 +447,7 @@ def _merge_wave(events: list[dict], cand: dict, wave: dict | None = None) -> Non
         return
     wave["reports"].append(rep)
     wave["time"] = min(wave["time"], cand["time"])
-    wave["updated"] = max(wave["updated"], cand["time"])
+    wave["updated"] = max(wave["updated"], cand["time"], rep["time"])
     wave["severity"] = max(wave["severity"], cand["severity"])
     wave["launched"] = _max_or_none(wave.get("launched"), cand.get("launched"))
     wave["intercepted"] = _max_or_none(wave.get("intercepted"), cand.get("intercepted"))
@@ -661,7 +679,7 @@ def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
                 "transfer": cand.get("transfer"), "legal_basis": cand.get("legal_basis"),
                 "severity": cand["severity"],
                 "killed": cand["killed"], "injured": cand["injured"],
-                "time": cand["time"], "updated": cand["time"], "reports": [rep],
+                "time": cand["time"], "updated": max(cand["time"], rep["time"]), "reports": [rep],
             })
             continue
         if any(r["url"] == rep["url"] for r in match["reports"]):
@@ -784,7 +802,8 @@ def launch_sites(events: list[dict], skip: set[str]) -> tuple[list[dict], list[d
 def _absorb(match: dict, cand: dict) -> None:
     """Take what a matching report (or event) adds to an event."""
     match["time"] = min(match["time"], cand["time"])
-    match["updated"] = max(match["updated"], cand["time"])
+    match["updated"] = max(match["updated"], cand.get("updated") or cand["time"],
+                           (cand.get("report") or {}).get("time") or cand["time"])
     match["severity"] = max(match["severity"], cand["severity"])
     match["attacker"] = match.get("attacker") or cand.get("attacker")
     match["parties"] = match.get("parties") or list(cand.get("parties") or [])

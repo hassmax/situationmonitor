@@ -39,6 +39,12 @@ jobs:
       - name: Install dependencies
         run: pip install -r pipeline/requirements.txt
 
+      - name: Check incident grouping and report visibility
+        run: |
+          python -m unittest discover -s pipeline -p 'test_event_grouping.py'
+          node --check site/app.js
+          node tests/event-grouping.cjs
+
       - name: Load the data branch (state and archive)
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
