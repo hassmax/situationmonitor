@@ -475,29 +475,42 @@ def _fold_stored_alerts(events: list[dict]) -> list[dict]:
     return [e for e in events if id(e) not in folded]
 
 
-# A country's own ships or aircraft on a port call, a goodwill or business visit, or an exercise
-# abroad: shown where they are (a deployment), not as a supply route from home ("Russian Pacific
-# Fleet warships arrived in Indonesia for a business visit" was drawn from Vladivostok).
-VISIT_RE = re.compile(r"\b(?:visits?|visited|visiting|port calls?|calls? at|goodwill|exercises?|drills?|"
-                      r"manoeuvres|maneuvers|patrols?)\b", re.I)
+# Deployments into another country are drawn as supply routes (the owner, 2026-10-07: "Deployments
+# between countries (especially allied ones) should always be supply route"): the model now files
+# them as the deploying country moving its own forces (arms_transfer, supplier = recipient; see
+# extract.TYPES). Until then port calls, visits and exercises abroad were turned into markers here
+# (own_force_visits, removed). Deployments stored under the old rule are read again once.
+REREAD_DEPLOYMENTS_VERSION = 1
+REREAD_DAYS = 3
 
 
-def own_force_visits(events: list[dict]) -> int:
-    """Turn own-forces movements that are visits or exercises into deployments at their destination."""
-    changed = 0
+def reread_foreign_deployments(events: list[dict], state: dict, now) -> tuple[list[dict], list[dict]]:
+    """Once (per REREAD_DEPLOYMENTS_VERSION): recent deployments that involve a second country (the
+    acting country differs from where they are, or another country is a party) are taken off the
+    map and their reports read again by the model, each from its own summary, credited to its
+    original source, so the new rule files them. Returns (events, items for the extraction queue)."""
+    if state.get("reread_deployments_version", 0) >= REREAD_DEPLOYMENTS_VERSION:
+        return events, []
+    state["reread_deployments_version"] = REREAD_DEPLOYMENTS_VERSION
+    since = now - timedelta(days=REREAD_DAYS)
+    keep, items, n = [], [], 0
     for e in events:
-        t = e.get("transfer") or {}
-        if e.get("type") != "arms_transfer" or not t.get("supplier") or t.get("supplier") != t.get("recipient"):
+        dest = e.get("country")
+        foreign = bool(dest) and ((e.get("attacker") and e["attacker"] != dest)
+                                  or any(p and p != dest for p in e.get("parties") or []))
+        if e.get("type") != "deployment" or e.get("alert") or not foreign or parse_time(e["time"]) < since:
+            keep.append(e)
             continue
-        if not VISIT_RE.search(f"{e.get('summary') or ''} {t.get('what') or ''}"):
-            continue
-        to = t.get("to") or {}
-        e["type"], e["transfer"] = "deployment", None
-        if to.get("lat") is not None and to.get("lon") is not None and not to.get("region"):
-            e.update(place=to.get("place") or e.get("place"), lat=to["lat"], lon=to["lon"])
-        changed += 1
-        log(f"[merge] visit or exercise, not a supply route: {e.get('summary', '')[:80]!r}")
-    return changed
+        n += 1
+        for r in e.get("reports") or []:
+            items.append({"id": short_hash("redeploy", r.get("url"), r.get("summary")), "source_id": r.get("source_id") or "redeploy",
+                          "source": r.get("source"), "platform": r.get("platform"), "kind": r.get("kind", "news"),
+                          "side": r.get("side"), "group": r.get("group") or r.get("source"), "weight": int(r.get("weight", 2)),
+                          "prefilter": False, "url": r.get("url"), "text": r.get("summary") or "", "time": r["time"],
+                          "max_age_h": 24 * 30})
+    if n:
+        log(f"[merge] {n} recent deployments involving another country ({len(items)} reports) to be read again under the route rule")
+    return keep, items
 
 
 # A country's purchases, contracts, approvals or production with its own industry, filed as its
@@ -518,6 +531,8 @@ def own_procurement(events: list[dict]) -> int:
             continue
         if t.get("from") and t.get("to"):
             continue  # a movement between two named places
+        if t.get("to") and e.get("country") and e["country"] != t["supplier"]:
+            continue  # forces sent into another country ("US troops receive orders for Poland")
         if not PROCURE_RE.search(f"{e.get('summary') or ''} {t.get('what') or ''}"):
             continue
         e["type"], e["transfer"] = "production", None

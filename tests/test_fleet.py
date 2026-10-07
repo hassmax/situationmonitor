@@ -63,6 +63,43 @@ def test_repair_resets_misattributed_and_drops_impossible_previous_positions():
     assert state["fleet_version"] == fleet.FLEET_VERSION
 
 
+def test_an_impossible_move_to_where_another_carrier_is_is_about_that_carrier():
+    norfolk = lambda hull: {"hull": hull, "status": "in port", "place": "Norfolk, Va.", "lat": 36.95, "lon": -76.33,
+                            "heading_to": None, "time": "2026-10-05T18:13:05Z", "source": "USNI News Fleet and Marine Tracker",
+                            "url": "usni", "trusted": True}
+    state = {}
+    fleet.update(state, [norfolk("CVN-69"), norfolk("CVN-78"),
+                         {**norfolk("CVN-77"), "place": "Arabian Sea", "lat": 16.0, "lon": 63.0, "status": "operating"}])
+    # the Bush is reported in Phuket (its tracker position was stale): two reports confirm it
+    fleet.update(state, [news("CVN-77", "Phuket, Thailand", 7.88, 98.39, "2026-10-05T19:55:00Z", url="a1"),
+                         news("CVN-77", "Phuket", 7.89, 98.40, "2026-10-05T20:10:00Z", url="a2")])
+    assert state["fleet"]["CVN-77"]["place"].startswith("Phuket")
+    # "a second US carrier docks in Thailand", filed under the Ford, and a carrier roundup misread for the
+    # Eisenhower, twice over: neither could have sailed there from Norfolk, and the Bush is there
+    fleet.update(state, [news("CVN-78", "Thailand", 13.756, 100.502, "2026-10-05T20:59:00Z", url="y1"),
+                         news("CVN-69", "Phuket", 7.88, 98.392, "2026-10-06T22:11:00Z", url="t1"),
+                         news("CVN-69", "Phuket", 7.88, 98.392, "2026-10-06T23:00:00Z", url="t2")])
+    assert state["fleet"]["CVN-78"]["place"] == "Norfolk, Va." and state["fleet"]["CVN-69"]["place"] == "Norfolk, Va."
+    assert not state["fleet"]["CVN-69"].get("held")
+
+
+def test_repair_puts_back_carriers_moved_by_reports_about_another_carrier():
+    lt = {"lat": 36.95, "lon": -76.33, "place": "Norfolk, Va.", "as_of": "2026-10-05T18:13:05Z"}
+    state = {"fleet_version": 2, "fleet": {
+        "CVN-77": {"hull": "CVN-77", "lat": 7.881, "lon": 98.392, "place": "Phuket, Thailand", "status": "arrived",
+                   "as_of": "2026-10-05T19:55:26Z", "source": "Anadolu", "trusted": False,
+                   "last_trusted": {"lat": 16.0, "lon": 63.0, "place": "Arabian Sea", "as_of": "2026-10-05T18:13:05Z"}, "track": []},
+        "CVN-69": {"hull": "CVN-69", "lat": 7.88, "lon": 98.392, "place": "Phuket", "status": "in port",
+                   "as_of": "2026-10-06T22:11:15Z", "source": "The War Zone", "trusted": False, "last_trusted": lt,
+                   "prev": {"lat": 36.94, "lon": -76.331, "place": "Norfolk", "as_of": "2026-10-06T09:05:00Z"}, "track": []},
+        "CVN-78": {"hull": "CVN-78", "lat": 13.756, "lon": 100.502, "place": "Thailand", "status": "arrived",
+                   "as_of": "2026-10-05T20:59:55Z", "source": "Yeni Şafak", "trusted": False, "last_trusted": lt, "track": []}}}
+    fleet.repair(state)
+    f = state["fleet"]
+    assert f["CVN-77"]["place"] == "Phuket, Thailand"                     # the one really there stays
+    assert f["CVN-69"]["place"] == f["CVN-78"]["place"] == "Norfolk, Va." and "prev" not in f["CVN-69"]
+
+
 def test_an_old_tracker_cannot_say_who_is_home():
     state = home_state()
     fleet.update(state, [news("CVN-72", "Philippine Sea", 20.0, 130.0, "2026-09-27T05:00:00Z", status="underway")])

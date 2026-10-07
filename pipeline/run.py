@@ -193,6 +193,11 @@ def main() -> int:
     # Once: reports filed under an old arms transfer days after it began (the old merge rule) are
     # read again so they become their own events (B-1s leaving Fairford, 2026-10-04).
     fresh += merge.split_overgrown_transfers(events, state, t0)
+    # Once: recent deployments into another country, filed as markers under the old rule, are read
+    # again so the model files them as routes (2026-10-07). Only when the model is in use.
+    if not args.no_llm:
+        events, again = merge.reread_foreign_deployments(events, state, t0)
+        fresh += again
     queue = extract.build_queue(state["pending"], fresh, t0, settings)
     records, leftover, calls, carrier_reports = extract.run(queue, state, settings, t0, disabled=args.no_llm)
     # Flight surges (several C-17s or KC-135s at one base in a short time) become air movements on
@@ -249,7 +254,6 @@ def main() -> int:
     events, launches = merge.launch_sites(events, hidden)  # "fired from Wonsan": a launch area, not a target
     folded += launches
     geo.pin_commands(events)  # events placed at a US command go to its region (not its headquarters)
-    merge.own_force_visits(events)  # a navy's port call is a deployment, not a supply route
     merge.own_procurement(events)  # a country buying from its own industry is arms production, not a route
     events = merge.prune(events, t0, settings["event_retention_days"], settings["max_events"])
     events = corrections.drop_reports(events, fixes)  # before scoring, so confidence is recomputed

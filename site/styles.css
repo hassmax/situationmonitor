@@ -1365,6 +1365,7 @@ body::after {
 /* map and feed answer each other: the event under the pointer is lit in both places */
 .mk.is-hot .mk-in { box-shadow: 0 0 0 2px var(--ink), 0 0 16px 3px rgba(var(--accent-rgb), 0.55); opacity: 1; }
 .item.is-hot { background: rgba(var(--accent-rgb), 0.08); box-shadow: inset 2px 0 0 var(--accent); }
+.target.is-hot { background: rgba(var(--accent-rgb), 0.1); box-shadow: inset 2px 0 0 var(--accent); }
 
 /* quick look: the card under the pointer fades up; a count bubble lists what it holds */
 .html-tip:not([hidden]) .tip { animation: tip-in 0.18s var(--ease-out) both; }

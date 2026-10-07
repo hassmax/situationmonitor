@@ -895,15 +895,17 @@
     if (!fly.hidden && !canHover() && !fly.contains(ev.target) && !(ev.target.closest && ev.target.closest(".mk"))) closeFly();
   }, { capture: true, passive: true });
   fly.addEventListener("mouseenter", () => { if (fly.classList.contains("is-live")) clearTimeout(flyTimer); });
-  fly.addEventListener("mouseleave", () => { placeRing(null); hideFly(); });
+  fly.addEventListener("mouseleave", () => { placeRing(null); hideFly(); hotRow(null); });
   fly.addEventListener("mouseover", (ev) => {
     const row = ev.target.closest("[data-id], [data-place]");
     if (!row || row._lit) return;
     fly.querySelectorAll(".is-lit").forEach((x) => { x.classList.remove("is-lit"); x._lit = false; });
     row.classList.add("is-lit");
     row._lit = true;
-    if (row.dataset.id) hotEvent(row.dataset.id);
-    else { const [lat, lon] = row.dataset.place.split(",").map(Number); placeRing({ lat, lon }); }
+    // the list beside the map follows: the event pointed at, or for a place of an alert group or
+    // attack wave, the group (or, with its details open, that place in its locations)
+    if (row.dataset.id) { hotEvent(row.dataset.id); hotRow(row.dataset.id); }
+    else { const [lat, lon] = row.dataset.place.split(",").map(Number); placeRing({ lat, lon }); hotRow(row.dataset.open, row.dataset.place); }
   });
   fly.addEventListener("click", (ev) => {
     const b = ev.target.closest("[data-id], [data-zoom], [data-open]");
@@ -939,11 +941,17 @@
     }
     pushRings();
   }
-  function hotRow(id) {
+  function hotRow(id, place = null) {
     clearTimeout(hotScroll);
     if (hotRowEl) { hotRowEl.classList.remove("is-hot"); hotRowEl = null; }
-    if (!id || isMobile() || !$("#detail").hidden) return;
-    hotRowEl = document.querySelector(`#feedList .item[data-id="${CSS.escape(id)}"]`);
+    if (!id || isMobile()) return;
+    if (!$("#detail").hidden) {
+      // details open: the matching row in them (a place in this event's locations, or a listed event)
+      hotRowEl = (place && S.selectedId === id && $("#detail").querySelector(`.target[data-goto="${CSS.escape(place)}"]`))
+        || $("#detail").querySelector(`.target[data-event="${CSS.escape(id)}"]`);
+    } else {
+      hotRowEl = document.querySelector(`#feedList .item[data-id="${CSS.escape(id)}"]`);
+    }
     if (!hotRowEl) return;
     hotRowEl.classList.add("is-hot");
     const row = hotRowEl;
