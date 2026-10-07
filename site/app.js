@@ -23,8 +23,8 @@
   // Asked many times a frame (marker layout while the globe turns): reading the window's width after
   // markers moved forced the browser to lay the whole page out again each time (half a second a
   // second of dragging on a slow phone, 2026-10-05), so it is read once and on resize.
-  let mobileNow = window.innerWidth < 860;
-  window.addEventListener("resize", () => { mobileNow = window.innerWidth < 860; });
+  let mobileNow = window.innerWidth < 1024;
+  window.addEventListener("resize", () => { mobileNow = window.innerWidth < 1024; });
   const isMobile = () => mobileNow;
   // Phones and tablets have no pointer to hover with: a first tap on a marker shows the card that
   // pointing shows on desktop, a second tap (or a tap on the card) opens it.
@@ -1252,10 +1252,17 @@
     queueDeclutter();
   }
   window.addEventListener("resize", () => {
+    mobileNow = window.innerWidth < 1024;
     if (!isMobile()) $("#feed").style.height = "";
     else setSheet(S.sheet, true);
     layout();
   });
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener("resize", () => {
+      if (isMobile()) setSheet(S.sheet, true);
+      layout();
+    });
+  }
 
   // ------------------------------------------------------------------ data
   // Live updates: every minute (and whenever the page comes back into view) a light request asks
@@ -2499,7 +2506,12 @@
   }
 
   // ------------------------------------------------------------------ mobile sheet
-  const sheetHeights = () => [78, Math.round(window.innerHeight * 0.42), Math.round(window.innerHeight * 0.8)];
+  const viewportHeight = () => Math.round(window.visualViewport?.height || window.innerHeight);
+  const sheetHeights = () => {
+    const height = viewportHeight();
+    const short = height < 500;
+    return [short ? 64 : 78, Math.round(height * (short ? 0.48 : 0.42)), Math.round(height * (short ? 0.9 : 0.8))];
+  };
   function setSheet(n, instant) {
     if (!isMobile()) return;
     S.sheet = n;
@@ -2526,7 +2538,7 @@
       if (!drag || ev.pointerId !== drag.id) return;
       const dy = ev.clientY - drag.y;
       if (Math.abs(dy) > 6) drag.moved = true;
-      if (drag.moved) feed.style.height = clamp(drag.h - dy, 70, window.innerHeight * 0.86) + "px";
+      if (drag.moved) feed.style.height = clamp(drag.h - dy, sheetHeights()[0], viewportHeight() * 0.92) + "px";
     };
     const end = (ev) => {
       if (!drag || ev.pointerId !== drag.id) return;
@@ -2646,11 +2658,16 @@
       if (t && t.camera) world.pointOfView(t.camera, reduceMotion ? 0 : flyMs(t.camera.lat, t.camera.lng, t.camera.altitude));
     });
     let searchTimer;
+    $("#search").addEventListener("focus", () => { if (isMobile()) setSheet(2); });
     $("#search").addEventListener("input", (ev) => {
       clearTimeout(searchTimer);
       searchTimer = setTimeout(() => { S.query = ev.target.value; renderSoon(); }, 120);
     });
     $("#filtersToggle").addEventListener("click", () => toggleFilters());
+    document.addEventListener("pointerdown", (ev) => {
+      if (isMobile() && $("#filters").classList.contains("open") &&
+          !$("#filters").contains(ev.target) && !$("#filtersToggle").contains(ev.target)) toggleFilters(false);
+    });
     $("#panelsToggle").addEventListener("click", () => setPanelsHidden(!document.body.classList.contains("panels-hidden")));
     wireSheet();
     document.addEventListener("keydown", (ev) => {
