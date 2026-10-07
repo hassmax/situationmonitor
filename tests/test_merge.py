@@ -279,3 +279,11 @@ def test_talks_with_one_party_list_within_the_other_and_close_wording_merge():
     visit = event("v", "Riyadh", (24.71, 46.68), "2026-10-02T09:00:00Z", "Saudi crown prince and UAE vice president meet in Riyadh.",
                   type_="diplomacy", country="SA", theater="mideast", parties=["AE", "SA"])
     assert not merge._same_talks(visit, cabinet)
+
+
+def test_a_waves_place_keeps_its_first_and_latest_report_time():
+    first = wave("a", "2026-09-28T08:53:00Z", [("Erbil", (36.19, 44.01))])
+    later = wave("b", "2026-09-28T11:33:00Z", [("Erbil", (36.19, 44.01))])
+    out = merge.merge([], [cand(later), cand(first)])
+    t = out[0]["targets"][0]
+    assert t["time"] == "2026-09-28T08:53:00Z" and t["last"] == "2026-09-28T11:33:00Z" and t["reports"] == 2

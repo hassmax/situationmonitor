@@ -369,13 +369,15 @@ def _add_target(wave: dict, cand: dict) -> None:
             t["reports"] += 1
             t["severity"] = max(t["severity"], cand["severity"])
             t["time"] = min(t["time"], cand["time"])
+            # the latest report naming the place: lists of an alert group's places go newest first
+            t["last"] = max(t.get("last") or t["time"], cand.get("last") or cand["time"])
             t["killed"] = _max_or_none(t.get("killed"), cand["killed"])
             t["injured"] = _max_or_none(t.get("injured"), cand["injured"])
             return
     if len(wave["targets"]) < MAX_TARGETS:
         wave["targets"].append({
             "place": cand["place"], "lat": cand["lat"], "lon": cand["lon"], "reports": 1,
-            "severity": cand["severity"], "time": cand["time"],
+            "severity": cand["severity"], "time": cand["time"], "last": cand.get("last") or cand["time"],
             "killed": cand["killed"], "injured": cand["injured"],
         })
 
@@ -675,6 +677,7 @@ def _fold_into_wave(wave: dict, e: dict) -> None:
     for t in e.get("targets") or ([] if e.get("approx") else [{**e, "reports": 1}]):
         _add_target(wave, {"approx": False, "place": t.get("place"), "lat": t["lat"], "lon": t["lon"],
                            "severity": t.get("severity") or e["severity"], "time": t.get("time") or e["time"],
+                           "last": t.get("last") or t.get("time") or e.get("updated") or e["time"],
                            "killed": t.get("killed"), "injured": t.get("injured")})
     wave["launched"] = _max_or_none(wave.get("launched"), e.get("launched"))
     wave["intercepted"] = _max_or_none(wave.get("intercepted"), e.get("intercepted"))
