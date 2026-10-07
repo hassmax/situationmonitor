@@ -1048,6 +1048,9 @@
   // ------------------------------------------------------------------ tooltips
   // The places an alert group names, or an attack wave hit, latest first.
   const placesOf = (e) => ((e.alert || e.wave) && e.targets ? e.targets.filter((t) => t.lat != null && t.lon != null) : []);
+  // a place's latest alert or report (older data has only its first, `time`); lists go newest first
+  const latestOf = (t) => t.last || t.time || "";
+  const byLatest = (list) => [...list].sort((a, b) => latestOf(b).localeCompare(latestOf(a)));
   function tipEvent(e, quick = false) {
     const extra = e.alert ? `<span>${alertsText(e)}</span>`
       : e.wave && e.targets && e.targets.length > 1 ? `<span>${e.targets.length} locations</span>` : "";
@@ -1055,7 +1058,7 @@
     const places = quick ? placesOf(e) : [];
     // the quick look breaks an alert group or wave out into the places it names
     const list = places.length > 1 ? `<div class="fly-sub">${e.alert ? "Places named" : "Places hit"}</div>
-      <ul class="fly-rows">${[...places].sort((a, b) => (b.time || "").localeCompare(a.time || "")).map((t, i) => `<li style="--i:${Math.min(i, 10)}"><button type="button" data-open="${esc(e.id)}" data-place="${t.lat},${t.lon}"><span><b>${esc(t.place)}</b>${t.reports > 1 ? ` ${t.reports} ${e.alert ? "alerts" : "reports"}` : ""}</span><time>${t.time ? esc(agoShort(Date.parse(t.time))) : ""}</time></button></li>`).join("")}</ul>` : "";
+      <ul class="fly-rows">${byLatest(places).map((t, i) => `<li style="--i:${Math.min(i, 10)}"><button type="button" data-open="${esc(e.id)}" data-place="${t.lat},${t.lon}"><span><b>${esc(t.place)}</b>${t.reports > 1 ? ` ${t.reports} ${e.alert ? "alerts" : "reports"}` : ""}</span><time>${latestOf(t) ? esc(agoShort(Date.parse(latestOf(t)))) : ""}</time></button></li>`).join("")}</ul>` : "";
     return `<div class="tip"><div class="tip-meta">${eventIcon(e)}<b>${esc(typeLabel(e))}</b><span>${esc(metaLine(e))}</span></div>
       <div class="tip-sum">${esc(e.summary)}</div>
       <div class="tip-foot"><span class="conf-text conf-${STATUS[e.status].conf}">${esc(STATUS[e.status].label)}</span>${e.possibly_old ? "<span>Possibly an old story</span>" : ""}${extra}${quick && n ? `<span>${n} ${n === 1 ? "source" : "sources"}</span>` : ""}<span>${esc(ago(e._t))}</span></div>
@@ -2409,15 +2412,15 @@
       : `${esc(e.place || "Unnamed location")}, ${esc(theaterName)} ${e.approx ? '<span class="approx">(approximate location)</span>' : ""}`;
     const waveBlock = e.wave ? `
       <h2 class="reports-title">Locations (${e.targets.length})</h2>
-      ${e.targets.length ? `<ul class="targets">${e.targets.map((x) => `<li><button class="target" type="button" data-goto="${x.lat},${x.lon}"><span>${esc(x.place || "Unnamed place")}</span>
+      ${e.targets.length ? `<ul class="targets">${byLatest(e.targets).map((x) => `<li><button class="target" type="button" data-goto="${x.lat},${x.lon}"><span>${esc(x.place || "Unnamed place")}</span>
         <span class="target-meta">${x.reports} ${x.reports === 1 ? "report" : "reports"}${x.killed ? `, ${x.killed} killed` : ""}</span></button></li>`).join("")}</ul>` : `<p class="muted">No specific locations reported yet.</p>`}
       <h2 class="reports-title">Launch areas</h2>
       <p class="muted">${origins.length ? esc(origins.map((o) => o.place || "unnamed site").join(", ")) : (barrageFan(e) > 1 ? "Not named in the reports so far. For a barrage this large, lines on the map start from several of the attacker's known launch areas and are drawn faint." : "Not named in the reports so far. Lines on the map start from the nearest known launch area and are drawn faint.")}</p>` : "";
     const alertBlock = e.alert ? `
       <p class="muted">Warnings that drones or missiles were in flight, grouped into one marker per country per day. They show where a threat was reported heading, not what was hit. Strikes and interceptions appear as their own events.</p>
       <h2 class="reports-title">Places named (${e.targets.length})</h2>
-      ${e.targets.length ? `<ul class="targets">${e.targets.map((x) => `<li><button class="target" type="button" data-goto="${x.lat},${x.lon}"><span>${esc(x.place || "Unnamed place")}</span>
-        <span class="target-meta">${x.reports} ${x.reports === 1 ? "alert" : "alerts"}</span></button></li>`).join("")}</ul>` : `<p class="muted">No specific places named.</p>`}` : "";
+      ${e.targets.length ? `<ul class="targets">${byLatest(e.targets).map((x) => `<li><button class="target" type="button" data-goto="${x.lat},${x.lon}"><span>${esc(x.place || "Unnamed place")}</span>
+        <span class="target-meta">${x.reports} ${x.reports === 1 ? "alert" : "alerts"}${latestOf(x) ? `, latest ${esc(agoShort(Date.parse(latestOf(x))))}` : ""}</span></button></li>`).join("")}</ul>` : `<p class="muted">No specific places named.</p>`}` : "";
     showDetail(`
       <div class="detail-type">${eventIcon(e)}${esc(typeLabel(e))}</div>
       ${(e.corrected || []).length ? `<div class="corrected"><span class="corrected-tag">Corrected</span><ul>${e.corrected.map((c) => `<li>${esc(c.change)}: ${esc(c.note)}</li>`).join("")}</ul></div>` : ""}
