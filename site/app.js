@@ -1096,8 +1096,9 @@
   }
   // A count bubble: every event it holds, most important first, each one a button that opens it.
   function tipCluster(evs, lead) {
+    const recentFirst = evs.filter(Boolean).sort((a, b) => b._t - a._t);
     return `<div class="tip tip-list"><div class="tip-meta"><b>${evs.length} events here</b><button type="button" class="fly-zoom" data-zoom="${lead.lat},${lead.lon}">Zoom in</button></div>
-      <ul class="fly-rows">${evs.filter(Boolean).map((e, i) => `<li style="--i:${Math.min(i, 10)}"><button type="button" data-id="${esc(e.id)}">${eventIcon(e)}<span><b>${esc(typeLabel(e))}</b> ${esc(e.place || metaLine(e))}</span><time>${esc(agoShort(e._t))}</time></button></li>`).join("")}</ul></div>`;
+      <ul class="fly-rows">${recentFirst.map((e, i) => `<li style="--i:${Math.min(i, 10)}"><button type="button" data-id="${esc(e.id)}">${eventIcon(e)}<span><b>${esc(typeLabel(e))}</b> ${esc(e.place || metaLine(e))}</span><time>${esc(agoShort(e._t))}</time></button></li>`).join("")}</ul></div>`;
   }
   function tipCarrier(c, quick = false) {
     return `<div class="tip"><div class="tip-meta">${iconBadge("carrier", "fleet")}<b>${esc(c.name)}</b><span>${esc(c.hull)}</span></div>
