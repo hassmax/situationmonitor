@@ -1096,7 +1096,7 @@
   }
   // A count bubble: every event it holds, most important first, each one a button that opens it.
   function tipCluster(evs, lead) {
-    const recentFirst = evs.filter(Boolean).sort((a, b) => b._t.localeCompare(a._t));
+    const recentFirst = evs.filter(Boolean).sort((a, b) => b._t - a._t);
     return `<div class="tip tip-list"><div class="tip-meta"><b>${evs.length} events here</b><button type="button" class="fly-zoom" data-zoom="${lead.lat},${lead.lon}">Zoom in</button></div>
       <ul class="fly-rows">${recentFirst.map((e, i) => `<li style="--i:${Math.min(i, 10)}"><button type="button" data-id="${esc(e.id)}">${eventIcon(e)}<span><b>${esc(typeLabel(e))}</b> ${esc(e.place || metaLine(e))}</span><time>${esc(agoShort(e._t))}</time></button></li>`).join("")}</ul></div>`;
   }
