@@ -2452,7 +2452,7 @@
       ${e.targets.length ? `<ul class="targets">${byLatest(e.targets).map((x) => `<li><button class="target" type="button" data-goto="${x.lat},${x.lon}"><span>${esc(x.place || "Unnamed place")}</span>
         <span class="target-meta">${x.reports} ${x.reports === 1 ? "report" : "reports"}${x.killed ? `, ${x.killed} killed` : ""}</span></button></li>`).join("")}</ul>` : `<p class="muted">No specific locations reported yet.</p>`}
       <h2 class="reports-title">Launch areas</h2>
-      <p class="muted">${origins.length ? esc(origins.map((o) => o.place || "unnamed site").join(", ")) : (barrageFan(e) > 1 ? "Not named in the reports so far. For a barrage this large, lines on the map start from several of the attacker's known launch areas and are drawn faint." : "Not named in the reports so far. Lines on the map start from the nearest known launch area and are drawn faint.")}</p>` : "";
+      <p class="muted">${origins.length ? esc(origins.map((o) => o.place || "unnamed site").join(", ")) : (launchPathCount(e) > 1 ? "No launch area was named. The reported launch count sets the number of faint paths: one per 25 drones or missiles, up to 40. They show volume, not individual tracked flights." : "No launch area was named. A faint path starts from the nearest configured launch area; it is approximate, not a tracked flight.")}</p>` : "";
     const alertBlock = e.alert ? `
       <p class="muted">Warnings that drones or missiles were in flight, grouped into one marker per country per day. They show where a threat was reported heading, not what was hit. Strikes and interceptions appear as their own events.</p>
       <h2 class="reports-title">Places named (${e.targets.length})</h2>
