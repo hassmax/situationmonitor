@@ -1691,6 +1691,7 @@
   // barrage, drawn as a faint stream of small dashes. They stay assumed launch areas (no report
   // names them) and end only at reported places; launch sites a report names are drawn as before.
   const BARRAGE = 100;
+  const LAUNCHED = new Set(["missile_drone", "air_defense", "airstrike"]);   // kinds drawn with launch lines
   const MAX_BARRAGE_LINES = 40;   // per attack
   const barrageFan = (e) => (e.launched >= 1000 ? 5 : e.launched >= 400 ? 4 : e.launched >= BARRAGE ? 3 : 1);
   function attackPaths(events) {
@@ -1714,8 +1715,9 @@
     };
     for (const e of events) {
       if (arcs.length >= 180) break;
-      // a wave is a drone and missile attack unless corrected (a landmine blast retyped as an explosion)
-      if (e.type !== "missile_drone" && e.type !== "air_defense" && !originsOf(e).length) continue;
+      // a wave is a drone and missile attack unless corrected (a landmine blast retyped as an explosion);
+      // airstrikes come from the attacker's known launch areas too (Russian strikes on Ukraine, 2026-10-07)
+      if (!LAUNCHED.has(e.type) && !originsOf(e).length) continue;
       // a launch "from Yemen" names no site: the country's middle is placed in the Hadramawt desert
       // (government-held), so the line comes from the attacker's usual launch areas instead (2026-10-05)
       const origins = originsOf(e).filter((o) => !wholeCountry(o, e.attacker));
@@ -1727,7 +1729,7 @@
           else if (ANCHORS[e.attacker]) assumed(e, d);
         }
       } else if (origins.length) origins.slice(0, 3).forEach((o) => push(e, o, e, false));
-      else if (e.type === "missile_drone" && ANCHORS[e.attacker]) assumed(e, e);
+      else if ((e.type === "missile_drone" || e.type === "airstrike") && ANCHORS[e.attacker]) assumed(e, e);
       if (arcs.length - start > MAX_BARRAGE_LINES) arcs.length = start + MAX_BARRAGE_LINES;
     }
     return arcs;

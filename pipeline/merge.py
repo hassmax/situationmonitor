@@ -513,6 +513,71 @@ def reread_foreign_deployments(events: list[dict], state: dict, now) -> tuple[li
     return keep, items
 
 
+# An aircraft carrier's own movement is shown by its own track (fleet.py), not as a supply route as
+# well (the owner, 2026-10-07: "USS Carrier has a supply route, don't need that in addition to its
+# path"): "A US aircraft carrier arrived in Thailand" and the Lincoln strike group "set to return to
+# San Diego" were drawn as routes from "the Middle East".
+def _carrier_re():
+    from fleet import CARRIERS
+    names = sorted({n.removeprefix("U.S.S. ") for n, _ in CARRIERS.values()}
+                   | {n.removeprefix("U.S.S. ").split()[-1] for n, _ in CARRIERS.values()}, key=len, reverse=True)
+    return re.compile(r"\b(?:aircraft carriers?|carrier strike groups?|carrier air wing)\b|\b(?:USS|U\.S\.S\.)\s+(?:"
+                      + "|".join(re.escape(n) for n in names) + r")\b", re.I)
+
+
+CARRIER_RE = _carrier_re()
+
+
+def carrier_moves(events: list[dict]) -> int:
+    """Turn a carrier's own move filed as a movement of a country's forces into a deployment where it went."""
+    changed = 0
+    for e in events:
+        t = e.get("transfer") or {}
+        if e.get("type") != "arms_transfer" or not t.get("supplier") or t.get("supplier") != t.get("recipient"):
+            continue
+        if not CARRIER_RE.search(f"{e.get('summary') or ''} {t.get('what') or ''}"):
+            continue
+        to = t.get("to") or {}
+        e["type"], e["transfer"] = "deployment", None
+        if to.get("lat") is not None and not to.get("region"):
+            e.update(place=to.get("place") or e.get("place"), lat=to["lat"], lon=to["lon"])
+        changed += 1
+    if changed:
+        log(f"[merge] {changed} aircraft carrier moves shown by the carrier's own track, not as supply routes")
+    return changed
+
+
+# Drone and missile attacks filed as airstrikes get no launch lines (2026-10-07: "Russian drone strikes
+# in Ukraine not showing launch paths": "Ukraine's air defense intercepted 5 ballistic missiles and 117
+# drones" was an airstrike). An airstrike whose words are about drones or missiles, and not about
+# aircraft, glide bombs or front-line FPV drones, is a drone and missile attack.
+DRONE_MISSILE_RE = re.compile(r"\b(?:drones?|missiles?|ballistic|cruise|shaheds?|gerans?|iskanders?|kinzhals?|kalibrs?|"
+                              r"kh-\d+\w*|UAVs?|loitering munitions?)\b", re.I)
+CREWED_RE = re.compile(r"\b(?:aircraft|jets?|warplanes?|planes?|helicopters?|bombers?|fighter|guided (?:aerial )?bombs?|"
+                       r"glide bombs?|KABs?|FAB-\d+|FPV|drone operators?|drone units?|drone crews?)\b", re.I)
+
+
+ATTACK_RE = re.compile(r"\b(?:attacks?|attacked|strikes?|struck|hit|launch\w*|fired|targeted|targeting)\b", re.I)
+
+
+def drone_strikes(events: list[dict]) -> int:
+    """Retype airstrikes, and explosions with a named attacker, that are drone or missile attacks
+    (new reports before merging, so they join the attacker's wave, and stored events every run):
+    "The Houthis claim fresh missile and drone attacks targeting Saudi Arabia" was an explosion."""
+    changed = 0
+    for e in events:
+        text = e.get("summary") or ""
+        kind = e.get("type")
+        if kind == "explosion" and not (e.get("attacker") and ATTACK_RE.search(text)):
+            continue
+        if kind in ("airstrike", "explosion") and DRONE_MISSILE_RE.search(text) and not CREWED_RE.search(text):
+            e["type"] = "missile_drone"
+            changed += 1
+    if changed:
+        log(f"[merge] {changed} drone or missile attacks filed as airstrikes retyped")
+    return changed
+
+
 # A country's purchases, contracts, approvals or production with its own industry, filed as its
 # own forces "moving" with nowhere to move between ("Taiwan announces plans to build more anti-ship
 # missiles"): arms production, its own kind of event, not an arms or forces movement. (A deal

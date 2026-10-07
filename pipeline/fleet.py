@@ -213,6 +213,11 @@ def update(state: dict, reports: list[dict]) -> int:
             c["moved_at"] = r["time"]
             c.pop("held", None)
             c["track"] = [t for t in c.get("track", []) if t["time"] <= over["as_of"]]
+        elif moved and _known(c) and _too_fast(c, r):
+            # the old position couldn't have been sailed from (it was wrong): no line from it
+            # (U.S.S. Reagan drew a line from a misattributed Phuket to Bremerton, 2026-10-07)
+            for k in ("prev", "moved_at"):
+                c.pop(k, None)
         elif moved:
             c["prev"] = {"lat": c["lat"], "lon": c["lon"], "place": c.get("place"), "as_of": c.get("as_of")}
             c["moved_at"] = r["time"]
@@ -566,6 +571,8 @@ def public(state: dict, now: datetime) -> list[dict]:
                                      "source", "url", "heading_to", "prev", "moved_at", "departed_at", "track",
                                      "deployed", "maintenance", "at_home")}
         row["name"], row["short"] = CARRIERS[c["hull"]]  # names always from the list above
+        if row.get("prev") and row.get("as_of") and _too_fast(row["prev"], row):
+            row["prev"] = row["moved_at"] = None  # a stored line from a position it couldn't have sailed from
         out.append(row)
     return sorted(out, key=lambda c: c["hull"])
 
