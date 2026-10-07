@@ -199,6 +199,7 @@
   }
   const agoShort = (ms) => ago(ms).replace(" ago", "").replace(" min", "m").replace(" h", "h").replace(" d", "d");
   const fmtTime = (ms) => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const fmtEvidenceTime = (ms) => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" });
   const fmtDay = (ms) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   const fmtMoney = (v) => (v >= 1e9 ? `$${(v / 1e9).toFixed(1)} billion` : v >= 1e6 ? `$${Math.round(v / 1e6)} million` : `$${Math.round(v).toLocaleString()}`);
   // Alerts (drones or missiles reported in flight, grouped per country per day) get a siren and never animate.
@@ -267,6 +268,7 @@
     off: new Set(),  // "On the map" entries switched off
     query: "",
     feedLimit: 250,
+    briefOpen: new Set(),
     selectedId: null,
     arrived: null,      // ids of events that just arrived (they slide into the feed once)
     selectedHull: null,
@@ -2147,6 +2149,17 @@
   // the map's own events, independent of the filters. Confidence comes from the cited events.
   const TREND = { escalating: ["▲", "Escalating"], "de-escalating": ["▼", "De-escalating"], shifting: ["◆", "Shifting"], steady: ["●", "Steady"] };
   const CONF_WORDS = { higher: "Higher confidence", moderate: "Moderate confidence", low: "Low confidence" };
+  // Keep the overview geographically varied. All judgments remain in the regional disclosure.
+  function briefHighlights(regions, byId) {
+    const confidence = { higher: 2, moderate: 1, low: 0 };
+    const latest = (j) => Math.max(0, ...(j.ids || []).map((id) => byId.get(id)?._t || 0));
+    const compare = (a, b) => Number(b.trend !== "steady") - Number(a.trend !== "steady")
+      || (confidence[b.confidence] || 0) - (confidence[a.confidence] || 0) || latest(b) - latest(a);
+    return regions.flatMap((region) => {
+      const judgment = [...(region.judgments || [])].sort(compare)[0];
+      return judgment ? [{ region, judgment }] : [];
+    }).sort((a, b) => compare(a.judgment, b.judgment)).slice(0, 3);
+  }
   function briefHtml() {
     const a = S.data && S.data.analysis;
     if (!a || !a.generated_at) return "";
@@ -2165,25 +2178,42 @@
     // flights the judgment cites: what each aircraft's transponder showed, linked to it on adsb.lol
     const flown = (list) => (list || []).length ? `<span class="cites">${list.map((f) =>
       `<a class="cite cite-flight" href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener noreferrer" title="${esc(f.what)}">${esc(f.label)}</a>`).join("")}</span>` : "";
-    const regions = a.regions || [];
-    const body = regions.length ? regions.map((r) => `
+    const regions = (a.regions || []).filter((r) => (r.judgments || []).length);
+    const judgmentHtml = (j, compact = false) => {
+      const [mark, word] = TREND[j.trend] || TREND.steady;
+      return `<div class="an-item trend-${esc(j.trend)}">
+        <p class="an-head"><span class="an-trend"><span aria-hidden="true">${mark}</span> ${esc(word)}</span><b>${esc(j.headline)}</b></p>
+        ${!compact && j.text ? `<p class="an-text">${esc(j.text)}</p>` : ""}
+        <p class="an-foot"><span class="an-conf conf-${esc(j.confidence)}">${esc(CONF_WORDS[j.confidence] || "Low confidence")}</span>${basis(j.tally || {}) ? `<span>Based on ${esc(basis(j.tally || {}))}</span>` : ""}${cites(j.ids)}${flown(j.flights)}</p>
+      </div>`;
+    };
+    const highlights = briefHighlights(regions, byId);
+    const lead = highlights.length ? `<ol class="brief-highlights">${highlights.map(({ region, judgment }) => `<li>
+      <button class="an-name" type="button" data-fly="${esc(region.theater)}" title="Fly to ${esc(region.name)}">${esc(region.name)}</button>
+      ${judgmentHtml(judgment, true)}</li>`).join("")}</ol>`
+      : `<p class="an-empty">No clear change in any region in the last ${esc(a.window_hours || 6)} hours.</p>`;
+    const body = regions.map((r) => `
       <div class="an-region">
         <button class="an-name" type="button" data-fly="${esc(r.theater)}" title="Fly to ${esc(r.name)}">${esc(r.name)}</button>
-        ${r.judgments.map((j) => {
-          const [mark, word] = TREND[j.trend] || TREND.steady;
-          return `<div class="an-item trend-${esc(j.trend)}">
-            <p class="an-head"><span class="an-trend" title="${esc(word)}"><span aria-hidden="true">${mark}</span> ${esc(word)}</span><b>${esc(j.headline)}</b></p>
-            ${j.text ? `<p class="an-text">${esc(j.text)}</p>` : ""}
-            <p class="an-foot"><span class="an-conf conf-${esc(j.confidence)}">${esc(CONF_WORDS[j.confidence] || "Low confidence")}</span><span>Based on ${esc(basis(j.tally || {}))}</span>${cites(j.ids)}${flown(j.flights)}</p>
-          </div>`;
-        }).join("")}
-      </div>`).join("") : `<p class="an-empty">No clear change in any region in the last ${esc(a.window_hours || 6)} hours.</p>`;
+        ${r.judgments.map((j) => judgmentHtml(j)).join("")}
+      </div>`).join("");
+    const written = Date.parse(a.generated_at);
+    const stale = Number.isFinite(written) && Date.now() - written > 3 * HOUR;
     return `<li class="brief analysis"><section aria-labelledby="briefTitle">
-      <div class="brief-head"><h3 id="briefTitle">What's changing, by region</h3>
+      <div class="brief-head"><h3 id="briefTitle">Situation brief</h3>
         <time datetime="${esc(a.generated_at)}">Written ${esc(ago(Date.parse(a.generated_at)))}</time></div>
-      <p class="an-sub">The last ${esc(a.window_hours || 6)} hours against the ${esc(a.context_days || 3)} days before</p>
-      ${body}
-      <p class="brief-note">Machine-written analysis of this map's own events${a.by ? ` by ${esc(a.by)}` : ""}. Confidence comes from the events each line cites (corroborated, single-source, or one side's claim) and from military flights tracked by their own transponders, which show where aircraft went, not why; open them before relying on it.${a.flight_credit ? ` <a href="${esc(safeUrl(a.flight_credit.url || "https://opendatacommons.org/licenses/odbl/1-0/"))}" target="_blank" rel="noopener noreferrer">${esc(a.flight_credit.text || "Flight data: adsb.lol contributors")}</a>.` : ""}</p>
+      <p class="an-sub">${highlights.length ? `${highlights.length} selected ${highlights.length === 1 ? "development" : "developments"} · ` : ""}All regions · last ${esc(a.window_hours || 6)} hours</p>
+      <p class="brief-note">Machine-written. Expand the regional analysis for the reasoning.</p>
+      ${stale ? '<p class="brief-stale" role="status">This analysis is over 3 hours old. Check the latest events below for newer reporting.</p>' : ""}
+      ${lead}
+      ${regions.length ? `<details class="brief-disclosure" data-brief-section="regions"${S.briefOpen.has("regions") ? " open" : ""}>
+        <summary>All regional analysis (${regions.reduce((n, r) => n + r.judgments.length, 0)})</summary>${body}</details>` : ""}
+      <details class="brief-disclosure brief-method" data-brief-section="method"${S.briefOpen.has("method") ? " open" : ""}>
+        <summary>How to read this brief</summary>
+        <p class="brief-note">Highlights prioritize changes, then confidence, then the latest cited event, with one development per region. The full regional analysis includes every judgment. This global brief uses its own ${esc(a.window_hours || 6)}-hour window against the ${esc(a.context_days || 3)} days before; map filters do not change it.</p>
+        <p class="brief-note">Machine-written analysis of this map's own events${a.by ? ` by ${esc(a.by)}` : ""}. Confidence comes from the cited events and tracked flights. Transponders show where aircraft went, not why. Open the evidence before relying on a judgment.</p>
+      </details>
+      ${a.flight_credit ? `<p class="brief-note"><a href="${esc(safeUrl(a.flight_credit.url || "https://opendatacommons.org/licenses/odbl/1-0/"))}" target="_blank" rel="noopener noreferrer">${esc(a.flight_credit.text || "Flight data: adsb.lol contributors")}</a>.</p>` : ""}
     </section></li>`;
   }
 
@@ -2402,7 +2432,7 @@
     reportsFor(e).then((reps) => {
       if (reps) { if (shownReports.size > 40) shownReports.clear(); shownReports.set(e.id, reps); }
       if (S.selectedId !== e.id || !document.body.contains(slot)) return;
-      slot.innerHTML = reps ? reportsHtml(reps.slice().sort((a, b) => Date.parse(b.time) - Date.parse(a.time)))
+      slot.innerHTML = reps ? reportsHtml(reps, e)
         : '<p class="muted">The reports for this event were just updated. Close it and open it again in a moment.</p>';
     }).catch(() => {
       if (S.selectedId !== e.id || !document.body.contains(slot)) return;
@@ -2411,10 +2441,36 @@
     });
   }
 
-  const reportsHtml = (reports) => `<h2 class="reports-title">Reports (${reports.length})</h2><ul class="reports">${reports.map((r) => `
-    <li class="report ${r.side ? "sided" : ""}"><div class="report-head"><span class="report-src">${esc(r.source)}</span><span>${esc(PLATFORM[r.platform] || r.platform)}</span>
-      <span>${esc(KIND[r.kind] || r.kind)}${r.side ? `, aligned with ${esc(r.side)}` : ""}</span><span>${esc(ago(Date.parse(r.time)))}</span></div>
-      <p>${esc(r.summary)}</p><a href="${esc(safeUrl(r.url))}" target="_blank" rel="noopener noreferrer">Open the original post</a></li>`).join("")}</ul>`;
+  // Report counts and publication order describe the evidence, not independent corroboration.
+  const reportTime = (r) => { const t = Date.parse(r.time); return Number.isFinite(t) ? t : 0; };
+  function evidenceSummary(reports) {
+    const names = new Map();
+    for (const r of reports) if (r.source) names.set(r.source, Boolean(r.side) || names.get(r.source) || false);
+    return { reports: reports.length, sources: names.size, aligned: [...names.values()].filter(Boolean).length };
+  }
+  function reportsHtml(reports, e) {
+    const info = evidenceSummary(reports);
+    const ordered = [...reports].sort((a, b) => reportTime(b) - reportTime(a));
+    const dated = ordered.filter(reportTime).reverse();
+    const timestamp = (r, exact = false) => reportTime(r)
+      ? `<time datetime="${esc(r.time)}" title="${esc(new Date(reportTime(r)).toUTCString())}">${esc(exact ? fmtEvidenceTime(reportTime(r)) : ago(reportTime(r)))}</time>`
+      : '<span>Report time unknown</span>';
+    const cards = (list) => `<ul class="reports">${list.map((r) => `
+      <li class="report ${r.side ? "sided" : ""}"><div class="report-head"><span class="report-src">${esc(r.source || "Unnamed source")}</span><span>${esc(PLATFORM[r.platform] || r.platform)}</span>
+        <span>${esc(KIND[r.kind] || r.kind)}${r.side ? `, aligned with ${esc(r.side)}` : ""}</span>${timestamp(r)}</div>
+        <p>${esc(r.summary)}</p><a href="${esc(safeUrl(r.url))}" target="_blank" rel="noopener noreferrer">Open the original report</a></li>`).join("")}</ul>`;
+    return `<section class="event-evidence" aria-label="Event evidence">
+      <h2 class="reports-title">Evidence</h2>
+      <dl class="evidence-stats"><div><dt>Published reports</dt><dd>${info.reports}</dd></div><div><dt>Named sources</dt><dd>${info.sources}</dd></div></dl>
+      <p class="evidence-note">${info.aligned ? `${info.aligned} ${info.aligned === 1 ? "source is" : "sources are"} marked as aligned with a side. ` : ""}Different source names may share a newsroom or repeat the same report. The confidence label above accounts for source independence.</p>
+      ${dated.length ? `<details class="report-timeline"><summary>Reporting timeline (${dated.length})</summary>
+        <p class="evidence-note">Publication times, earliest first. Later coverage does not change ${e?.alert ? "the first warning's" : "the event's"} date.</p>
+        <ol class="report-timeline-list">${dated.map((r) => `<li>${timestamp(r, true)}<a href="${esc(safeUrl(r.url))}" target="_blank" rel="noopener noreferrer">${esc(r.source || "Unnamed source")}</a></li>`).join("")}</ol>
+      </details>` : ""}
+      <h2 class="reports-title">Latest reports</h2>${ordered.length ? cards(ordered.slice(0, 5)) : '<p class="muted">No published reports available yet.</p>'}
+      ${ordered.length > 5 ? `<details class="earlier-reports"><summary>Show ${ordered.length - 5} earlier reports</summary>${cards(ordered.slice(5))}</details>` : ""}
+    </section>`;
+  }
 
   function select(id, fly) {
     const e = S.data && S.data.events.find((x) => x.id === id);
@@ -2474,13 +2530,15 @@
       <div class="detail-type">${eventIcon(e)}${esc(typeLabel(e))}</div>
       ${(e.corrected || []).length ? `<div class="corrected"><span class="corrected-tag">Corrected</span><ul>${e.corrected.map((c) => `<li>${esc(c.change)}: ${esc(c.note)}</li>`).join("")}</ul></div>` : ""}
       <h3>${esc(e.summary)}</h3>
-      <p class="detail-where">${where}<br>${e.alert ? "First alert" : "Happened"} ${esc(fmtTime(e._t))}${e._tu - e._t > 30 * 60e3 ? `, latest report ${esc(ago(e._tu))}` : ""}</p>
+      <p class="detail-where">${where}</p>
+      <dl class="event-times"><div><dt>${e.alert ? "First warning" : "Event time"}</dt><dd><time datetime="${esc(e.time || e.updated)}" title="${esc(new Date(e._t).toUTCString())}">${esc(fmtEvidenceTime(e._t))}</time></dd></div>
+        <div><dt>Latest report</dt><dd><time datetime="${esc(e.updated || e.time)}" title="${esc(new Date(e._tu).toUTCString())}">${esc(fmtEvidenceTime(e._tu))}</time></dd></div></dl>
       ${e.possibly_old ? `<div class="verdict verdict--doubt"><span class="conf-swatch conf-dashed" aria-hidden="true"></span><div><strong>Possibly an old story</strong><p>Only one outlet has this, and a news search found earlier coverage of the same topic but nothing current from other outlets. It may be an old article republished with a new date. It stays on the map, quieter, and is confirmed if another source reports it.</p></div></div>` : ""}
       <div class="verdict"><span class="conf-swatch conf-${STATUS[e.status].conf}" aria-hidden="true"></span><div><strong>${esc(STATUS[e.status].label)}</strong><p>${esc(STATUS[e.status].note(e.sources_count, e.news_nearby))}</p></div></div>
       ${facts.length ? `<div class="facts">${facts.join("")}</div>` : ""}
       ${e.legal_basis ? `<div class="legal-basis"><span>Stated legal basis</span><strong>${esc(e.legal_basis)}</strong><p>As reported by the sources below. The dashboard records claimed justifications; it does not assess them.</p></div>` : ""}
       ${waveBlock}${alertBlock}
-      <div id="reportsSlot">${e.reports || shownReports.has(e.id) ? reportsHtml((e.reports || shownReports.get(e.id)).slice().sort((a, b) => Date.parse(b.time) - Date.parse(a.time)))
+      <div id="reportsSlot">${e.reports || shownReports.has(e.id) ? reportsHtml(e.reports || shownReports.get(e.id), e)
         : '<h2 class="reports-title">Reports</h2><p class="muted">Loading reports\u2026</p>'}</div>
       ${news.length ? `<h2 class="reports-title">News coverage nearby (${e.news_nearby || news.length} outlets)</h2>
         <ul class="news-links">${news.map((u) => `<li><a href="${esc(safeUrl(u))}" target="_blank" rel="noopener noreferrer">${esc(u.replace(/^https?:\/\/(www\.)?/, "").slice(0, 80))}</a></li>`).join("")}</ul>` : ""}
@@ -2691,6 +2749,13 @@
       if (b && b.dataset.id !== hotId) hotEvent(b.dataset.id);
     });
     $("#feedList").addEventListener("pointerleave", () => hotEvent(null));
+    // Keep reader-opened analysis sections open through filtering and live refreshes.
+    $("#feedList").addEventListener("toggle", (ev) => {
+      const section = ev.target.dataset && ev.target.dataset.briefSection;
+      if (section && $("#feedList").contains(ev.target)) {
+        if (ev.target.open) S.briefOpen.add(section); else S.briefOpen.delete(section);
+      }
+    }, true);
     $("#feedList").addEventListener("click", (ev) => {
       if (ev.target.closest("[data-more]")) { S.feedLimit += FEED_PAGE; render(); return; }
       const b = ev.target.closest("[data-id]");
