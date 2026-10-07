@@ -112,8 +112,7 @@
   const regionWords = (e) => [EUROPE.has(e.country) || (e.theater === "nato_east" && !e.country) ? "europe european" : "", THEATER_WORDS[e.theater] || ""].join(" ");
   const countryName = (code) => { if (!code) return ""; try { return (regionNames && regionNames.of(code)) || code; } catch (_) { return code; } };
 
-  // Known launch areas and watched airbases used as faint, approximate origins when reports name none.
-  // Airbase coordinates match pipeline/config/flights.yaml; assumed lines are limited to nearby events.
+  // Known launch areas, used only when a report doesn't name one (those lines are drawn faint).
   const ANCHORS = {
     RU: [["Kursk", 51.73, 36.19], ["Oryol", 52.97, 36.06], ["Bryansk", 53.24, 34.36], ["Belgorod", 50.6, 36.6],
       ["Millerovo", 48.92, 40.4], ["Primorsko-Akhtarsk", 46.05, 38.17], ["Hvardiiske, Crimea", 45.12, 33.97]],
@@ -121,7 +120,15 @@
     IR: [["Kermanshah", 34.31, 47.07], ["Tabriz", 38.08, 46.29], ["Isfahan", 32.65, 51.67], ["Bandar Abbas", 27.8, 56.25]],
     YE: [["Sanaa", 15.37, 44.19], ["Hodeidah", 14.8, 42.95], ["Saada", 16.94, 43.76]],
     LB: [["Nabatieh", 33.38, 35.48], ["Tyre", 33.27, 35.2]],
-    IL: [["southern Israel", 31.25, 34.79], ["northern Israel", 32.8, 35.1], ["Nevatim Air Base", 31.208, 35.012]],
+    IL: [["southern Israel", 31.25, 34.79], ["northern Israel", 32.8, 35.1]],
+    // North Korea's usual launch areas: Sunan (Pyongyang), the Wonsan coast, Sohae, Sinpo
+    KP: [["Pyongyang", 39.2, 125.67], ["Wonsan", 39.17, 127.48], ["Sohae", 39.66, 124.71], ["Sinpo", 40.03, 128.18]],
+  };
+  Object.keys(ANCHORS).forEach((k) => { ANCHORS[k] = ANCHORS[k].map(([place, lat, lon]) => ({ place, lat, lon })); });
+
+  // Watched airbases are extra approximate origins for airstrikes near the attacker's territory.
+  // Coordinates match pipeline/config/flights.yaml; they are not evidence of a specific sortie.
+  const AIRBASES = {
     GB: [["RAF Fairford", 51.682, -1.790], ["RAF Lakenheath", 52.409, 0.561], ["RAF Mildenhall", 52.362, 0.486], ["RAF Brize Norton", 51.750, -1.584]],
     DE: [["Ramstein Air Base", 49.437, 7.600], ["Spangdahlem Air Base", 49.973, 6.692]],
     IT: [["Aviano Air Base", 46.032, 12.597], ["Sigonella", 37.402, 14.922]],
@@ -132,6 +139,7 @@
     NO: [["Ørland", 63.699, 9.604]],
     TR: [["Incirlik Air Base", 37.002, 35.426]],
     CY: [["RAF Akrotiri", 34.590, 32.988]],
+    IL: [["Nevatim Air Base", 31.208, 35.012]],
     JO: [["Muwaffaq Salti Air Base", 31.827, 36.782]],
     SA: [["Prince Sultan Air Base", 24.063, 47.580]],
     QA: [["Al Udeid Air Base", 25.117, 51.315]],
@@ -142,10 +150,11 @@
     JP: [["Kadena Air Base", 26.356, 127.768], ["Misawa Air Base", 40.703, 141.368], ["Yokota Air Base", 35.749, 139.348]],
     KR: [["Osan Air Base", 37.090, 127.030]],
     AU: [["RAAF Base Tindal", -14.521, 132.378], ["RAAF Base Amberley", -27.640, 152.712]],
-    // North Korea's usual launch areas: Sunan (Pyongyang), the Wonsan coast, Sohae, Sinpo
-    KP: [["Pyongyang", 39.2, 125.67], ["Wonsan", 39.17, 127.48], ["Sohae", 39.66, 124.71], ["Sinpo", 40.03, 128.18]],
   };
-  Object.keys(ANCHORS).forEach((k) => { ANCHORS[k] = ANCHORS[k].map(([place, lat, lon]) => ({ place, lat, lon })); });
+  Object.keys(AIRBASES).forEach((k) => { AIRBASES[k] = AIRBASES[k].map(([place, lat, lon]) => ({ place, lat, lon })); });
+  const launchAreas = (e) => e.type === "airstrike"
+    ? [...(ANCHORS[e.attacker] || []), ...(AIRBASES[e.attacker] || [])]
+    : (ANCHORS[e.attacker] || []);
   const REP_POINT = {
     RU: { lat: 55.75, lon: 37.62 }, US: { lat: 38.9, lon: -77.0 }, CN: { lat: 34.3, lon: 113.6 }, CA: { lat: 45.4, lon: -75.7 },
     AU: { lat: -33.9, lon: 151.2 }, BR: { lat: -15.8, lon: -47.9 }, IN: { lat: 28.6, lon: 77.2 }, KZ: { lat: 51.2, lon: 71.4 },
@@ -1716,11 +1725,8 @@
   }
 
   // ------------------------------------------------------------------ build layers
-  // A massive barrage (BARRAGE or more drones and missiles reported launched, as in the strikes of
-  // well over a thousand drones between Russia and Ukraine in October 2026) gets more lines: each
-  // place hit is reached from several of the attacker's usual launch areas, more the bigger the
-  // barrage, drawn as a faint stream of small dashes. They stay assumed launch areas (no report
-  // names them) and end only at reported places; launch sites a report names are drawn as before.
+  // Each 25 reported launches adds another faint dashed path, capped at 40 per attack.
+  // Repeated paths convey volume from known origins; they are not observed flight tracks.
   const LAUNCHED = new Set(["missile_drone", "air_defense", "airstrike"]);   // kinds drawn with launch lines
   const MAX_BARRAGE_LINES = 40;   // per attack
   // A reported launch count adds one visual path per 25 items, capped to keep busy maps readable.
@@ -1742,7 +1748,7 @@
     };
     // Repeated dashed paths show reported volume; they remain approximate routes, not observed tracks.
     const assumed = (e, d, count = launchPathCount(e), first = 0, barrage = count > 1) => {
-      const anchors = ANCHORS[e.attacker] || [];
+      const anchors = launchAreas(e);
       const from = nearestN(anchors, d, Math.min(count, anchors.length));
       if (!from.length) return;
       for (let i = 0; i < count; i++) push(e, from[i % from.length], d, true, barrage, first + i);
@@ -2444,6 +2450,11 @@
     }
     const origins = originsOf(e);
     if (!e.wave && origins.length) facts.push(`<span>Launched from <b>${esc(origins.map((o) => o.place || "an unnamed site").join(", "))}</b></span>`);
+    if (!e.wave && !origins.length && (e.type === "missile_drone" || e.type === "airstrike")) {
+      const assumed = nearest(launchAreas(e), e);
+      const distance = assumed && km(assumed.lat, assumed.lon, e.lat, e.lon);
+      if (assumed && distance >= 25 && distance <= 1800) facts.push(`<span>Approximate path from <b>${esc(assumed.place)}</b></span>`);
+    }
     const news = S.data.heat.filter((c) => km(e.lat, e.lon, c.lat, c.lon) <= (e.approx ? 60 : 30)).flatMap((c) => c.urls || []).slice(0, 4);
     const where = e.wave || e.alert ? `${esc(metaLine(e))}, ${esc(theaterName)}`
       : `${esc(e.place || "Unnamed location")}, ${esc(theaterName)} ${e.approx ? '<span class="approx">(approximate location)</span>' : ""}`;
