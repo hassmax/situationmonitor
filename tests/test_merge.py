@@ -184,20 +184,28 @@ def test_two_events_from_one_roundup_article_get_different_ids():
     assert m._new_id([taken], "u", "another meeting") != taken["id"]
 
 
-def test_a_navy_port_call_is_a_deployment_not_a_supply_route():
+def test_recent_deployments_into_another_country_are_read_again_once():
+    from datetime import datetime, timezone
     import merge as m
-    visit = {"id": "v", "type": "arms_transfer", "summary": "Russian Pacific Fleet warships arrived in Indonesia for a business visit.",
-             "place": "Indonesia", "lat": -0.79, "lon": 113.92,
-             "transfer": {"supplier": "RU", "recipient": "RU", "mode": "sea", "what": "Pacific Fleet warships",
-                          "from": {"place": "Vladivostok", "lat": 43.13, "lon": 131.91},
-                          "to": {"place": "Indonesia", "lat": -0.79, "lon": 113.92}}}
-    home = {"id": "k", "type": "arms_transfer", "summary": "Four KC-135s are returning home from CENTCOM bases.",
-            "transfer": {"supplier": "US", "recipient": "US", "to": {"place": "Eielson", "lat": 64.7, "lon": -147.1}}}
-    sale = {"id": "s", "type": "arms_transfer", "summary": "Russia delivers air defence systems to Indonesia during a visit.",
-            "transfer": {"supplier": "RU", "recipient": "ID"}}
-    assert m.own_force_visits([visit, home, sale]) == 1
-    assert visit["type"] == "deployment" and visit["transfer"] is None and visit["place"] == "Indonesia"
-    assert home["type"] == "arms_transfer" and sale["type"] == "arms_transfer"
+    now = datetime(2026, 10, 7, 12, tzinfo=timezone.utc)
+    rep = lambda u: {"source": "Reuters", "url": u, "summary": "German F-35s landed at Fort Smith for training.", "time": "2026-10-06T10:00:00Z"}
+    abroad = {"id": "a", "type": "deployment", "country": "US", "attacker": "DE", "parties": ["DE", "US"], "time": "2026-10-06T10:00:00Z",
+              "summary": "German F-35s landed at Fort Smith.", "reports": [rep("u1"), rep("u2")]}
+    home = {"id": "h", "type": "deployment", "country": "EE", "attacker": "EE", "parties": ["EE"], "time": "2026-10-06T10:00:00Z",
+            "summary": "Estonia moved troops closer to the Russian border.", "reports": [rep("u3")]}
+    old = {**abroad, "id": "o", "time": "2026-09-30T10:00:00Z"}
+    strike = {"id": "s", "type": "airstrike", "country": "YE", "attacker": "SA", "parties": ["SA"], "time": "2026-10-06T10:00:00Z", "reports": []}
+    state = {}
+    events, items = m.reread_foreign_deployments([abroad, home, old, strike], state, now)
+    assert [e["id"] for e in events] == ["h", "o", "s"]          # only the recent foreign deployment goes back
+    assert [i["url"] for i in items] == ["u1", "u2"] and all(not i["prefilter"] for i in items)
+    assert m.reread_foreign_deployments([abroad], state, now) == ([abroad], [])   # once
+    # forces sent into another country are not "arms production", whatever words the report uses
+    sent = {"id": "t", "type": "arms_transfer", "country": "PL", "summary": "US troops receive orders to deploy to Poland.",
+            "transfer": {"supplier": "US", "recipient": "US", "to": {"place": "Poland", "lat": 52, "lon": 19}}}
+    built = {"id": "b", "type": "arms_transfer", "country": "TW", "summary": "Taiwan orders more anti-ship missiles from its industry.",
+             "transfer": {"supplier": "TW", "recipient": "TW"}}
+    assert m.own_procurement([sent, built]) == 1 and sent["type"] == "arms_transfer" and built["type"] == "production"
 
 
 def test_a_countrys_own_purchases_and_production_are_arms_production():
