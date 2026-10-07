@@ -69,3 +69,38 @@ def test_carrier_checks_and_no_line_from_a_position_it_couldnt_have_sailed_from(
     fleet.update(state, [{"hull": "CVN-76", "status": "in port", "place": "Bremerton, Wash.", "lat": 47.56, "lon": -122.63,
                           "heading_to": None, "time": "2026-10-05T18:13:05Z", "trusted": True, "source": "USNI", "url": "u"}])
     assert "prev" not in state["fleet"]["CVN-76"]          # Phuket to Bremerton in a day: the old position was wrong
+
+
+def test_a_delivery_ending_in_the_suppliers_country_is_the_recipients_own_move_or_a_marker():
+    train = ev("t", "A German F-35 aircraft arrived at Ebbing Air National Base for training.", country="US", lat=35.4, lon=-94.4,
+               transfer={"supplier": "US", "recipient": "DE", "kind": "delivery", "from": None,
+                         "to": {"place": "Ebbing Air National Guard Base", "lat": 35.336, "lon": -94.367}})
+    flight = ev("f", "Morocco's first F-16 aircraft completed its maiden flight in Greenville.", country="US", lat=34.85, lon=-82.4,
+                transfer={"supplier": "US", "recipient": "MA", "kind": "delivery", "from": None,
+                          "to": {"place": "Greenville", "lat": 34.853, "lon": -82.394}})
+    sale = ev("s", "Poland received F-35 jets.", country="PL", lat=52.2, lon=21.0,
+              transfer={"supplier": "US", "recipient": "PL", "kind": "delivery", "to": {"place": "Warsaw", "lat": 52.2, "lon": 21.0}})
+    assert audit.run([train, flight, sale], [], {}, NOW)["counts"] == {"route_end_in_supplier": 2}
+    assert merge.deliveries_at_supplier([train, flight, sale]) == 2
+    assert train["transfer"]["supplier"] == train["transfer"]["recipient"] == "DE"     # Germany's own aircraft, faint from home
+    assert flight["transfer"] is None and sale["transfer"]["supplier"] == "US"         # no route for a first flight
+    assert audit.run([train, flight, sale], [], {}, NOW)["counts"] == {}
+
+
+def test_a_routes_pin_may_lie_in_the_supplier_or_recipient_not_only_the_named_country():
+    moscow = ev("m", "Equipment is being supplied from Algeria to Russia via Poland.", country="PL", lat=55.75, lon=37.62,
+                transfer={"supplier": "DZ", "recipient": "RU", "kind": "delivery", "to": {"place": "Moscow", "lat": 55.756, "lon": 37.617}})
+    assert audit.run([moscow], [], {}, NOW)["counts"] == {}
+
+
+def test_a_region_name_is_no_carrier_position():
+    row = {"hull": "CVN-73", "name": "U.S.S. George Washington", "lat": 25.0, "lon": 55.0, "place": "West Asia", "at_home": False}
+    assert audit.run([], [row], {}, NOW)["counts"] == {"carrier_vague_place": 1}
+    state = {"fleet": {"CVN-73": {"hull": "CVN-73", "lat": 25.0, "lon": 55.0, "place": "West Asia", "status": "operating",
+                                  "as_of": "2026-10-07T10:42:56Z", "source": "Islam Times (via Google News)", "trusted": False,
+                                  "prev": {"lat": 16.0, "lon": 63.0, "place": "Arabian Sea", "as_of": "2026-10-05T18:13:05Z"},
+                                  "last_trusted": {"lat": 16.0, "lon": 63.0, "place": "Arabian Sea", "as_of": "2026-10-05T18:13:05Z"},
+                                  "track": []}}}
+    fleet.repair(state)
+    c = state["fleet"]["CVN-73"]
+    assert (c["place"], c["lat"], c["lon"]) == ("Arabian Sea", 16.0, 63.0) and "prev" not in c

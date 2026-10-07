@@ -17,8 +17,12 @@ Checks (the mistake that led to each, and the fix):
   country (Morocco's F-16 "to Greenville", 2026-10-07)
 - carriers_together: two carriers placed together away from a home port (Ford and Eisenhower filed
   in Thailand where only the Bush was, 2026-10-06; fleet._other_there)
+- carrier_vague_place: a carrier placed at a region's name ("West Asia", which landed on the Dubai coast,
+  2026-10-07; fleet.VAGUE)
 - carrier_too_fast: a carrier's move faster than it can sail (fleet._too_fast)
 - future_time: an event timed after the moment it was read (common.make_item clamps it)
+- (a delivery's pin may lie in its supplier or recipient too: Algeria's equipment for Moscow was filed under
+  Poland, the country it passed through, 2026-10-07; not a mistake)
 - duplicate_summary: two events with the same words within two days (dedupe.py)
 """
 from __future__ import annotations
@@ -110,7 +114,10 @@ def run(events: list[dict], fleet_rows: list[dict], state: dict, now) -> dict:
             flag("strike_mistyped", e, f"{e['type']}: {summary}")
         if e.get("lat") is not None and e.get("country") and not e.get("approx") and e.get("type") != "naval" \
                 and not e.get("wave") and not e.get("alert"):
-            d = _country_km(e["country"], e["lat"], e["lon"])
+            # a route's pin is its far end: it may lie in the supplier, the recipient or a country passed through
+            ends = {e["country"], tr.get("supplier"), tr.get("recipient")} if e.get("type") == "arms_transfer" and tr else {e["country"]}
+            ds = [_country_km(c, e["lat"], e["lon"]) for c in ends if c]
+            d = min((x for x in ds if x is not None), default=None)
             if d is not None and d > PIN_KM:
                 other = _country_of(e["lat"], e["lon"])
                 if other or d > SEA_KM:
@@ -129,7 +136,10 @@ def run(events: list[dict], fleet_rows: list[dict], state: dict, now) -> dict:
         for b in away[i + 1:]:
             if haversine_km(a["lat"], a["lon"], b["lat"], b["lon"]) < TOGETHER_KM:
                 flag("carriers_together", a, f"{a['name']} and {b['name']} both at {a.get('place')!r} / {b.get('place')!r}")
+    from fleet import _vague
     for c in fleet_rows:
+        if c.get("lat") is not None and not c.get("at_home") and _vague(c.get("place")):
+            flag("carrier_vague_place", c, f"{c['name']} placed at {c.get('place')!r}, a region, not a place")
         p = c.get("prev")
         if p and c.get("as_of") and p.get("as_of") and _too_fast(p, c):
             flag("carrier_too_fast", c, f"{c['name']}: {p.get('place')!r} to {c.get('place')!r} by {c['as_of'][:16]}")
