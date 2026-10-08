@@ -48,6 +48,7 @@ jobs:
           node tests/event-grouping.cjs
           node tests/source-evidence.cjs
           node tests/event-sharing.cjs
+          node tests/launch-paths.cjs
 
       - name: Load the data branch (state and archive)
         env:
