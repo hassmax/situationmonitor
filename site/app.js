@@ -684,7 +684,7 @@
   const ARC = {
     strike: { dash: 0.5, gap: 0.18 }, strikeApprox: { dash: 0.34, gap: 0.28 },
     barrage: { dash: 0.035, gap: 0.05 },  // a massive barrage: a stream of small dashes from each usual launch area
-    flow: { dash: 1, gap: 0 }, flowDashed: { dash: 0.12, gap: 0.07 },
+    flow: { dash: 0.14, gap: 0.35 }, flowDashed: { dash: 0.09, gap: 0.4 },
     routeShot: { dash: 0.14, gap: 4 },  // one short pulse when a reported route is opened
     track: { dash: 0.06, gap: 0.04 }, plan: { dash: 0.2, gap: 0.14 }, hit: { dash: 1, gap: 0 },
     shot: { dash: 0.14, gap: 4 },  // one bright dash that runs a launch line once (playLaunches)
@@ -697,7 +697,7 @@
     .arcStartLat("sLat").arcStartLng("sLng").arcEndLat("eLat").arcEndLng("eLng")
     .arcColor((a) => a.color).arcStroke(arcStroke)
     .arcDashLength((a) => ARC[a.kind].dash).arcDashGap((a) => ARC[a.kind].gap)
-    .arcDashInitialGap((a) => (a.kind === "flow" ? 0 : (a.kind === "shot" || a.kind === "routeShot") ? 1 : a.seed))
+    .arcDashInitialGap((a) => ((a.kind === "shot" || a.kind === "routeShot") ? 1 : a.seed))
     .arcDashAnimateTime((a) => (reduceMotion ? 0 : a.ms || 0))
     .arcAltitude((a) => (a.alt === undefined ? null : a.alt))
     .arcAltitudeAutoScale(0.36)
@@ -1844,6 +1844,7 @@
     return out;
   }
 
+  const flowRgb = (f) => f.money ? CAT_RGB.aid : [76, 159, 255];
   function supplyArcs(flows) {
     const arcs = [];
     for (const f of flows) {
@@ -1858,14 +1859,14 @@
         const a = pts[i], b = pts[i + 1];
         if (km(a.lat, a.lon, b.lat, b.lon) < 25) continue;
         const lift = sea ? 0.002 : 0.012;
-        arcs.push(...surfaceArcs(a, b, { _k: `sup|${f.key}|${i}`, flow: f, kind: f.status === "corroborated" ? "flow" : "flowDashed", color: rgba(f.money ? CAT_RGB.aid : CAT_RGB.supply, Math.min(1, alpha)), stroke, ms: 0, seed: 0 }, lift));
+        arcs.push(...surfaceArcs(a, b, { _k: `sup|${f.key}|${i}`, flow: f, kind: f.status === "corroborated" ? "flow" : "flowDashed", color: rgba(flowRgb(f), Math.min(1, alpha)), stroke, ms: PHONE ? 1600 : 2200, seed: 0 }, lift));
       }
     }
     return arcs;
   }
 
-  // A route stays visible; opening it sends one short pulse along its existing surface segments.
-  // No continuously moving particles, and no pulse for aid that is only pledged.
+  // Routes use short moving dashes; opening one adds a single brighter pass along its segments.
+  // No separate solid route or particle layer, and no pulse for aid that is only pledged.
   let routeTimers = [], routeBurst = null;
   const routeShots = new Set();
   function stopRouteBurst() {
@@ -1888,7 +1889,7 @@
     routeBurst = f;
     const duration = PHONE ? 1600 : 2200;
     const lead = Math.max(150, flight - 100);
-    const rgb = f.money ? CAT_RGB.aid : CAT_RGB.supply;
+    const rgb = flowRgb(f);
     const named = f.from && f.to && !f.from.region && !f.to.region;
     const alpha = STATUS[f.status].alpha * (named ? 1 : 0.6);
     let offset = 0;
@@ -2685,7 +2686,7 @@
       <div class="detail-type">${flowBadge(f)}${f.money ? (isPledge ? "Financial aid pledged" : `Financial aid, ${windowText()}`) : isPledge ? "Pledged aid" : `Supply route, ${windowText()}`}</div>
       <h3>${esc(flowFrom(f))} → ${esc(flowTo(f))}</h3>
       <p class="detail-where">${isPledge ? `${f.events.length} ${f.events.length === 1 ? "announcement" : "announcements"}` : `${f.deliveries} ${f.deliveries === 1 ? "delivery" : "deliveries"} reported`}, last ${esc(ago(f.last))}</p>
-      <div class="verdict"><span class="conf-swatch conf-${STATUS[f.status].conf}" aria-hidden="true"></span><div><strong>${esc(STATUS[f.status].label)}</strong><p>Best confidence among the reports below. On the map, solid lines are corroborated and dashed lines rest on single sources.</p></div></div>
+      <div class="verdict"><span class="conf-swatch conf-${STATUS[f.status].conf}" aria-hidden="true"></span><div><strong>${esc(STATUS[f.status].label)}</strong><p>Best confidence among the reports below. On the map, broader moving dashes are corroborated; finer dashes show uncorroborated reports. Blue is supply, green is financial aid.</p></div></div>
       <div class="facts">
         ${f.modes.length ? `<span>Mode <b>${esc(f.modes.map((m) => MODE[m]).join(", "))}</b></span>` : ""}
         ${f.value ? `<span>Value <b>${esc(fmtMoney(f.value))}</b> (reported)</span>` : ""}

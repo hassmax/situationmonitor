@@ -40,7 +40,8 @@ for (const phone of [false, true]) for (const money of [false, true]) {
   const h = harness(phone), f = flow(money ? 'aid' : 'supply', money); open(h, f);
   const baseline = h.supplyArcs([f]);
   assert(baseline.length > 3, 'Exercise a long route with surface segments and a waypoint');
-  assert(baseline.every((a) => a.kind === 'flow' && a.ms === 0));
+  assert(baseline.every((a) => a.kind === 'flow' && a.ms === (phone ? 1600 : 2200)), 'Routes move without being opened');
+  assert(baseline.every((a) => a.color.slice(0, 3).join() === (money ? h.c.CAT_RGB.aid : [76, 159, 255]).join()), 'Blue supply and green aid');
   assert(baseline.some((a) => a.eLat === f.via[0].lat && a.eLng === f.via[0].lon));
   h.playRouteBurst(f, 1000); h.tick(899); assert.equal(h.routeShots.size, 0, 'Wait for camera');
   h.tick(1); assert.equal(h.routeShots.size, 1);
@@ -48,7 +49,7 @@ for (const phone of [false, true]) for (const money of [false, true]) {
   assert.equal(h.starts.length, baseline.length, 'One pass along every existing segment');
   assert(h.peak() <= 2, 'Only one traveling pulse, with brief segment overlap');
   assert.deepEqual(h.starts.map(({ a }) => geometry(a)), Array.from(baseline, geometry), 'Preserve exact surface curve, waypoints and direction');
-  const color = money ? h.c.CAT_RGB.aid : h.c.CAT_RGB.supply;
+  const color = money ? h.c.CAT_RGB.aid : [76, 159, 255];
   assert(h.starts.every(({ a }) => a.kind === 'routeShot' && a.seed === 1 && a.color[1].slice(0, 3).join() === color.join()));
   const duration = h.starts.reduce((n, { a }) => n + a.ms, 0);
   assert(Math.abs(duration - (phone ? 1600 : 2200)) < 1e-6);
@@ -74,7 +75,7 @@ h = harness(); f = flow('aid', true); open(h, f); h.c.S.off.add('crate'); h.play
 assert(h.timers.size, 'Aid works while supply routes are hidden'); h.stopRouteBurst();
 h.c.S.off.add('coin'); h.playRouteBurst(f); assert.equal(h.timers.size, 0);
 h = harness(); f = flow('faint', false, { from: { lat: 30, lon: 10, region: true }, status: 'claimed', modes: ['sea'] }); open(h, f);
-const faint = h.supplyArcs([f]); assert(faint.every((a) => a.kind === 'flowDashed' && a.ms === 0));
+const faint = h.supplyArcs([f]); assert(faint.every((a) => a.kind === 'flowDashed' && a.ms > 0));
 h.playRouteBurst(f); h.tick(200); assert.equal([...h.routeShots][0].color[1][3], 0.3);
 const part = (a, b) => section(a, b);
 assert(part('  function closeDetail()', '  // Camera moves').includes('stopRouteBurst();'));
@@ -84,4 +85,7 @@ assert(part('  function selectFlow(', '  function selectCarrier(').includes('if 
 assert(part('  function legendChanged()', '  function buildStaticControls()').includes('S.off.has(routeBurst.money ? "coin" : "crate")'));
 assert(part('  function renderGlobe(', '  function renderControlNote()').includes('!S.supply.flows.some((f) => f.key === routeBurst.key)'));
 assert(!part('  function supplyArcs(', '  // ------------------------------------------------------------------ sea lanes').includes('Math.random'));
-console.log('PASS: static supply/aid routes, finite sequential bursts, exact geometry/colors, phone duration/peak, cleanup, visibility, pledges, reduced motion and no looping.');
+const arc = part('  const ARC =', '  // Routes and carrier lines');
+assert(arc.includes('flow: { dash: 0.14, gap: 0.35 }') && arc.includes('flowDashed: { dash: 0.09, gap: 0.4 }'), 'Short moving dashes, no solid visible layer');
+assert(code.includes('.arcDashAnimateTime((a) => (reduceMotion ? 0 : a.ms || 0))'), 'Reduced motion stops baseline routes too');
+console.log('PASS: moving blue supply/green aid dashes, no solid route layer, finite opening bursts, exact geometry, phone duration/peak, cleanup, visibility, pledges and reduced motion.');

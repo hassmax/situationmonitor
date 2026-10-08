@@ -761,9 +761,9 @@ h2 {
 .flow-row:hover, .flow-row.is-selected { background: rgba(255, 255, 255, 0.05); }
 .flow-top { display: flex; align-items: center; gap: 9px; }
 .flow-name { flex: 1; min-width: 0; font-weight: 600; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.flow-dot { width: 14px; height: 3px; border-radius: 2px; background: var(--news); flex: none; }
+.flow-dot { --news: rgb(76, 159, 255); width: 14px; height: 3px; border-radius: 2px; background: var(--news); flex: none; }
 .flow-dot.is-dashed { background: repeating-linear-gradient(90deg, var(--news) 0 3px, transparent 3px 5px); }
-.flow-dot.is-active { box-shadow: 0 0 0 3px rgba(63, 193, 201, 0.25); }
+.flow-dot.is-active { box-shadow: 0 0 0 3px rgba(76, 159, 255, 0.25); }
 .flow-dot--pledge { width: 10px; height: 10px; border-radius: 50%; background: transparent; border: 1.5px dashed var(--news); margin: 0 2px; }
 .flow-dot.is-money { --news: rgb(96, 214, 122); }
 .flow-dot.is-money.is-active { box-shadow: 0 0 0 3px rgba(96, 214, 122, 0.25); }
