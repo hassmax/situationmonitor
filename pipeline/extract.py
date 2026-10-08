@@ -59,7 +59,7 @@ Event types:
 Output: {{"events": [one object per input item, in any order]}}
 Irrelevant item: {{"i": <n>, "relevant": false}}
 Relevant item:
-{{"i": <n>, "relevant": true, "type": "<event type id>", "happened": "<when the event itself happened: YYYY-MM-DD or YYYY-MM-DDTHH:MM in UTC>" or null, "summary": "<max 25 words>", "place": "<most specific place named, English spelling>" or null, "admin1": "<province, oblast, or state>" or null, "country": "<ISO 3166-1 alpha-2>" or null, "lat": <number> or null, "lon": <number> or null, "attacker": "<ISO alpha-2 of the country whose forces carried it out>" or null, "parties": ["<ISO alpha-2 of each country, or UN, EU, NATO, AU, ICC, ICJ, or another body's short name, whose officials take part>"], "origins": [{{"place": "<launch or firing area named in the item>", "lat": <number>, "lon": <number>}}], "launched": <int> or null, "intercepted": <int> or null, "alert": true or false, "transfer": <transfer object, arms_transfer only>, "legal_basis": "<max 12 words>" or null, "theater": "<theater id>", "severity": <1, 2, or 3>, "claim": "report" or "official_claim", "killed": <int> or null, "injured": <int> or null}}
+{{"i": <n>, "relevant": true, "type": "<event type id>", "happened": "<when the event itself happened: YYYY-MM-DD or YYYY-MM-DDTHH:MM in UTC>" or null, "summary": "<max 25 words>", "place": "<most specific place named, English spelling>" or null, "admin1": "<province, oblast, or state>" or null, "country": "<ISO 3166-1 alpha-2>" or null, "lat": <number> or null, "lon": <number> or null, "attacker": "<ISO alpha-2 of the country whose forces carried it out>" or null, "parties": ["<ISO alpha-2 of each country, or UN, EU, NATO, AU, ICC, ICJ, or another body's short name, whose officials take part>"], "origins": [{{"place": "<launch or firing area named in the item>", "lat": <number>, "lon": <number>}}], "launched": <int> or null, "intercepted": <int> or null, "alert": true or false, "transfer": <transfer object, arms_transfer only>, "legal_basis": "<max 12 words>" or null, "theater": "<theater id>", "severity": <1, 2, or 3>, "claim": "report" or "official_claim", "claim_source": "idf" or null, "killed": <int> or null, "injured": <int> or null}}
 
 Optional key for any item (relevant or not): if the item says where a US Navy aircraft carrier (hull CVN-##) is, or that one departed, arrived, or is heading somewhere, add
 "carrier": {{"hull": "CVN-78", "status": "departed" | "underway" | "operating" | "arrived" | "in port", "place": "<where it is now>", "lat": <number>, "lon": <number>, "heading_to": {{"place": "<stated destination>", "lat": <number>, "lon": <number>}} or null}}
@@ -93,6 +93,7 @@ Rules:
 - For an arms_transfer, put the event's own place and lat/lon at the named arrival point, or for an interdiction where it was seized; if none is named, use the recipient country's capital. Use the theater of the conflict the weapons are for.
 - legal_basis: only when the item states the justification the acting state gives for using force (for example "self-defense under UN Charter Article 51", "host-state consent", "2001 AUMF"). Never infer one. For legal-type events, place them where the step happened (UN headquarters, The Hague, Washington) but use the theater of the conflict concerned.
 - claim = "official_claim" when the item is a government, military, or armed-group statement about its own actions or results; otherwise "report".
+- Also include claim_source: "idf" when the report's evidence is solely an IDF (Israel Defense Forces, Israeli military or army) statement, including a newsroom or aggregator repeating it. Keep IDF attribution in the summary. Use null when the report independently establishes the incident (witnesses, verified footage or the outlet's own investigation), even if it also quotes the IDF. Mentioning IDF actions or quoting an IDF denial alongside independent evidence is not enough to set "idf". This is the origin of the evidence, not the publisher or the attacker.
 - Items from "ISW Map Room" are findings read from a map by the Institute for the Study of War (ISW): each names a place printed on the map and the date. Relevant when it reports an event in the map's own period; use its date for "happened" and its place; keep ISW's wording and attribution in the summary ("ISW assesses Russian forces advanced near Kupyansk"). A change in who controls ground or where the front line runs is territory.
 """.format(types="\n".join(f"- {k}: {v}" for k, v in EVENT_TYPES.items()))
 
@@ -697,6 +698,8 @@ def _clean_record(obj: dict, item: dict) -> dict | None:
         "theater": str(obj.get("theater") or "").strip(),
         "severity": severity,
         "claim": "official_claim" if obj.get("claim") == "official_claim" else "report",
+        **({"claim_source": obj["claim_source"]}
+           if "claim_source" in obj and (obj["claim_source"] is None or obj["claim_source"] == "idf") else {}),
         "killed": _int_or_none(obj.get("killed")),
         "injured": _int_or_none(obj.get("injured")),
         "item": item,
