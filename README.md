@@ -229,6 +229,12 @@ From the day this feature was added, every run also keeps a permanent archive on
 
 History starts from the day this merged; nothing earlier was recorded. There is no page for browsing it yet, but you can open the files on GitHub (switch the branch selector to `data`).
 
+### Sharing an event
+
+Open an event from the list and choose **Copy event link**. Its address is `/events/<id>/`, with the event summary as the message preview's headline and a matching PNG card showing the event type, place, original time and confidence. Selecting an event also updates the browser address to this shareable link. Old `#<id>` links still open the event, including a trailing comma accidentally included in a message, but message apps cannot read the event ID from a fragment; use the new link for an event-specific preview.
+
+Share pages use the same globe and open the selected event directly. Published archived snapshots retain their reports and original dates when the event leaves the live feed; they are labelled Archived and excluded from live counts. Hidden or removed events are excluded from the next site build. The update workflow creates these pages from public data and the archive, with no extra model calls. It caches unchanged PNG cards under `share-images/` on the `data` branch. `DASHBOARD_URL`, if set, must be the site's root address; otherwise the workflow uses the repository's GitHub Pages address. Message apps may cache previews, so previously sent messages can retain an earlier card.
+
 ## Limits worth knowing
 
 - **Efficient model use.** Posts are sent to the model in batches of up to 40 (the model's instructions are sent with every batch, so bigger batches mean fewer repeats), and a news headline the model already judged unrelated to any conflict is not sent again for a day.

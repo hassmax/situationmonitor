@@ -43,9 +43,11 @@ jobs:
         run: |
           python -m unittest discover -s pipeline -p 'test_event_grouping.py'
           python -m unittest discover -s pipeline -p 'test_source_evidence.py'
+          python -m unittest discover -s pipeline -p 'test_share.py'
           node --check site/app.js
           node tests/event-grouping.cjs
           node tests/source-evidence.cjs
+          node tests/event-sharing.cjs
 
       - name: Load the data branch (state and archive)
         env:
@@ -83,6 +85,20 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: python pipeline/run.py --state state --out out
 
+      - name: Build site and event previews
+        env:
+          DASHBOARD_URL: ${{ vars.DASHBOARD_URL }}
+        run: |
+          mkdir -p _site/data
+          cp -r site/. _site/
+          cp out/events.json _site/data/events.json
+          cp -r out/reports _site/data/reports
+          # each version of the code gets its own address (app.js?v=<commit>), so browsers fetch it
+          # afresh after an update instead of running a cached copy against newer data
+          sed -i "s/__BUILD__/${GITHUB_SHA:0:12}/g" _site/index.html
+
+          python pipeline/share.py --data out --archive state/archive --out _site --cache state/share-images
+
       - name: Save state and archive to the data branch
         env:
           TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -98,16 +114,6 @@ jobs:
           git commit -q -m "State $(date -u +%Y-%m-%dT%H:%MZ)"
           git push -q --force "https://x-access-token:${TOKEN}@github.com/${GITHUB_REPOSITORY}.git" snapshot:data
 
-      - name: Build site
-        run: |
-          mkdir -p _site/data
-          cp -r site/. _site/
-          cp out/events.json _site/data/events.json
-          cp -r out/reports _site/data/reports
-          # each version of the code gets its own address (app.js?v=<commit>), so browsers fetch it
-          # afresh after an update instead of running a cached copy against newer data
-          sed -i "s/__BUILD__/${GITHUB_SHA:0:12}/g" _site/index.html
-
       - uses: actions/configure-pages@v5
 
       - uses: actions/upload-pages-artifact@v3
@@ -116,3 +122,4 @@ jobs:
 
       - id: deploy
         uses: actions/deploy-pages@v4
+
