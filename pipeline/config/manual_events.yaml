@@ -1,0 +1,24 @@
+# Manually verified editorial entries, imported by pipeline/run.py each update.
+# Reports that merely repeat the same underlying New York Times account count as one source.
+events:
+  - id: manual-pakistan-houthi-airstrikes-20261008
+    theater: mideast
+    type: airstrike
+    summary: "The New York Times reports, citing an anonymous senior Pakistani military official, that Pakistani fighter jets have participated in strikes against Houthi targets in Yemen. Pakistan has not publicly confirmed offensive strikes."
+    place: Yemen (location unspecified)
+    country: Yemen
+    attacker: Pakistan (reported)
+    lat: 15.37
+    lon: 44.19
+    approx: true
+    severity: 3
+    time: "2026-10-08T09:40:00+00:00"
+    reports:
+      - source: Defence Blog (citing New York Times)
+        platform: news
+        kind: news
+        group: nyt-pakistan-houthi-report
+        weight: 4
+        url: https://defence-blog.com/pakistan-joins-saudi-airstrikes-on-yemens-houthis-report/
+        time: "2026-10-08T09:40:00+00:00"
+        summary: "New York Times cited an anonymous Pakistani military official reporting Pakistani fighter jets striking Houthi targets. No public Pakistan Air Force confirmation; precise strike locations and dates unspecified."
