@@ -13,6 +13,7 @@ import argparse
 import os
 import sys
 import time
+import yaml
 from datetime import timedelta
 from pathlib import Path
 
@@ -260,6 +261,21 @@ def main() -> int:
     merge.own_procurement(events)  # a country buying from its own industry is arms production, not a route
     merge.carrier_moves(events)  # a carrier's own move is shown by its track, not as a supply route
     merge.drone_strikes(events)  # stored drone and missile attacks filed as airstrikes
+    # Editorially sourced manual events are reloaded on every run, surviving generated-data refreshes.
+    manual_path = config_mod.CONFIG_DIR / "manual_events.yaml"
+    if manual_path.exists():
+        manual = (yaml.safe_load(manual_path.read_text(encoding="utf-8")) or {}).get("events") or []
+        existing_ids = {e["id"] for e in events}
+        for entry in manual:
+            if entry["id"] in existing_ids or entry["id"] in cfg.removed or entry["id"] in hidden:
+                continue
+            if hours_since(entry["time"], t0) > settings["event_retention_days"] * 24:
+                continue
+            event = {**entry, "alert": False, "approx": entry.get("approx", True),
+                     "killed": None, "injured": None, "updated": iso(t0),
+                     "reports": [{**r, "platform": r.get("platform", "news")} for r in entry["reports"]]}
+            events.append(event)
+            existing_ids.add(entry["id"])
     events = merge.prune(events, t0, settings["event_retention_days"], settings["max_events"])
     events = corrections.drop_reports(events, fixes)  # before scoring, so confidence is recomputed
     merge.apply_status(events, cells)
