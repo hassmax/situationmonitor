@@ -568,6 +568,43 @@ def carrier_moves(events: list[dict]) -> int:
     return changed
 
 
+# A delivery that "ends" in the supplier's own country (Morocco's F-16 maiden flight in Greenville, a German
+# F-35 arriving at Ebbing Air National Guard Base for training, 2026-10-07) never left the supplier: the
+# recipient's aircraft is at the supplier's site. Arriving, training and exercising there is the recipient's
+# own forces moving (supplier = recipient, drawn faint from home); a first flight, handover or test is no
+# movement at all, so no route, just a marker where it happened.
+VISIT_RE = re.compile(r"\b(?:arriv\w*|train\w*|exercis\w*|visit\w*|deploy\w*|participat\w*|drills?)\b", re.I)
+
+
+def deliveries_at_supplier(events: list[dict]) -> int:
+    from audit import _country_km
+    changed = 0
+    for e in events:
+        t = e.get("transfer") or {}
+        to = t.get("to") or {}
+        sup, rec = t.get("supplier"), t.get("recipient")
+        if e.get("type") != "arms_transfer" or not sup or not rec or sup == rec or tkind_of(t) != "delivery" \
+                or to.get("lat") is None or to.get("region"):
+            continue
+        if _country_km(sup, to["lat"], to["lon"]) != 0.0 or _country_km(rec, to["lat"], to["lon"]) in (0.0, None):
+            continue
+        if VISIT_RE.search(e.get("summary") or ""):
+            frm = t.get("from") or {}
+            if frm.get("lat") is not None and _country_km(sup, frm["lat"], frm["lon"]) == 0.0:
+                t["from"] = None                      # it came from home, not from the supplier's plant
+            t["supplier"] = rec
+        else:
+            e["transfer"] = None
+        changed += 1
+    if changed:
+        log(f"[merge] {changed} deliveries ending in the supplier's own country, shown as the recipient's own move or a marker")
+    return changed
+
+
+def tkind_of(t: dict) -> str:
+    return t.get("kind") or "delivery"
+
+
 # Drone and missile attacks filed as airstrikes get no launch lines (2026-10-07: "Russian drone strikes
 # in Ukraine not showing launch paths": "Ukraine's air defense intercepted 5 ballistic missiles and 117
 # drones" was an airstrike). An airstrike whose words are about drones or missiles, and not about

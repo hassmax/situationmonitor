@@ -260,6 +260,7 @@ def main() -> int:
     geo.pin_commands(events)  # events placed at a US command go to its region (not its headquarters)
     merge.own_procurement(events)  # a country buying from its own industry is arms production, not a route
     merge.carrier_moves(events)  # a carrier's own move is shown by its track, not as a supply route
+    merge.deliveries_at_supplier(events)  # a "delivery" ending in the supplier's own country never left it
     merge.drone_strikes(events)  # stored drone and missile attacks filed as airstrikes
     # Editorially sourced manual events are reloaded on every run, surviving generated-data refreshes.
     manual_path = config_mod.CONFIG_DIR / "manual_events.yaml"
