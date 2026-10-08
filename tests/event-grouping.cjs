@@ -5,7 +5,7 @@ const source = fs.readFileSync(__dirname + '/../site/app.js', 'utf8');
 const constant = name => source.match(new RegExp('^  const ' + name + ' = .*$', 'm'))[0];
 const section = (from, to) => source.slice(source.indexOf(from), source.indexOf(to, source.indexOf(from)));
 const now = Date.now(), HOUR = 3600000, DAY = HOUR * 24;
-const S = { windowH: 24, theaterOn: new Set(['indo-pacific']), theaters: [],
+const S = { windowH: 24, region: 'world', theaters: [],
   statusOn: new Set(['unconfirmed']), off: new Set(), query: '', data: null, selectedId: null };
 class Clock extends Date { static now() { return now; } }
 const context = { S, HOUR, DAY, Date: Clock, LIVE_MS: 6 * HOUR, viewed: {}, lastSeen: now - HOUR,

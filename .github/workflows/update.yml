@@ -45,6 +45,7 @@ jobs:
           python -m unittest discover -s pipeline -p 'test_source_evidence.py'
           python -m unittest discover -s pipeline -p 'test_share.py'
           node --check site/app.js
+          node tests/theater-focus.cjs
           node tests/event-grouping.cjs
           node tests/source-evidence.cjs
           node tests/event-sharing.cjs

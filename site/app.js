@@ -274,7 +274,7 @@
     data: null,
     theaters: FALLBACK_THEATERS,
     windowH: 24,
-    theaterOn: new Set(FALLBACK_THEATERS.map((t) => t.id)),
+    region: "world",  // worldwide, one theater id, or null (all regions hidden)
     statusOn: new Set(Object.keys(STATUS)),
     layers: { paths: true, supply: true, carriers: true },
     off: new Set(),  // "On the map" entries switched off
@@ -669,7 +669,7 @@
     .pointLat("lat").pointLng("lon")
     .pointAltitude(0.005)
     .pointRadius((d) => (d.alert ? 0.09 : 0.13) * zoomK)
-    .pointColor((d) => rgba(CAT_RGB.strike, (d.alert ? 0.5 : STATUS[d.ref.status].alpha) * dimOf(d.ref.id === S.selectedId)))
+    .pointColor((d) => rgba(CAT_RGB.strike, (d.alert ? 0.5 : STATUS[d.ref.status].alpha) * dimOf(d.ref.id === S.selectedId, true)))
     .pointResolution(8)
     .pointLabel((d) => `<div class="tip"><div class="tip-meta"><b>${esc(d.place || "Location")}</b><span>${d.alert ? "named in an alert" : "part of an attack wave"}</span></div><div class="tip-sum">${esc(d.ref.summary)}</div></div>`)
     .onPointHover((d) => { globeEl.style.cursor = d ? "pointer" : ""; })
@@ -1469,10 +1469,9 @@
     }).sort((a, b) => (a.at_home === b.at_home ? a.hull.localeCompare(b.hull) : a.at_home ? 1 : -1));
     S.fleetMeta = data.fleet_meta || {};
     const theaters = Array.isArray(data.theaters) && data.theaters.length ? data.theaters : FALLBACK_THEATERS;
-    if (S.firstLoad) S.theaterOn = new Set(theaters.map((t) => t.id));
-    else theaters.forEach((t) => { if (!S.theaters.some((x) => x.id === t.id)) S.theaterOn.add(t.id); });
     S.theaters = theaters;
-    S.hot = new Set(theaters.flatMap((t) => t.highlight || []));
+    if (S.region !== "world" && S.region !== null && !selectedRegion()) S.region = "world";
+    syncRegionControls();
     checkBuild(data);
     const before = S.data ? new Set(S.data.events.map((e) => e.id)) : null;
     S.data = data;
@@ -1484,7 +1483,7 @@
         S.arrived = new Set(fresh.map((e) => e.id));
         setTimeout(() => { S.arrived = null; }, 1500);
         // a serious new event marks its arrival with one ring spreading from its spot on the globe
-        fresh.filter((e) => passes(e) && e.severity >= 2).slice(0, 8).forEach((e, i) => setTimeout(() => landRing(e), i * 250));
+        fresh.filter((e) => passes(e) && e.severity >= 2).slice(0, 8).forEach((e, i) => setTimeout(() => { if (passes(e)) landRing(e); }, i * 250));
       }
     }
 
@@ -1567,8 +1566,8 @@
     return wordsList;
   };
   const matches = (e) => words().every((w) => e._search.includes(w));
-  const unlisted = () => new Set(S.theaters.filter((t) => t.listed === false).map((t) => t.id));
-  const theaterShown = (id) => S.theaterOn.has(id) || unlisted().has(id);
+  const selectedRegion = () => S.theaters.find((t) => t.id === S.region && t.listed !== false);
+  const theaterShown = (id) => S.region === "world" || (S.region !== null && S.region === id);
   // Every time window follows when the event happened, even when new coverage arrives later.
   const hasFollowup = (e) => !e.alert && !e.possibly_old && onMap(e) && e._tu >= e._t + DAY;
   function passes(e, ignoreTheater = false) {
@@ -1639,7 +1638,7 @@
   // styles.css, under body.focus; lines, dots and rings here), so what you opened stands out.
   const focused = () => !!(S.selectedId || S.selectedHull || S.selectedFlow);
   const FOCUS_DIM = 0.28;
-  const dimOf = (isSelected) => (focused() && !isSelected ? FOCUS_DIM : 1);
+  const dimOf = (isSelected, inRegion = false) => ((!isSelected && (focused() || (selectedRegion() && !inRegion))) ? FOCUS_DIM : 1);
 
   // ------------------------------------------------------------------ supply routes (the time window)
   // Routes follow the time filter like everything else: a route shows, and is active, when a
@@ -1742,7 +1741,7 @@
     }
   }
   // On the globe: carriers at sea, carriers that moved this week (so a return home is visible), and the one you selected.
-  const carrierOnMap = (c) => S.layers.carriers && (!c.at_home || (c._moved && Date.now() - c._moved < 7 * DAY) || c.hull === S.selectedHull);
+  const carrierOnMap = (c) => S.region !== null && S.layers.carriers && (!c.at_home || (c._moved && Date.now() - c._moved < 7 * DAY) || c.hull === S.selectedHull);
   const sailed = new Set();
   let sailing = false;
   function sailRecentMoves() {
@@ -1780,7 +1779,7 @@
       if (arcs.length >= MAX_LAUNCH_PATHS) return;
       const dist = km(o.lat, o.lon, d.lat, d.lon);
       if (dist < 25 || (approx && dist > 1800)) return;
-      const dim = dimOf(e.id === S.selectedId);
+      const dim = dimOf(e.id === S.selectedId, true);
       const a = Math.min(1, STATUS[e.status].alpha * fade(e) * (approx ? 0.65 : 1.15)) * dim;
       const pathKey = `atk|${e.id}|${o.lat},${o.lon}>${d.lat},${d.lon}`;
       arcs.push(keyed({ ref: e, sLat: o.lat, sLng: o.lon, eLat: d.lat, eLng: d.lon, kind: barrage ? "barrage" : approx ? "strikeApprox" : "strike",
@@ -1852,7 +1851,7 @@
       if (!start || !end) continue;
       const pts = [start, ...(named ? f.via : []), end];
       const stroke = clamp(0.22 + 0.2 * Math.log2(1 + f.deliveries), 0.22, 1.1);
-      const alpha = (named ? 0.75 : 0.4) * (S.selectedFlow === f.key ? 1.3 : 1) * dimOf(S.selectedFlow === f.key);
+      const alpha = (named ? 0.75 : 0.4) * (S.selectedFlow === f.key ? 1.3 : 1) * dimOf(S.selectedFlow === f.key, true);
       const sea = f.modes.length === 1 && f.modes[0] === "sea";
       for (let i = 0; i < pts.length - 1; i++) {
         const a = pts[i], b = pts[i + 1];
@@ -2097,6 +2096,7 @@
     if (routeBurst && !S.supply.flows.some((f) => f.key === routeBurst.key)) stopRouteBurst();
     newFrame();
     document.body.classList.toggle("focus", focused());
+    document.body.classList.toggle("region-focused", !!selectedRegion());
 
     // HTML markers: events (labels on the most important, and on alert groups), carriers
     const labelled = new Set(mapEvents.filter((e) => e.severity >= 3 || e.wave).sort((a, b) => b.severity - a.severity || b._t - a._t).slice(0, 5).map((e) => e.id));
@@ -2126,7 +2126,7 @@
         if (!e.wave || !isLive(e)) continue;
         e.targets.slice(0, 12).forEach((t, i) => {
           if (rings.length >= 30) return;
-          rings.push(stable("rings", `wave|${e.id}|${i}`, { lat: t.lat, lon: t.lon, rgb: CAT_RGB.strike, alpha: 0.55 * dimOf(e.id === S.selectedId), max: 1.6, speed: 1.2, period: 1500 + Math.random() * 1500 }));
+          rings.push(stable("rings", `wave|${e.id}|${i}`, { lat: t.lat, lon: t.lon, rgb: CAT_RGB.strike, alpha: 0.55 * dimOf(e.id === S.selectedId, true), max: 1.6, speed: 1.2, period: 1500 + Math.random() * 1500 }));
         });
       }
     }
@@ -2256,7 +2256,7 @@
   }
   function briefHtml() {
     const a = S.data && S.data.analysis;
-    if (!a || !a.generated_at) return "";
+    if (!a || !a.generated_at || S.region === null) return "";
     const byId = new Map(S.data.events.map((e) => [e.id, e]));
     const cites = (ids) => {
       const found = (ids || []).filter((i) => byId.has(i));
@@ -2272,7 +2272,9 @@
     // flights the judgment cites: what each aircraft's transponder showed, linked to it on adsb.lol
     const flown = (list) => (list || []).length ? `<span class="cites">${list.map((f) =>
       `<a class="cite cite-flight" href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener noreferrer" title="${esc(f.what)}">${esc(f.label)}</a>`).join("")}</span>` : "";
-    const regions = (a.regions || []).filter((r) => (r.judgments || []).length);
+    const regions = (a.regions || []).filter((r) => theaterShown(r.theater) && (r.judgments || []).length);
+    if (!regions.length && S.region !== "world") return "";
+    const scope = selectedRegion()?.name || "All regions";
     const judgmentHtml = (j, compact = false) => {
       const [mark, word] = TREND[j.trend] || TREND.steady;
       return `<div class="an-item trend-${esc(j.trend)}">
@@ -2285,7 +2287,7 @@
     const lead = highlights.length ? `<ol class="brief-highlights">${highlights.map(({ region, judgment }) => `<li>
       <button class="an-name" type="button" data-fly="${esc(region.theater)}" title="Fly to ${esc(region.name)}">${esc(region.name)}</button>
       ${judgmentHtml(judgment, true)}</li>`).join("")}</ol>`
-      : `<p class="an-empty">No clear change in any region in the last ${esc(a.window_hours || 6)} hours.</p>`;
+      : `<p class="an-empty">No clear change in ${esc(scope.toLowerCase())} in the last ${esc(a.window_hours || 6)} hours.</p>`;
     const body = regions.map((r) => `
       <div class="an-region">
         <button class="an-name" type="button" data-fly="${esc(r.theater)}" title="Fly to ${esc(r.name)}">${esc(r.name)}</button>
@@ -2296,15 +2298,15 @@
     return `<li class="brief analysis"><section aria-labelledby="briefTitle">
       <div class="brief-head"><h3 id="briefTitle">Situation brief</h3>
         <time datetime="${esc(a.generated_at)}">Written ${esc(ago(Date.parse(a.generated_at)))}</time></div>
-      <p class="an-sub">${highlights.length ? `${highlights.length} selected ${highlights.length === 1 ? "development" : "developments"} · ` : ""}All regions · last ${esc(a.window_hours || 6)} hours</p>
+      <p class="an-sub">${highlights.length ? `${highlights.length} selected ${highlights.length === 1 ? "development" : "developments"} · ` : ""}${esc(scope)} · last ${esc(a.window_hours || 6)} hours</p>
       <p class="brief-note">Machine-written. Expand the regional analysis for the reasoning.</p>
       ${stale ? '<p class="brief-stale" role="status">This analysis is over 3 hours old. Check the latest events below for newer reporting.</p>' : ""}
       ${lead}
       ${regions.length ? `<details class="brief-disclosure" data-brief-section="regions"${S.briefOpen.has("regions") ? " open" : ""}>
-        <summary>All regional analysis (${regions.reduce((n, r) => n + r.judgments.length, 0)})</summary>${body}</details>` : ""}
+        <summary>${S.region === "world" ? "All regional analysis" : "Regional analysis"} (${regions.reduce((n, r) => n + r.judgments.length, 0)})</summary>${body}</details>` : ""}
       <details class="brief-disclosure brief-method" data-brief-section="method"${S.briefOpen.has("method") ? " open" : ""}>
         <summary>How to read this brief</summary>
-        <p class="brief-note">Highlights prioritize changes, then confidence, then the latest cited event, with one development per region. The full regional analysis includes every judgment. This global brief uses its own ${esc(a.window_hours || 6)}-hour window against the ${esc(a.context_days || 3)} days before; map filters do not change it.</p>
+        <p class="brief-note">Highlights prioritize changes, then confidence, then the latest cited event, with one development per region. The full regional analysis includes every judgment. The region selection applies to this brief. Its analysis uses its own ${esc(a.window_hours || 6)}-hour window against the ${esc(a.context_days || 3)} days before; time, confidence, type and search filters do not change it.</p>
         <p class="brief-note">Machine-written analysis of this map's own events${a.by ? ` by ${esc(a.by)}` : ""}. Confidence comes from the cited events and tracked flights. Transponders show where aircraft went, not why. Open the evidence before relying on a judgment.</p>
       </details>
       ${a.flight_credit ? `<p class="brief-note"><a href="${esc(safeUrl(a.flight_credit.url || "https://opendatacommons.org/licenses/odbl/1-0/"))}" target="_blank" rel="noopener noreferrer">${esc(a.flight_credit.text || "Flight data: adsb.lol contributors")}</a>.</p>` : ""}
@@ -2318,8 +2320,12 @@
     const top = briefHtml();
     $("#feedCount").textContent = `${events.length}`;
     if (!events.length) {
+      if (S.region === null) {
+        list.innerHTML = '<li class="empty"><strong>All regions are hidden.</strong>Choose a theater or Worldwide to show events.</li>';
+        return;
+      }
       list.innerHTML = top + (S.data.events.length
-        ? `<li class="empty"><strong>Nothing matches these filters.</strong>Widen the time window, or turn more kinds of events, theaters, or confidence levels back on.</li>`
+        ? `<li class="empty"><strong>Nothing matches these filters.</strong>Widen the time window, choose Worldwide, or show more event types or confidence levels.</li>`
         : `<li class="empty"><strong>No events in the last 7 days yet.</strong>The pipeline is running. New events appear here as sources report them.</li>`);
       return;
     }
@@ -2342,16 +2348,18 @@
   }
 
   function renderSideLists() {
-    // carriers: all 11, at sea first
-    const at = S.fleet.filter((c) => !c.at_home).length;
-    $("#fleetNote").textContent = S.fleet.length ? `${at} of ${S.fleet.length} at sea` : "";
-    $("#fleetList").innerHTML = S.fleet.length ? S.fleet.map((c) => `
+    // Carrier positions are global context, dimmed in regional focus.
+    const fleet = S.region === null ? [] : S.fleet;
+    const at = fleet.filter((c) => !c.at_home).length;
+    $("#fleetNote").textContent = fleet.length ? `${at} of ${fleet.length} at sea` : "";
+    $("#fleetList").innerHTML = fleet.length ? fleet.map((c) => `
       <li><button class="side-row${c.hull === S.selectedHull ? " is-selected" : ""}${c.at_home ? " is-home" : ""}" type="button" data-hull="${esc(c.hull)}">
         ${iconBadge("carrier", "fleet", c.at_home ? "outline" : "solid", "ico-sm")}
         <span class="side-name">${esc(c.short || c.name)}</span>
         <span class="side-meta">${esc(c.heading_to ? `→ ${c.heading_to.place || "en route"}` : c.at_home ? (c.place || "").split(/[,(]/)[0].trim() : c.place || "")}</span>
       </button></li>`).join("")
-      : '<li class="muted small">No positions yet. They come from USNI News\u2019 daily Fleet and Marine Tracker.</li>';
+      : S.region === null ? '<li class="muted small">Regions are hidden. Choose a theater or Worldwide to show positions.</li>'
+        : '<li class="muted small">No positions yet. They come from USNI News\u2019 daily Fleet and Marine Tracker.</li>';
     // supply routes
     const rows = [];
     S.supply.flows.forEach((f) => rows.push(`
@@ -2371,18 +2379,45 @@
     if (note) note.textContent = windowText();
   }
 
-  const CROSSHAIR = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3"/></svg>`;
+  function syncRegionControls() {
+    const region = selectedRegion();
+    S.hot = new Set((S.region === "world" ? S.theaters : region ? [region] : []).flatMap((t) => t.highlight || []));
+    document.querySelectorAll("[data-region]").forEach((b) => {
+      const active = b.dataset.region === (S.region === null ? "none" : S.region);
+      b.setAttribute("aria-pressed", String(active));
+    });
+    $("#regionFocus").hidden = !region;
+    $("#regionName").textContent = region ? region.name : "";
+  }
+
   function renderTheaters() {
-    // A theater with listed: false (worldwide treaty and sanctions steps) has no row of its own: its
-    // events are diplomacy, shown and hidden with "Diplomacy, legal" in the map key.
+    // Unlisted worldwide commitments appear only in Worldwide, not in a regional focus.
     $("#theaterList").innerHTML = S.theaters.filter((t) => t.listed !== false).map((t) => `
-      <li><label class="check check--theater">
-          <input type="checkbox" data-theater="${esc(t.id)}" ${S.theaterOn.has(t.id) ? "checked" : ""}>
-          <span class="box" aria-hidden="true"></span><span class="label">${esc(t.name)}</span>
-          <span class="spark" data-spark="${esc(t.id)}" aria-hidden="true"></span><span class="count" data-count="${esc(t.id)}"></span>
-        </label>
-        ${t.camera ? `<button class="fly" type="button" data-fly="${esc(t.id)}" aria-label="Fly to ${esc(t.name)}" title="Fly to ${esc(t.name)}">${CROSSHAIR}</button>` : '<span class="fly" aria-hidden="true"></span>'}
-      </li>`).join("");
+      <li><button class="region-btn" type="button" data-region="${esc(t.id)}" aria-pressed="${S.region === t.id}" aria-label="Focus on ${esc(t.name)}">
+        <span class="region-mark" aria-hidden="true"></span><span class="region-label">${esc(t.name)}</span>
+        <span class="spark" data-spark="${esc(t.id)}" aria-hidden="true"></span><span class="count" data-count="${esc(t.id)}" aria-hidden="true"></span>
+      </button></li>`).join("");
+    syncRegionControls();
+  }
+
+  function selectRegion(id) {
+    const region = id === "none" ? null : id;
+    const theater = S.theaters.find((t) => t.id === region && t.listed !== false);
+    if (region !== null && region !== "world" && !theater) return;
+    S.region = region;
+    S.lastFocus = null;
+    closeFly();
+    hotEvent(null);
+    syncRegionControls();
+    closeDetail();  // stops event/route playback, clears the share hash, and returns to the list
+    $("#feedList").scrollTop = 0;
+    $("#focusToast").hidden = true;
+    const camera = theater ? theater.camera : region === "world" ? { lat: 25, lng: 10, altitude: 2.6 } : null;
+    if (camera) {
+      const altitude = isMobile() ? camera.altitude + 0.5 : camera.altitude;
+      world.pointOfView({ ...camera, altitude }, reduceMotion ? 0 : flyMs(camera.lat, camera.lng, altitude));
+    }
+    if (isMobile()) toggleFilters(false);
   }
 
   function renderCounts() {
@@ -2840,7 +2875,6 @@
     });
     $("#filters").addEventListener("change", (ev) => {
       const t = ev.target;
-      if (t.dataset.theater) t.checked ? S.theaterOn.add(t.dataset.theater) : S.theaterOn.delete(t.dataset.theater);
       if (t.dataset.status) t.checked ? S.statusOn.add(t.dataset.status) : S.statusOn.delete(t.dataset.status);
       renderSoon();
     });
@@ -2857,7 +2891,12 @@
       document.querySelectorAll("[data-legend]").forEach((b) => S.off.add(b.dataset.legend));
       legendChanged();
     });
+    $("#regionFocus").addEventListener("click", (ev) => {
+      if (ev.target.closest("[data-region]")) selectRegion("world");
+    });
     $("#filters").addEventListener("click", (ev) => {
+      const region = ev.target.closest("[data-region]");
+      if (region) { selectRegion(region.dataset.region); return; }
       const hull = ev.target.closest("[data-hull]");
       if (hull) { selectCarrier(hull.dataset.hull, true); return; }
       const flow = ev.target.closest("[data-flow]");
@@ -2865,7 +2904,7 @@
       const fly = ev.target.closest("[data-fly]");
       if (!fly) return;
       const t = S.theaters.find((x) => x.id === fly.dataset.fly);
-      if (t && t.camera) { world.pointOfView(t.camera, reduceMotion ? 0 : flyMs(t.camera.lat, t.camera.lng, t.camera.altitude)); if (isMobile()) toggleFilters(false); }
+      if (t) selectRegion(t.id);
     });
     $("#sourcesToggle").addEventListener("click", () => {
       const list = $("#sourcesList");
@@ -2891,7 +2930,7 @@
       if (b) { S.lastFocus = b.dataset.id; select(b.dataset.id, true); return; }
       const fly = ev.target.closest("[data-fly]");
       const t = fly && S.theaters.find((x) => x.id === fly.dataset.fly);
-      if (t && t.camera) world.pointOfView(t.camera, reduceMotion ? 0 : flyMs(t.camera.lat, t.camera.lng, t.camera.altitude));
+      if (t) selectRegion(t.id);
     });
     let searchTimer;
     $("#search").addEventListener("focus", () => { if (isMobile()) setSheet(2); });
@@ -2912,6 +2951,7 @@
         closeFly();
         if (!$("#detail").hidden) closeDetail();
         else if ($("#filters").classList.contains("open")) toggleFilters(false);
+        else if (selectedRegion()) selectRegion("world");
       }
       if (typing) return;
       if (ev.key === "/") { ev.preventDefault(); if (!$("#detail").hidden) closeDetail(); $("#search").focus(); }

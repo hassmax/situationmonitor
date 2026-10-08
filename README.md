@@ -260,3 +260,7 @@ Share pages use the same globe and open the selected event directly. Published a
 | Telegram sources show "session is not authorised" | The session was revoked. Run `make_telegram_session.py` again and replace `TG_SESSION`. |
 | Telegram sources show "TG_SESSION looks wrong" | Something other than the session line got pasted. Copy only the single line starting with `1`. |
 | A source shows an error in the Sources panel | The feed moved or the handle changed. Fix or set `disabled: true` in `sources.yaml`. |
+
+### Regional focus and typography
+
+Theaters are the first filter section. Choose one theater to focus the globe, event list, counts and supply routes on that region. Worldwide shows every region, including worldwide commitments; Hide all hides all regional events and carrier markers. Selecting a different theater replaces the previous selection. The region focus bar returns to Worldwide, and Escape returns to Worldwide after closing any open detail or filter panel. Opening an alert inside a region adds the usual alert focus; returning to the list keeps the region selected. The situation brief shows only the selected region; carrier positions remain dimmed global context. Time, event-type, confidence and search filters continue to apply to events. Live refreshes preserve the selected region (or Hide all); a removed theater falls back to Worldwide. The interface uses Inter with standard system fallbacks, normal letter widths, restrained headings and tabular figures.
