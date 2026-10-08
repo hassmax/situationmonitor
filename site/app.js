@@ -1599,13 +1599,21 @@
   // from the launch area to the place hit, one after another, and a small ring marks the arrival.
   // Same lines as on the map (attackPaths), so faint assumed launch areas stay as faint as before.
   let launchTimers = [];
-  function playLaunches(e, flight) {
+  const launchShots = new Set();
+  function stopLaunches() {
     launchTimers.forEach(clearTimeout);
     launchTimers = [];
+    if (!launchShots.size) return;
+    launchShots.forEach((a) => extraArcs.delete(a));
+    launchShots.clear();
+    pushArcs();
+  }
+  function playLaunches(e, flight) {
+    stopLaunches();
     if (reduceMotion || !S.layers.paths) return;
     const all = attackPaths([e]);
     const barrage = all.some((a) => a.barrage);
-    const paths = all.slice(0, barrage ? 32 : 16);
+    const paths = all.slice(0, PHONE ? 4 : barrage ? 32 : 16);
     if (!paths.length) return;
     const lead = Math.max(150, flight - 100);  // let the camera arrive first
     const gap = barrage ? 70 : 160;            // a barrage's lines fire close together
@@ -1614,9 +1622,11 @@
       launchTimers.push(setTimeout(() => {
         const shot = { sLat: a.sLat, sLng: a.sLng, eLat: a.eLat, eLng: a.eLng, kind: "shot", ms, seed: 1,
           color: rgba([255, 226, 204], a.kind === "strike" ? 1 : 0.75), stroke: a.kind === "strike" ? 1.3 : 0.9 };
+        launchShots.add(shot);
         extraArcs.add(shot);
         pushArcs();
         launchTimers.push(setTimeout(() => {
+          launchShots.delete(shot);
           extraArcs.delete(shot);
           pushArcs();
           flashRing(a.eLat, a.eLng, CAT_RGB.strike, 1.8, 900);
@@ -1755,10 +1765,11 @@
   }
 
   // ------------------------------------------------------------------ build layers
-  // Each 25 reported launches adds another faint dashed path, capped at 40 per attack.
+  // Each 25 reported launches adds another faint dashed path, within the device budget.
   // Repeated paths convey volume from known origins; they are not observed flight tracks.
   const LAUNCHED = new Set(["missile_drone", "air_defense", "airstrike"]);   // kinds drawn with launch lines
-  const MAX_BARRAGE_LINES = 40;   // per attack
+  const MAX_BARRAGE_LINES = PHONE ? 8 : 40;   // per attack
+  const MAX_LAUNCH_PATHS = PHONE ? 24 : 180;  // hard limit across all attacks
   // A reported launch count adds one visual path per 25 items, capped to keep busy maps readable.
   const launchPathCount = (e) => Number.isFinite(Number(e.launched)) && Number(e.launched) > 0
     ? clamp(Math.ceil(Number(e.launched) / 25), 1, MAX_BARRAGE_LINES) : 1;
@@ -1766,6 +1777,7 @@
     const arcs = [];
     if (!S.layers.paths) return arcs;
     const push = (e, o, d, approx, barrage, line = 0) => {
+      if (arcs.length >= MAX_LAUNCH_PATHS) return;
       const dist = km(o.lat, o.lon, d.lat, d.lon);
       if (dist < 25 || (approx && dist > 1800)) return;
       const dim = dimOf(e.id === S.selectedId);
@@ -1781,10 +1793,13 @@
       const anchors = launchAreas(e);
       const from = nearestN(anchors, d, Math.min(count, anchors.length));
       if (!from.length) return;
-      for (let i = 0; i < count; i++) push(e, from[i % from.length], d, true, barrage, first + i);
+      for (let i = 0; i < count && arcs.length < MAX_LAUNCH_PATHS; i++) push(e, from[i % from.length], d, true, barrage, first + i);
     };
-    for (const e of events) {
-      if (arcs.length >= 180) break;
+    // An opened event keeps its paths even when the phone's small budget is full.
+    const selected = PHONE && events.find((e) => e.id === S.selectedId);
+    const ordered = selected ? [selected, ...events.filter((e) => e !== selected)] : events;
+    for (const e of ordered) {
+      if (arcs.length >= MAX_LAUNCH_PATHS) break;
       // Drone/missile waves and airstrikes can use configured nearby launch areas when none are named.
       if (!LAUNCHED.has(e.type) && !originsOf(e).length) continue;
       // A launch "from Yemen" names no site: skip the country center and use known Houthi areas instead.
@@ -1792,17 +1807,18 @@
       const start = arcs.length;
       if (e.wave) {
         const targets = (e.targets.length ? e.targets.slice(0, 16) : [e]);
-        const total = Math.min(MAX_BARRAGE_LINES, targets.length + Math.max(0, launchPathCount(e) - 1));
+        const total = Math.min(MAX_BARRAGE_LINES, MAX_LAUNCH_PATHS - arcs.length, targets.length + Math.max(0, launchPathCount(e) - 1));
         const barrage = launchPathCount(e) > 1;
         for (let i = 0; i < total; i++) {
-          const d = targets[i % targets.length];
+          // Sample actual reported targets across the wave when the phone cap is smaller.
+          const d = targets[Math.floor(i * targets.length / Math.min(total, targets.length)) % targets.length];
           const o = nearest(origins, d);
           if (o) push(e, o, d, false, barrage, i);
           else assumed(e, d, 1, i, barrage);
         }
       } else if (origins.length) {
         const named = nearestN(origins, e, Math.min(3, origins.length));
-        const total = Math.min(MAX_BARRAGE_LINES, named.length + Math.max(0, launchPathCount(e) - 1));
+        const total = Math.min(MAX_BARRAGE_LINES, MAX_LAUNCH_PATHS - arcs.length, named.length + Math.max(0, launchPathCount(e) - 1));
         const barrage = launchPathCount(e) > 1;
         for (let i = 0; i < total; i++) push(e, named[i % named.length], e, false, barrage, i);
       } else if (e.type === "missile_drone" || e.type === "airstrike") assumed(e, e);
@@ -2415,6 +2431,7 @@
   }
   function hideDetail() { $("#detail").hidden = true; $("#feedList").hidden = false; $("#feedHead").hidden = false; }
   function closeDetail() {
+    stopLaunches();
     S.selectedId = null; S.selectedHull = null; S.selectedFlow = null;
     history.replaceState(null, "", APP_ROOT.pathname + location.search);
     document.title = "Global Situation Monitor";
@@ -2519,6 +2536,7 @@
       world.pointOfView({ lat: e.lat, lng: e.lon, altitude: alt }, flight);
     }
     if (fresh && !e._archived) playLaunches(e, flight);
+    else if (fresh) stopLaunches();
     renderEventDetail(e);
     renderSoon();  // the details show at once; the globe follows a frame later
   }
@@ -2599,6 +2617,7 @@
     const s = S.supply;
     const f = (pledge ? s.pledges : s.flows).find((x) => x.key === key) || s.flows.find((x) => x.key === key) || s.pledges.find((x) => x.key === key);
     if (!f) return;
+    stopLaunches();
     S.selectedFlow = key; S.selectedId = null; S.selectedHull = null;
     const a = f.from || countryCenter(f.supplier), b = f.to || countryCenter(f.recipient);
     if (a && b) { const mid = slerp(a, b, 0.5); zoomTo(mid.lat, mid.lon, clamp(0.6 + km(a.lat, a.lon, b.lat, b.lon) / 5000, 1.1, 2.6)); }
@@ -2626,6 +2645,7 @@
   function selectCarrier(hull, fly) {
     const c = S.fleet.find((x) => x.hull === hull);
     if (!c) return;
+    stopLaunches();
     S.selectedHull = hull; S.selectedId = null; S.selectedFlow = null;
     history.replaceState(null, "", APP_ROOT.pathname + location.search + "#" + encodeURIComponent(hull));
     document.title = "Global Situation Monitor";
@@ -2718,6 +2738,7 @@
     const items = document.querySelectorAll("[data-legend]");
     items.forEach((b) => b.setAttribute("aria-pressed", String(!S.off.has(b.dataset.legend))));
     S.layers = { paths: !S.off.has("paths"), supply: !S.off.has("crate"), carriers: !S.off.has("carrier") };
+    if (!S.layers.paths) stopLaunches();
     $("#legendReset").hidden = !S.off.size;
     $("#legendNone").hidden = S.off.size >= items.length;
     renderSoon();
