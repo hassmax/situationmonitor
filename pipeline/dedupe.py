@@ -28,10 +28,11 @@ So the check is built around each event and the few events most like it:
   kind that fits it best (of the kinds the events were filed under), and writes one combined
   headline. Each pair is asked once; a "different" for a close pair (SECOND_LOOK_MIN) gets one
   second look after SECOND_LOOK, since a busy preferred model means a weaker backup answers.
-- Late follow-ups: events from the last NEW_HOURS are also compared with older ones, up to LATE_DAYS
-  back (working set and archive), from LATE_FLOOR similarity: folded into the working-set event
-  (it keeps its first date), or, when the older one is only in the archive, the new event takes
-  its date, so an old story isn't shown as new.
+- Late follow-ups: recently updated events are compared with older ones up to LATE_DAYS back,
+  including the whole working set and archive, from LATE_FLOOR similarity. A matching archived
+  event is restored with its original id, date and reports; the latest report controls retention,
+  while the original date still controls occurrence and "new". First and latest report summaries
+  supplement the headline, so changed wording does not erase the incident's identity.
 - Every run while questions wait (RETRY after a failure), up to MAX_CALLS_PER_RUN calls, within the paced daily share (`share`), never below dedupe_min_calls
   calls left today (extraction keeps priority), the extra call only with EXTRA_CALLS_FLOOR left.
 """
@@ -41,21 +42,22 @@ import json
 import math
 import re
 from collections import Counter
+from copy import deepcopy
 from datetime import timedelta
 
 from common import iso, log, parse_time
-from merge import FAMILY, _absorb
+from merge import FAMILY, _absorb, mine_incidents
 
-VERSION = 2              # 2: each event with its most similar events, of any kind (2026-10-06)
+VERSION = 3              # 3: incident follow-ups, report history, and stable archived identities
 RETRY = timedelta(minutes=15)
 LOOKBACK = timedelta(hours=72)
 PAIR_WINDOW = timedelta(hours=48)
 SECOND_LOOK = timedelta(hours=6)
 SECOND_LOOK_MIN = 0.6   # a "different" for a pair this similar gets a second look
 CANDIDATES = 4          # most similar events shown with each event
-NEAR_FLOOR = 0.25       # similarity for a candidate in the same country, nearby at sea, or with a shared party
+NEAR_FLOOR = 0.2        # candidate retrieval only; the model must confirm a specific incident
 FAR_FLOOR = 0.5         # ... anywhere else
-LATE_FLOOR = 0.45       # ... for an older event (late follow-ups), which must also be near
+LATE_FLOOR = 0.18       # late details use different words; still near, bounded, and model-confirmed
 SEA_KM = 800            # events at sea (no country) this close together are near
 AUTO = 0.8              # folded without asking: near-identical wording ...
 AUTO_HOURS = 36         # ... this close in time, and not strikes or fighting
@@ -76,7 +78,8 @@ STATEMENTS = {"diplomacy", "legal", "hybrid", "deployment", "transfer", "product
 PROMPT = """You check a live conflict map for duplicates. Each case is one event from the map and a few candidate events that look like it, each with an id, its kind, summary, place and time. Events are often filed under different kinds and places by different outlets: one strike as an airstrike, a missile attack and shelling; a missile test as arms production; an arms sale as diplomacy; a city, the base it is about, the capital that spoke, or the whole country. The kind and the place don't decide it.
 
 For each case, list the candidates that describe the same specific incident or statement as the event: the same strike, arrests, seizure, test, exercise, announcement, deal, meeting, visit or call, vote, filing or ruling, including follow-up coverage of it over the following days (new details, reactions, denials, a rising death toll).
-Leave out candidates that are separate incidents that resemble it (two strikes on the same city on the same day, two drills, two meetings between the same countries), that are only background to it, or when you are unsure. A response by another government or body is its own event.
+Include reports whose central subject is that same incident: investigation findings, attribution, denials, casualty updates, and officials' reactions or threats about it. For example, reports about a Korean DMZ mine explosion, who caused that explosion, and denials of responsibility belong to that one incident even if filed as explosion, incursion, hybrid or diplomacy. A report's publication date is not a new occurrence date. Use the report excerpts as well as the headline to identify the incident.
+Leave out candidates that are separate incidents that resemble it (two strikes on the same city on the same day, two drills, two meetings between the same countries), that are only background to it, or when you are unsure. A distinct action in response, such as sanctions actually imposed, a new deployment, mine-clearing operation, formal meeting or retaliatory strike, remains its own event. Shared countries, a place, or a topic alone never establish the same incident.
 Times matter. Reports on different days are the same incident only when they clearly describe it again (follow-up coverage of the same strike, deal or move). Many kinds of report recur and are separate incidents each time: an air force's daily report of guided bombs or drones on a region, strikes on the same front, aircraft landing at the same airport, attacks on ships in the same waters. Different regions or provinces in the summaries mean different incidents.
 
 When you list any, also give:
@@ -95,7 +98,10 @@ also new following other some any all not but per via within without since until
 def _tokens(text: str | None) -> list[str]:
     """Words and figures of a summary ("2.27", "b-1b"), plural "s" dropped, small words left out."""
     out = []
-    for w in re.findall(r"\$?\d+(?:[.,]\d+)?|[a-z][a-z0-9'\-]+", (text or "").lower()):
+    text = re.sub(r"\bdemilitarized zone\b", "dmz", (text or "").lower())
+    text = re.sub(r"\blandmines?\b", "mine", text)
+    text = re.sub(r"\bblasts?\b", "explosion", text)
+    for w in re.findall(r"\$?\d+(?:[.,]\d+)?|[a-z][a-z0-9'\-]+", text):
         w = w.strip("'-$").replace(",", "")
         if not w or w in _STOP or (len(w) < 3 and not w[0].isdigit()):
             continue
@@ -109,17 +115,30 @@ def _numbers(text: str | None) -> set[str]:
     return {t for t in _tokens(text) if t[0].isdigit()}
 
 
-def _vectors(events: list[dict]) -> dict[str, dict[str, float]]:
-    """TF-IDF vectors of the summaries, normalised, keyed by event id."""
-    toks = {e["id"]: _tokens(e.get("summary")) for e in events}
-    df = Counter(w for ws in toks.values() for w in set(ws))
+def _texts(e: dict) -> list[str]:
+    """An incident's first and latest coverage survive a changed headline. Bound the context."""
+    reports = sorted(e.get("reports") or [], key=lambda r: r.get("time") or "")
+    return list(dict.fromkeys(t for t in [e.get("summary")]
+                             + [r.get("summary") for r in reports[:2] + reports[-3:]] if t))
+
+
+def _vectors(events: list[dict]) -> dict[str, list[dict[str, float]]]:
+    """TF-IDF vectors for each bounded report excerpt, plus their combined vocabulary.
+
+    Compare individual excerpts so generic latest coverage cannot dilute the original incident.
+    Document frequency counts events, not repeated reports from the same event.
+    """
+    toks = {e["id"]: [_tokens(t) for t in _texts(e)] for e in events}
+    df = Counter(w for docs in toks.values() for w in {w for ws in docs for w in ws})
     n = max(1, len(toks))
     out = {}
-    for i, ws in toks.items():
-        tf = Counter(ws)
-        v = {w: (1 + math.log(c)) * (1 + math.log(n / df[w])) for w, c in tf.items()}
-        norm = math.sqrt(sum(x * x for x in v.values())) or 1.0
-        out[i] = {w: x / norm for w, x in v.items()}
+    for i, docs in toks.items():
+        out[i] = []
+        for ws in [[w for doc in docs for w in doc]] + docs:
+            tf = Counter(ws)
+            v = {w: (1 + math.log(c)) * (1 + math.log(n / df[w])) for w, c in tf.items()}
+            norm = math.sqrt(sum(x * x for x in v.values())) or 1.0
+            out[i].append({w: x / norm for w, x in v.items()})
     return out
 
 
@@ -127,6 +146,10 @@ def _cos(a: dict, b: dict) -> float:
     if len(a) > len(b):
         a, b = b, a
     return sum(x * b.get(w, 0.0) for w, x in a.items())
+
+
+def _score(a: list[dict], b: list[dict]) -> float:
+    return max((_cos(x, y) for x in a for y in b), default=0.0)
 
 
 def _km(e: dict, f: dict) -> float:
@@ -184,20 +207,30 @@ def candidates(e: dict, pool: list[dict], vec: dict, late: bool = False) -> list
             if gap > PAIR_WINDOW:
                 continue
             floor = NEAR_FLOOR if near(e, f) else FAR_FLOOR
-        s = _cos(vec.get(e["id"], {}), vec.get(f["id"], {}))
+        a, b = vec.get(e["id"], [{}]), vec.get(f["id"], [{}])
+        if a[0].keys().isdisjoint(b[0]):
+            continue
+        s = _score(a, b)
         if s >= floor:
             out.append((s, f))
     out.sort(key=lambda x: -x[0])
     return out[:CANDIDATES]
 
 
-def automatic(e: dict, f: dict, score: float) -> bool:
+def automatic(e: dict, f: dict, score: float, headline_score: float | None = None) -> bool:
     """Near-identical reports of something other than a strike or fighting, close in time, giving
     no different figures: folded without asking."""
+    # Report excerpts retrieve candidates only. Automatic folds still need near-identical
+    # current headlines, so sharing one background report cannot join separate actions.
     if score < AUTO or e.get("wave") or f.get("wave") or _gap(e, f) > timedelta(hours=AUTO_HOURS):
         return False
     fa, fb = _family(e), _family(f)
     if fa in VIOLENCE or fb in VIOLENCE or not (fa == fb or (fa in STATEMENTS and fb in STATEMENTS)):
+        return False
+    if headline_score is None:
+        headline_vec = _vectors([{**e, "reports": []}, {**f, "reports": []}])
+        headline_score = _cos(headline_vec[e["id"]][0], headline_vec[f["id"]][0])
+    if headline_score < AUTO:
         return False
     a, b = _numbers(e.get("summary")), _numbers(f.get("summary"))
     return not a or not b or a <= b or b <= a
@@ -221,27 +254,29 @@ def cases(events: list[dict], history: list[dict], judged: dict, now) -> tuple[l
     """(questions, automatic folds). A question is (event, [(score, candidate), ...]) with only the
     candidates not settled yet; events of the last day first, newest first, then the rest."""
     since = now - LOOKBACK
-    live = [e for e in events if not e.get("alert") and (parse_time(e.get("time")) or since) > since]
+    pool = [e for e in events if not e.get("alert")]
+    live = [e for e in pool if (parse_time(e.get("updated") or e.get("time")) or since) > since]
     old = [h for h in history if not h.get("alert")]
-    vec = _vectors(live + old)
+    vec = _vectors(pool + old)
     asked: set[str] = set()
     out, auto = [], []
     day = now - timedelta(hours=24)
-    order = sorted(live, key=lambda e: (parse_time(e["time"]) < day, -(parse_time(e["time"]).timestamp())))
+    order = sorted(live, key=lambda e: (parse_time(e.get("updated") or e["time"]) < day,
+                                      -parse_time(e.get("updated") or e["time"]).timestamp()))
     new_since = now - timedelta(hours=NEW_HOURS)
     for e in order:
         if e.get("wave"):
             continue  # a wave is a candidate for others; its own reports are grouped by merge
-        found = candidates(e, live, vec)
-        if parse_time(e["time"]) >= new_since:
-            found += candidates(e, live + old, vec, late=True)
+        found = candidates(e, pool, vec)
+        if parse_time(e.get("updated") or e["time"]) >= new_since:
+            found += candidates(e, pool + old, vec, late=True)
         todo = []
         for s, f in found:
             k = _key(e["id"], f["id"])
             if k in asked or _settled(judged.get(k), s, now):
                 continue
             asked.add(k)
-            if automatic(e, f, s) and not judged.get(k):
+            if automatic(e, f, s, _cos(vec[e["id"]][1], vec[f["id"]][1])) and not judged.get(k):
                 auto.append((e, f, s))
             else:
                 todo.append((s, f))
@@ -253,16 +288,21 @@ def cases(events: list[dict], history: list[dict], judged: dict, now) -> tuple[l
 def _fold(events: list[dict], same: list[tuple[str, str]], skip: set[str], history: list[dict] | None = None,
           kinds: dict[str, str] | None = None) -> tuple[list[dict], list[dict]]:
     """Fold events judged the same: into an attack wave if one is among them, else the earliest.
-    An event judged the same as an archived one (no longer in the working set) takes the archived
-    event's date instead: the story is old. `kinds`: the kind chosen for a folded set, by member id."""
+    Restore a matching archived event with its original id, date and reports, then append coverage.
+    `kinds`: the kind chosen for a folded set, by member id."""
     archived = {h["id"]: h for h in history or []}
     by_id = {e["id"]: e for e in events}
-    for a, b in same:
-        old, new = (a, b) if a in archived else (b, a) if b in archived else (None, None)
-        if old and new in by_id and by_id[new]["time"] > archived[old]["time"]:
-            log(f"[dedupe] {by_id[new]['summary'][:70]!r} is a late report of {archived[old]['summary'][:70]!r} "
-                f"({archived[old]['time'][:10]}); dated to then")
-            by_id[new]["time"] = archived[old]["time"]
+    # Only restore archive members connected to a live event. Never mutate the archive's input.
+    changed = True
+    while changed:
+        changed = False
+        for a, b in same:
+            if a in skip or b in skip:
+                continue
+            for old, current in ((a, b), (b, a)):
+                if current in by_id and old in archived and old not in by_id:
+                    by_id[old] = deepcopy(archived[old])
+                    changed = True
     parent = {i: i for i in by_id}
 
     def root(i):
@@ -272,7 +312,11 @@ def _fold(events: list[dict], same: list[tuple[str, str]], skip: set[str], histo
         return i
 
     def rank(i):
-        return (not by_id[i].get("wave"), by_id[i]["time"], i)
+        # A follow-up may give a more accurate, earlier occurrence date. It must not steal the
+        # identity created by the first published report of the incident.
+        first_report = min((r.get("time") or by_id[i]["time"] for r in by_id[i].get("reports") or []),
+                           default=by_id[i]["time"])
+        return (not by_id[i].get("wave"), first_report, by_id[i]["time"], i)
 
     for a, b in same:
         if a in by_id and b in by_id and a not in skip and b not in skip:
@@ -283,7 +327,7 @@ def _fold(events: list[dict], same: list[tuple[str, str]], skip: set[str], histo
     folded = []
     for i, e in by_id.items():
         r = root(i)
-        if r == i:
+        if r == i or i in skip:
             continue
         keep = by_id[r]
         urls = {x["url"] for x in keep["reports"]}
@@ -300,7 +344,7 @@ def _fold(events: list[dict], same: list[tuple[str, str]], skip: set[str], histo
                 log(f"[dedupe] {keep['summary'][:70]!r}: kind {keep.get('type')} -> {kind}")
                 keep["type"] = kind
     gone = {e["id"] for e in folded}
-    return [e for e in events if e["id"] not in gone], folded
+    return [e for e in by_id.values() if e["id"] not in gone], folded
 
 
 def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: int,
@@ -309,6 +353,11 @@ def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: in
     events no longer in the working set (compared with new events as late follow-ups); `share` is
     how many calls this check may still make now under its paced daily share (extract.share_left)."""
     st = state.setdefault("dedupe", {})
+    # The old wave rule typed a DMZ landmine blast as missiles/drones. Repair archived copies too
+    # so the incident can join follow-ups without the two-wave safeguard blocking it.
+    history = deepcopy(history or [])
+    mine_incidents(events)
+    mine_incidents(history)
     if st.get("version") != VERSION:
         # the group-by-kind check's "different" answers were given in big mixed groups: start over,
         # keeping what it found to be the same
@@ -316,8 +365,8 @@ def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: in
         st["version"] = VERSION
     cutoff = iso(now - timedelta(days=KEEP_DAYS))
     st["judged"] = judged = {k: v for k, v in (st.get("judged") or {}).items() if v.get("at", "") >= cutoff}
-    # pairs already judged the same are folded again if both came back (e.g. restored by a check)
-    events, folded = _fold(events, [tuple(k.split("|")) for k, v in judged.items() if v.get("same")], skip)
+    # Pairs already judged the same reconnect their canonical identity, including the archive.
+    events, folded = _fold(events, [tuple(k.split("|")) for k, v in judged.items() if v.get("same")], skip, history)
     have = {e["id"] for e in events}
     history = [h for h in (history or []) if h.get("id") not in have and h.get("id") not in skip]
     live = [e for e in events if e["id"] not in skip]
@@ -380,8 +429,10 @@ def run(events: list[dict], state: dict, settings: dict, now, ask, remaining: in
 
 
 def _show(e: dict) -> dict:
+    texts = _texts(e)
     return {"id": e["id"], "kind": e.get("type"), "summary": e.get("summary"), "place": e.get("place"),
-            "time": (e.get("time") or "")[:16]}
+            "time": (e.get("time") or "")[:16], "latest_report": (e.get("updated") or "")[:16],
+            "reports": texts}
 
 
 def _read(reply: dict, batch: list, judged: dict, now) -> tuple[list[tuple[str, str]], list, dict[str, str]]:

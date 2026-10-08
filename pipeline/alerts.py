@@ -135,7 +135,7 @@ def _event_text(e: dict, why: list[str], names: dict, base: str) -> str:
     lines.append(f"{CONFIDENCE.get(e.get('status'), e.get('status'))}, {n} {'source' if n == 1 else 'sources'}")
     lines.append("Alert: " + ", ".join(REASON[w] for w in why))
     if base:
-        lines.append(f"{base}#{e['id']}")
+        lines.append(f"{base}events/{e['id']}/")
     return "\n".join(x for x in lines if x)
 
 
@@ -159,7 +159,7 @@ def _bridge_text(route: str, evs: list[dict], hours, base: str) -> str:
              f"{n} deliveries reported in {hours:g} hours" + (f" (by {', '.join(modes)})" if modes else ""),
              f"Best confidence: {CONFIDENCE.get(best.get('status'), best.get('status'))}"]
     if base:
-        lines.append(f"{base}#{latest['id']}")
+        lines.append(f"{base}events/{latest['id']}/")
     return "\n".join(lines)
 
 

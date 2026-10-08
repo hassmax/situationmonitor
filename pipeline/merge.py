@@ -24,6 +24,7 @@ import json
 import re
 from datetime import datetime, timedelta
 from pathlib import Path
+from urllib.parse import urlparse
 
 from common import haversine_km, iso, log, parse_time, short_hash
 from geo import sea_exact
@@ -98,9 +99,27 @@ def wave_day(t: str) -> str:
     return (parse_time(t) - timedelta(hours=9)).strftime("%Y-%m-%d")
 
 
+_MINE_BLAST = re.compile(r"\b(?:land[ -]?mines?|mine\s+(?:blast|explosion))\b", re.IGNORECASE)
+_AIR_WEAPON = re.compile(r"\b(?:missiles?|drones?|uavs?|shaheds?|rockets?)\b", re.IGNORECASE)
+
+
+def _ground_mine(c: dict) -> bool:
+    texts = [c.get("summary") or ""] + [r.get("summary") or "" for r in c.get("reports") or []]
+    return any(_MINE_BLAST.search(t) for t in texts) and not any(_AIR_WEAPON.search(t) for t in texts)
+
+
+def mine_incidents(events: list[dict]) -> None:
+    """Repair landmine blasts previously filed as missile/drone waves, preserving identity."""
+    for e in events:
+        if e.get("wave") and _ground_mine(e):
+            e["type"] = "explosion"
+            for field in ("wave", "wave_key", "targets", "launched", "intercepted"):
+                e.pop(field, None)
+
+
 def _is_wave(c: dict) -> bool:
     # a launch into a named sea is a wave too, whatever country (or none) the report gives it
-    return (c["type"] in WAVE_TYPES and bool(c.get("attacker")) and bool(c.get("country") or sea_exact(c.get("place")))
+    return (c["type"] in WAVE_TYPES and not _ground_mine(c) and bool(c.get("attacker")) and bool(c.get("country") or sea_exact(c.get("place")))
             and c["attacker"] != c.get("country"))
 
 
@@ -399,7 +418,7 @@ def _wave_for(events: list[dict], cand: dict, attacker: str | None) -> dict | No
 def _hit_in_wave(events: list[dict], cand: dict) -> dict | None:
     """A strike report that names no attacker ("drones hit Erbil") joins an attack wave on the
     same country when it hit one of the wave's places."""
-    if cand["type"] not in WAVE_TYPES or not cand.get("country") or cand.get("attacker") or cand.get("approx"):
+    if cand["type"] not in WAVE_TYPES or _ground_mine(cand) or not cand.get("country") or cand.get("attacker") or cand.get("approx"):
         return None
     wave = _wave_for(events, cand, None)
     if wave and any(haversine_km(t["lat"], t["lon"], cand["lat"], cand["lon"]) <= TARGET_MERGE_KM
@@ -429,7 +448,7 @@ def _merge_wave(events: list[dict], cand: dict, wave: dict | None = None) -> Non
         return
     wave["reports"].append(rep)
     wave["time"] = min(wave["time"], cand["time"])
-    wave["updated"] = max(wave["updated"], cand["time"])
+    wave["updated"] = max(wave["updated"], cand["time"], rep["time"])
     wave["severity"] = max(wave["severity"], cand["severity"])
     wave["launched"] = _max_or_none(wave.get("launched"), cand.get("launched"))
     wave["intercepted"] = _max_or_none(wave.get("intercepted"), cand.get("intercepted"))
@@ -698,7 +717,7 @@ def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
                 "transfer": cand.get("transfer"), "legal_basis": cand.get("legal_basis"),
                 "severity": cand["severity"],
                 "killed": cand["killed"], "injured": cand["injured"],
-                "time": cand["time"], "updated": cand["time"], "reports": [rep],
+                "time": cand["time"], "updated": max(cand["time"], rep["time"]), "reports": [rep],
             })
             continue
         if any(r["url"] == rep["url"] for r in match["reports"]):
@@ -821,7 +840,8 @@ def launch_sites(events: list[dict], skip: set[str]) -> tuple[list[dict], list[d
 def _absorb(match: dict, cand: dict) -> None:
     """Take what a matching report (or event) adds to an event."""
     match["time"] = min(match["time"], cand["time"])
-    match["updated"] = max(match["updated"], cand["time"])
+    match["updated"] = max(match["updated"], cand.get("updated") or cand["time"],
+                           (cand.get("report") or {}).get("time") or cand["time"])
     match["severity"] = max(match["severity"], cand["severity"])
     match["attacker"] = match.get("attacker") or cand.get("attacker")
     match["parties"] = match.get("parties") or list(cand.get("parties") or [])
@@ -850,13 +870,59 @@ def _absorb(match: dict, cand: dict) -> None:
 MARITIME_AUTHORITY = re.compile(r"\b(?:UKMTO|UK Maritime Trade Operations|JMIC)\b", re.IGNORECASE)
 
 
+_IDF_NAME = r"(?:IDF|Israel(?:i)? Defen[cs]e Forces|Israeli military|Israel's military|Israeli army)"
+_IDF_ATTRIBUTION = re.compile(
+    rf"^(?:(?:The\s+)?{_IDF_NAME}\s+(?:says?|said|claims?|claimed|reports?|reported|announces?|announced|states?|stated|confirms?|confirmed)\b"
+    rf"|According to\s+(?:the\s+)?{_IDF_NAME}\b)", re.IGNORECASE)
+_IDF_TRAILING = re.compile(
+    rf",\s*(?:the\s+)?{_IDF_NAME}\s+(?:says?|said|claims?|claimed|reports?|reported)\.?$", re.IGNORECASE)
+_INDEPENDENT_EVIDENCE = re.compile(
+    r"\b(?:witnesses? (?:said|say|saw|reported|confirmed)|independently (?:verified|confirmed)"
+    r"|verified footage|(?:Reuters|AP|AFP|BBC) (?:saw|confirmed|verified))\b", re.IGNORECASE)
+
+
+def idf_claim(report: dict) -> bool:
+    """The IDF is the evidence origin, even when a newsroom repeats its statement.
+
+    New extraction separates repetitions from independent reporting. Old summaries get a
+    narrow attribution check; mentioning the IDF as an actor is not enough.
+    """
+    try:
+        host = (urlparse(report.get("url") or "").hostname or "").lower()
+    except ValueError:
+        host = ""
+    name = re.sub(r"\s+\(via google news\)$", "", str(report.get("source") or "").strip(), flags=re.IGNORECASE)
+    if (host == "idf.il" or host.endswith(".idf.il") or report.get("group") == "idf"
+            or re.fullmatch(r"(?:IDF|Israel(?:i)? Defen[cs]e Forces)(?:\s+\(official\))?", name, re.IGNORECASE)):
+        return True
+    if "claim_source" in report:
+        return report["claim_source"] == "idf"
+    summary = str(report.get("summary") or "").strip()
+    return bool((_IDF_ATTRIBUTION.search(summary) or _IDF_TRAILING.search(summary))
+                and not _INDEPENDENT_EVIDENCE.search(summary))
+
+
+def evidence_source(report: dict) -> tuple[str, str | None]:
+    """Group and side of the evidence; the publisher's identity stays on the report."""
+    return ("idf", "IL") if idf_claim(report) else (report["group"], report.get("side"))
+
+
+def _public_report(report: dict) -> dict:
+    out = {k: report.get(k) for k in ("source", "platform", "kind", "side", "claim", "url", "time", "summary")}
+    if "claim_source" in report:
+        out["claim_source"] = report["claim_source"]
+    if idf_claim(report):
+        out.update(claim="official_claim", claim_source="idf")
+    return out
+
+
 def _headline(event: dict) -> dict:
     """Prefer an unaligned source, then (for incidents at sea) a report citing UKMTO or JMIC, then
     higher weight, then the earliest report."""
     naval = FAMILY.get(event.get("type")) == "naval"
     return sorted(
         event["reports"],
-        key=lambda r: (r.get("side") is not None,
+        key=lambda r: (evidence_source(r)[1] is not None,
                        naval and not MARITIME_AUTHORITY.search(r.get("summary") or ""),
                        -int(r.get("weight", 1)), r["time"]),
     )[0]
@@ -917,15 +983,18 @@ def apply_status(events: list[dict], cells: list[dict]) -> None:
             _finish_wave(e)
         elif e.get("alert"):
             _finish_alert(e)
-        neutral = {r["group"] for r in e["reports"] if not r.get("side")}
-        sided = {r["group"] for r in e["reports"] if r.get("side")}
-        sides = {r["side"] for r in e["reports"] if r.get("side")}
+        evidence = [evidence_source(r) for r in e["reports"]]
+        neutral = {group for group, side in evidence if not side}
+        sided = {group for group, side in evidence if side}
+        sides = {side for _, side in evidence if side}
         news = set()
         # News of violence near a warning's marker says nothing about the warning itself.
         if FAMILY.get(e["type"]) in ("strike", "ground") and not e.get("alert"):
             news = news_domains_near(index, e)
         e["news_nearby"] = len(news)
-        if len(news) >= 3:
+        # Nearby headlines don't establish independence from an IDF statement. An event
+        # resting only on Israeli-side evidence stays claimed until independent evidence joins.
+        if len(news) >= 3 and not ("idf" in sided and not (neutral - WEAK_GROUPS) and sides == {"IL"}):
             neutral.add("gdelt")
         groups = neutral | sided
         # Google News results from outlets not listed in sources.yaml share one group, as do posts
@@ -935,7 +1004,7 @@ def apply_status(events: list[dict], cells: list[dict]) -> None:
         counted = groups - WEAK_GROUPS if groups - WEAK_GROUPS else set(sorted(groups)[:1])
         if len(counted) >= 2 and ((neutral & counted) or len(sides) >= 2):
             e["status"] = "corroborated"
-        elif neutral:
+        elif neutral & counted:
             e["status"] = "unconfirmed"
         else:
             e["status"] = "claimed"
@@ -967,10 +1036,7 @@ def public_event(e: dict) -> dict:
     if e.get("origin") and not e.get("origins"):
         out["origins"] = [e["origin"]]  # events stored before multi-origin support
     reports = sorted(e["reports"], key=lambda r: r["time"])[-MAX_REPORTS:]
-    out["reports"] = [
-        {k: r.get(k) for k in ("source", "platform", "kind", "side", "claim", "url", "time", "summary")}
-        for r in reports
-    ]
+    out["reports"] = [_public_report(r) for r in reports]
     return out
 
 

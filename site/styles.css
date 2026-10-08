@@ -448,6 +448,18 @@ h2 {
 .an-conf.conf-moderate { color: var(--ink-2); }
 .an-conf.conf-low { color: #f5c46b; }
 .an-empty { margin: 8px 0 0; font-size: 13px; color: var(--ink-2); }
+.brief-highlights { list-style: none; padding: 0; margin: 8px 0 0; }
+.brief-highlights > li { padding: 10px 0; border-top: 1px solid var(--line); }
+.brief .an-name { text-transform: none; letter-spacing: 0; font-size: 12px; }
+.brief-highlights .an-text { font-size: 12.5px; }
+.brief-disclosure { border-top: 1px solid var(--line); margin-top: 4px; }
+.brief-disclosure summary, .report-timeline summary, .earlier-reports summary {
+  min-height: 44px; padding: 11px 0; cursor: pointer; color: var(--ink-2); font-size: 12.5px; font-weight: 600;
+}
+.brief-disclosure summary:hover, .report-timeline summary:hover, .earlier-reports summary:hover { color: var(--ink); }
+.brief-disclosure[open] { padding-bottom: 8px; }
+.brief-method .brief-note { margin-top: 0; margin-bottom: 8px; }
+.brief-stale { padding: 8px 10px; border-left: 2px solid var(--warn); color: var(--warn); font-size: 12px; background: rgba(243, 193, 75, 0.06); }
 
 .spotbar {
   display: flex;
@@ -560,6 +572,18 @@ h2 {
 }
 .detail-where { color: var(--ink-2); font-size: 13.5px; margin: 0; }
 .detail-where .approx { color: var(--single); }
+.event-times, .evidence-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 12px 0; }
+.event-times > div, .evidence-stats > div { min-width: 0; padding: 9px 10px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--line); border-radius: 8px; }
+.event-times dt, .evidence-stats dt { color: var(--ink-3); font-size: 11.5px; }
+.event-times dd, .evidence-stats dd { margin: 3px 0 0; color: var(--ink); font-size: 12.5px; overflow-wrap: anywhere; }
+.evidence-stats dd { font-size: 21px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.evidence-note { margin: 6px 0 10px; color: var(--ink-3); font-size: 12px; line-height: 1.45; }
+.report-timeline, .earlier-reports { border-top: 1px solid var(--line); margin-top: 12px; }
+.report-timeline-list { list-style: none; padding: 0; margin: 0 0 12px 5px; border-left: 1px solid var(--line-strong); }
+.report-timeline-list li { position: relative; padding: 6px 0 6px 13px; display: grid; gap: 2px; font-size: 12.5px; }
+.report-timeline-list li::before { content: ""; position: absolute; left: -3px; top: 12px; width: 5px; height: 5px; border-radius: 50%; background: var(--ink-3); }
+.report-timeline-list time { color: var(--ink-3); font-size: 11.5px; }
+.report-timeline-list a { color: var(--land-hot); text-underline-offset: 3px; overflow-wrap: anywhere; }
 
 .verdict {
   margin: 16px 0;

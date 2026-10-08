@@ -5,6 +5,18 @@
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const params = new URLSearchParams(location.search);
   const DEMO = params.has("demo");
+  // Freeze the asset root before event selection changes the address. Shared pages use ../../.
+  const APP_ROOT = new URL(".", document.baseURI);
+  const baseElement = document.querySelector("base");
+  if (baseElement) baseElement.href = APP_ROOT.href;
+  const eventIdFrom = (value) => {
+    try { return decodeURIComponent(value || "").trim().replace(/,+$/, ""); } catch { return ""; }
+  };
+  const INITIAL_EVENT_ID = eventIdFrom(location.hash.slice(1)) || (location.pathname.match(/\/events\/([a-f0-9]{12})\/$/) || [])[1] || "";
+  const eventLink = (id) => /^[a-f0-9]{12}$/.test(id) && !DEMO
+    ? new URL(`events/${id}/`, APP_ROOT).href : `${APP_ROOT.href}${DEMO ? "?demo" : ""}#${encodeURIComponent(id)}`;
+  let sharedSnapshot = null;
+  try { sharedSnapshot = JSON.parse(document.getElementById("sharedEvent")?.textContent || "null"); } catch { /* live data still opens */ }
   // This page's own version: the commit stamped into its script address by the update workflow
   // (app.js?v=<commit>); empty when run locally. See checkBuild.
   const OWN_BUILD = (() => {
@@ -37,7 +49,7 @@
     corroborated: { label: "Corroborated", rank: 3, conf: "solid", alpha: 0.95,
       note: (n, news) => `Reported by ${n} independent sources${news >= 3 ? ", including nearby news coverage" : ""}.` },
     unconfirmed: { label: "Single source", rank: 2, conf: "outline", alpha: 0.7, note: () => "Only one source so far. Treat it as unverified." },
-    claimed: { label: "One side's claim", rank: 1, conf: "dashed", alpha: 0.6, note: () => "Reported only by sources aligned with one side of the conflict." },
+    claimed: { label: "One side's claim", rank: 1, conf: "dashed", alpha: 0.6, note: () => "Based on statements or reports from one side of the conflict." },
   };
   const TYPES = {
     airstrike: "Airstrike", missile_drone: "Drone or missile attack", artillery: "Shelling", ground: "Ground fighting",
@@ -199,6 +211,7 @@
   }
   const agoShort = (ms) => ago(ms).replace(" ago", "").replace(" min", "m").replace(" h", "h").replace(" d", "d");
   const fmtTime = (ms) => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+  const fmtEvidenceTime = (ms) => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" });
   const fmtDay = (ms) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   const fmtMoney = (v) => (v >= 1e9 ? `$${(v / 1e9).toFixed(1)} billion` : v >= 1e6 ? `$${Math.round(v / 1e6)} million` : `$${Math.round(v).toLocaleString()}`);
   // Alerts (drones or missiles reported in flight, grouped per country per day) get a siren and never animate.
@@ -253,8 +266,8 @@
     for (const k of Object.keys(viewed)) if (!(viewed[k] > cutoff)) delete viewed[k];
     try { localStorage.setItem("gsm_viewed", JSON.stringify(viewed)); } catch (_) { /* storage blocked */ }
   }
-  const isNew = (e) => !viewed[e.id] && !e.possibly_old && (e._t > Date.now() - HOUR || (lastSeen && e._t > lastSeen && e._t > Date.now() - DAY));
-  const isLive = (e) => !viewed[e.id] && (Date.now() - e._t < LIVE_MS || isNew(e));
+  const isNew = (e) => !e._archived && !viewed[e.id] && !e.possibly_old && (e._t > Date.now() - HOUR || (lastSeen && e._t > lastSeen && e._t > Date.now() - DAY));
+  const isLive = (e) => !e._archived && !viewed[e.id] && (Date.now() - e._t < LIVE_MS || isNew(e));
 
   // ------------------------------------------------------------------ state
   const S = {
@@ -267,6 +280,7 @@
     off: new Set(),  // "On the map" entries switched off
     query: "",
     feedLimit: 250,
+    briefOpen: new Set(),
     selectedId: null,
     arrived: null,      // ids of events that just arrived (they slide into the feed once)
     selectedHull: null,
@@ -670,19 +684,20 @@
   const ARC = {
     strike: { dash: 0.5, gap: 0.18 }, strikeApprox: { dash: 0.34, gap: 0.28 },
     barrage: { dash: 0.035, gap: 0.05 },  // a massive barrage: a stream of small dashes from each usual launch area
-    flow: { dash: 1, gap: 0 }, flowDashed: { dash: 0.12, gap: 0.07 }, particles: { dash: 0.012, gap: 0.11 },
+    flow: { dash: 1, gap: 0 }, flowDashed: { dash: 0.12, gap: 0.07 },
+    routeShot: { dash: 0.14, gap: 4 },  // one short pulse when a reported route is opened
     track: { dash: 0.06, gap: 0.04 }, plan: { dash: 0.2, gap: 0.14 }, hit: { dash: 1, gap: 0 },
     shot: { dash: 0.14, gap: 4 },  // one bright dash that runs a launch line once (playLaunches)
   };
   // Routes and carrier lines are thin, so hovering meant being exactly on them: each gets an
   // invisible, wider twin that answers hover and taps for it.
-  const hitArcs = (arcs) => arcs.filter((a) => (a.flow || a.carrier) && a.kind !== "particles")
+  const hitArcs = (arcs) => arcs.filter((a) => (a.flow || a.carrier) && a.kind !== "routeShot")
     .map((a) => keyed({ ...a, kind: "hit", color: "rgba(0,0,0,0)", stroke: Math.max(2.8, a.stroke * 6), ms: 0, seed: 0 }, a._k && `hit|${a._k}`));
   world
     .arcStartLat("sLat").arcStartLng("sLng").arcEndLat("eLat").arcEndLng("eLng")
     .arcColor((a) => a.color).arcStroke(arcStroke)
     .arcDashLength((a) => ARC[a.kind].dash).arcDashGap((a) => ARC[a.kind].gap)
-    .arcDashInitialGap((a) => (a.kind === "flow" ? 0 : a.kind === "shot" ? 1 : a.seed))
+    .arcDashInitialGap((a) => (a.kind === "flow" ? 0 : (a.kind === "shot" || a.kind === "routeShot") ? 1 : a.seed))
     .arcDashAnimateTime((a) => (reduceMotion ? 0 : a.ms || 0))
     .arcAltitude((a) => (a.alt === undefined ? null : a.alt))
     .arcAltitudeAutoScale(0.36)
@@ -1091,13 +1106,14 @@
       <ul class="fly-rows">${byLatest(places).map((t, i) => `<li style="--i:${Math.min(i, 10)}"><button type="button" data-open="${esc(e.id)}" data-place="${t.lat},${t.lon}"><span><b>${esc(t.place)}</b>${t.reports > 1 ? ` ${t.reports} ${e.alert ? "alerts" : "reports"}` : ""}</span><time>${latestOf(t) ? esc(agoShort(Date.parse(latestOf(t)))) : ""}</time></button></li>`).join("")}</ul>` : "";
     return `<div class="tip"><div class="tip-meta">${eventIcon(e)}<b>${esc(typeLabel(e))}</b><span>${esc(metaLine(e))}</span></div>
       <div class="tip-sum">${esc(e.summary)}</div>
-      <div class="tip-foot"><span class="conf-text conf-${STATUS[e.status].conf}">${esc(STATUS[e.status].label)}</span>${e.possibly_old ? "<span>Possibly an old story</span>" : ""}${extra}${quick && n ? `<span>${n} ${n === 1 ? "source" : "sources"}</span>` : ""}<span>${esc(ago(e._t))}</span></div>
+      <div class="tip-foot"><span class="conf-text conf-${STATUS[e.status].conf}">${esc(STATUS[e.status].label)}</span>${e.possibly_old ? "<span>Possibly an old story</span>" : ""}${extra}${quick && n ? `<span>${n} ${n === 1 ? "source" : "sources"}</span>` : ""}<span>${esc(ago(e._t))}</span>${hasFollowup(e) ? `<span>Updated ${esc(ago(e._tu))}</span>` : ""}</div>
       ${list}${quick ? `<div class="tip-hint">${canHover() ? "Click for details" : "Tap for details"}</div>` : ""}</div>`;
   }
   // A count bubble: every event it holds, most important first, each one a button that opens it.
   function tipCluster(evs, lead) {
+    const recentFirst = evs.filter(Boolean).sort((a, b) => b._t - a._t);
     return `<div class="tip tip-list"><div class="tip-meta"><b>${evs.length} events here</b><button type="button" class="fly-zoom" data-zoom="${lead.lat},${lead.lon}">Zoom in</button></div>
-      <ul class="fly-rows">${evs.filter(Boolean).map((e, i) => `<li style="--i:${Math.min(i, 10)}"><button type="button" data-id="${esc(e.id)}">${eventIcon(e)}<span><b>${esc(typeLabel(e))}</b> ${esc(e.place || metaLine(e))}</span><time>${esc(agoShort(e._t))}</time></button></li>`).join("")}</ul></div>`;
+      <ul class="fly-rows">${recentFirst.map((e, i) => `<li style="--i:${Math.min(i, 10)}"><button type="button" data-id="${esc(e.id)}">${eventIcon(e)}<span><b>${esc(typeLabel(e))}</b> ${esc(e.place || metaLine(e))}</span><time>${esc(agoShort(e._t))}</time></button></li>`).join("")}</ul></div>`;
   }
   function tipCarrier(c, quick = false) {
     return `<div class="tip"><div class="tip-meta">${iconBadge("carrier", "fleet")}<b>${esc(c.name)}</b><span>${esc(c.hull)}</span></div>
@@ -1255,7 +1271,7 @@
     const cam = world.camera().position, R = world.getGlobeRadius();
     let best = null, bestD = TAP_PX;
     for (const a of baseArcs) {
-      if (!(a.flow || a.carrier) || a.kind === "hit" || a.kind === "particles") continue;
+      if (!(a.flow || a.carrier) || a.kind === "hit" || a.kind === "routeShot") continue;
       const pts = arcOnScreen(a, cam, R);
       for (let i = 1; i < pts.length; i++) {
         if (!pts[i - 1] || !pts[i]) continue;
@@ -1359,6 +1375,17 @@
       showLoadError(err);
       return;
     }
+    // A share page also carries the published snapshot, so old links still have their sources.
+    const wanted = S.selectedId || (S.firstLoad && INITIAL_EVENT_ID);
+    if (!DEMO && wanted && !(data.events || []).some((e) => e.id === wanted)) {
+      try {
+        if (sharedSnapshot?.id !== wanted && /^[a-f0-9]{12}$/.test(wanted)) {
+          const res = await fetch(new URL(`events/${wanted}/event.json`, APP_ROOT));
+          sharedSnapshot = res.ok ? await res.json() : null;
+        }
+        if (sharedSnapshot?.id === wanted) data.events = [...(data.events || []), { ...sharedSnapshot, _archived: true }];
+      } catch { /* a missing snapshot must not prevent the live dashboard from loading */ }
+    }
     try { ingest(data); } catch (err) { fatal(err); }
   }
 
@@ -1417,8 +1444,8 @@
     if (DEMO && data.generated_at) shiftDemo(data);
     data.events = (data.events || []).filter((e) => STATUS[e.status] && isFinite(e.lat) && isFinite(e.lon));
     for (const e of data.events) {
-      e._t = Date.parse(e.time || e.updated);   // when it happened: drives the time window, sorting, and "new"
-      e._tu = Date.parse(e.updated || e.time);  // last report, shown in the detail view
+      e._t = Date.parse(e.time || e.updated);   // original occurrence: sorting, animation, and "new"
+      e._tu = Date.parse(e.updated || e.time);  // reporting activity keeps an incident on the map
       e.targets = Array.isArray(e.targets) ? e.targets.filter((t) => isFinite(t.lat) && isFinite(t.lon)) : [];
       const t = e.transfer || {};
       e._search = [e.summary, e.place, e.targets.map((x) => x.place).join(" "), typeLabel(e), countryName(e.attacker),
@@ -1450,7 +1477,7 @@
     const before = S.data ? new Set(S.data.events.map((e) => e.id)) : null;
     S.data = data;
     if (before) {
-      const fresh = data.events.filter((e) => !before.has(e.id) && onMap(e) && passes(e));
+      const fresh = data.events.filter((e) => !before.has(e.id) && onMap(e) && passes(e) && isNew(e));
       if (fresh.length) {
         announce(`${fresh.length} new ${fresh.length === 1 ? "event" : "events"} added`);
         // they slide into the feed; only on this render, so later redraws don't replay it
@@ -1470,8 +1497,8 @@
     if (S.firstLoad) {
       S.firstLoad = false;
       // Opens on the last 24 hours; if that's empty, widen to 3 days so the first view isn't blank.
-      if (!data.events.some((e) => onMap(e) && e._t >= Date.now() - 24 * HOUR)) { setWindow(72); render(); }
-      const hash = decodeURIComponent(location.hash.slice(1));
+      if (!data.events.some((e) => onMap(e) && activityTime(e) >= Date.now() - 24 * HOUR)) { setWindow(72); render(); }
+      const hash = INITIAL_EVENT_ID;
       if (hash && data.events.some((e) => e.id === hash)) select(hash, true);
       else if (/^CVN-\d{2}$/.test(hash) && S.fleet.some((c) => c.hull === hash)) selectCarrier(hash, true);
       else focusHotspot();
@@ -1524,7 +1551,7 @@
     world.pointOfView({ lat: h.lat, lng: h.lon, altitude: isMobile() ? h.altitude + 0.5 : h.altitude }, reduceMotion ? 0 : 2800);
     const span = { 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[S.windowH];
     const toast = $("#focusToast");
-    toast.innerHTML = `<span class="focus-k">Most active now</span> <strong>${esc(h.theater)}</strong> <span>${h.n} ${h.n === 1 ? "event" : "events"} in the last ${span}, led by ${esc(typeLabel(h.top).toLowerCase())}${h.top.place ? ` near ${esc(h.top.place)}` : ""}</span>`;
+    toast.innerHTML = `<span class="focus-k">Most active now</span> <strong>${esc(h.theater)}</strong> <span>${h.n} ${h.n === 1 ? "event" : "events"} with reports in the last ${span}, led by ${esc(typeLabel(h.top).toLowerCase())}${h.top.place ? ` near ${esc(h.top.place)}` : ""}</span>`;
     toast.hidden = false;
     toast.classList.remove("is-out");
     setTimeout(() => toast.classList.add("is-out"), 7000);
@@ -1542,8 +1569,12 @@
   const matches = (e) => words().every((w) => e._search.includes(w));
   const unlisted = () => new Set(S.theaters.filter((t) => t.listed === false).map((t) => t.id));
   const theaterShown = (id) => S.theaterOn.has(id) || unlisted().has(id);
+  // Follow-up coverage keeps the same incident visible. It never resets its occurrence or "new".
+  const activityTime = (e) => e.alert || e.possibly_old || !onMap(e) ? e._t : Math.max(e._t, e._tu || e._t);
+  const hasFollowup = (e) => !e.alert && !e.possibly_old && onMap(e) && e._tu >= e._t + DAY;
   function passes(e, ignoreTheater = false) {
-    if (e._t < Date.now() - S.windowH * HOUR) return false;
+    if (e._archived) return false; // shared history never enters live counts or the latest list
+    if (activityTime(e) < Date.now() - S.windowH * HOUR) return false;
     if (!ignoreTheater && !theaterShown(e.theater)) return false;
     if (!S.statusOn.has(e.status)) return false;
     if (S.off.has(legendKey(e))) return false;
@@ -1569,13 +1600,21 @@
   // from the launch area to the place hit, one after another, and a small ring marks the arrival.
   // Same lines as on the map (attackPaths), so faint assumed launch areas stay as faint as before.
   let launchTimers = [];
-  function playLaunches(e, flight) {
+  const launchShots = new Set();
+  function stopLaunches() {
     launchTimers.forEach(clearTimeout);
     launchTimers = [];
+    if (!launchShots.size) return;
+    launchShots.forEach((a) => extraArcs.delete(a));
+    launchShots.clear();
+    pushArcs();
+  }
+  function playLaunches(e, flight) {
+    stopLaunches();
     if (reduceMotion || !S.layers.paths) return;
     const all = attackPaths([e]);
     const barrage = all.some((a) => a.barrage);
-    const paths = all.slice(0, barrage ? 32 : 16);
+    const paths = all.slice(0, PHONE ? 4 : barrage ? 32 : 16);
     if (!paths.length) return;
     const lead = Math.max(150, flight - 100);  // let the camera arrive first
     const gap = barrage ? 70 : 160;            // a barrage's lines fire close together
@@ -1584,9 +1623,11 @@
       launchTimers.push(setTimeout(() => {
         const shot = { sLat: a.sLat, sLng: a.sLng, eLat: a.eLat, eLng: a.eLng, kind: "shot", ms, seed: 1,
           color: rgba([255, 226, 204], a.kind === "strike" ? 1 : 0.75), stroke: a.kind === "strike" ? 1.3 : 0.9 };
+        launchShots.add(shot);
         extraArcs.add(shot);
         pushArcs();
         launchTimers.push(setTimeout(() => {
+          launchShots.delete(shot);
           extraArcs.delete(shot);
           pushArcs();
           flashRing(a.eLat, a.eLng, CAT_RGB.strike, 1.8, 900);
@@ -1613,7 +1654,7 @@
     const flows = new Map(), pledges = new Map();
     for (const e of S.data.events) {
       const t = e.transfer;
-      if (e.type !== "arms_transfer" || !t || e._t < since || !theaterShown(e.theater) || !S.statusOn.has(e.status)) continue;
+      if (e._archived || e.type !== "arms_transfer" || !t || e._t < since || !theaterShown(e.theater) || !S.statusOn.has(e.status)) continue;
       if (!matches(e)) continue;
       const kind = tkind(e);
       if (kind === "interdiction") continue;
@@ -1725,10 +1766,11 @@
   }
 
   // ------------------------------------------------------------------ build layers
-  // Each 25 reported launches adds another faint dashed path, capped at 40 per attack.
+  // Each 25 reported launches adds another faint dashed path, within the device budget.
   // Repeated paths convey volume from known origins; they are not observed flight tracks.
   const LAUNCHED = new Set(["missile_drone", "air_defense", "airstrike"]);   // kinds drawn with launch lines
-  const MAX_BARRAGE_LINES = 40;   // per attack
+  const MAX_BARRAGE_LINES = PHONE ? 8 : 40;   // per attack
+  const MAX_LAUNCH_PATHS = PHONE ? 24 : 180;  // hard limit across all attacks
   // A reported launch count adds one visual path per 25 items, capped to keep busy maps readable.
   const launchPathCount = (e) => Number.isFinite(Number(e.launched)) && Number(e.launched) > 0
     ? clamp(Math.ceil(Number(e.launched) / 25), 1, MAX_BARRAGE_LINES) : 1;
@@ -1736,6 +1778,7 @@
     const arcs = [];
     if (!S.layers.paths) return arcs;
     const push = (e, o, d, approx, barrage, line = 0) => {
+      if (arcs.length >= MAX_LAUNCH_PATHS) return;
       const dist = km(o.lat, o.lon, d.lat, d.lon);
       if (dist < 25 || (approx && dist > 1800)) return;
       const dim = dimOf(e.id === S.selectedId);
@@ -1751,10 +1794,13 @@
       const anchors = launchAreas(e);
       const from = nearestN(anchors, d, Math.min(count, anchors.length));
       if (!from.length) return;
-      for (let i = 0; i < count; i++) push(e, from[i % from.length], d, true, barrage, first + i);
+      for (let i = 0; i < count && arcs.length < MAX_LAUNCH_PATHS; i++) push(e, from[i % from.length], d, true, barrage, first + i);
     };
-    for (const e of events) {
-      if (arcs.length >= 180) break;
+    // An opened event keeps its paths even when the phone's small budget is full.
+    const selected = PHONE && events.find((e) => e.id === S.selectedId);
+    const ordered = selected ? [selected, ...events.filter((e) => e !== selected)] : events;
+    for (const e of ordered) {
+      if (arcs.length >= MAX_LAUNCH_PATHS) break;
       // Drone/missile waves and airstrikes can use configured nearby launch areas when none are named.
       if (!LAUNCHED.has(e.type) && !originsOf(e).length) continue;
       // A launch "from Yemen" names no site: skip the country center and use known Houthi areas instead.
@@ -1762,17 +1808,18 @@
       const start = arcs.length;
       if (e.wave) {
         const targets = (e.targets.length ? e.targets.slice(0, 16) : [e]);
-        const total = Math.min(MAX_BARRAGE_LINES, targets.length + Math.max(0, launchPathCount(e) - 1));
+        const total = Math.min(MAX_BARRAGE_LINES, MAX_LAUNCH_PATHS - arcs.length, targets.length + Math.max(0, launchPathCount(e) - 1));
         const barrage = launchPathCount(e) > 1;
         for (let i = 0; i < total; i++) {
-          const d = targets[i % targets.length];
+          // Sample actual reported targets across the wave when the phone cap is smaller.
+          const d = targets[Math.floor(i * targets.length / Math.min(total, targets.length)) % targets.length];
           const o = nearest(origins, d);
           if (o) push(e, o, d, false, barrage, i);
           else assumed(e, d, 1, i, barrage);
         }
       } else if (origins.length) {
         const named = nearestN(origins, e, Math.min(3, origins.length));
-        const total = Math.min(MAX_BARRAGE_LINES, named.length + Math.max(0, launchPathCount(e) - 1));
+        const total = Math.min(MAX_BARRAGE_LINES, MAX_LAUNCH_PATHS - arcs.length, named.length + Math.max(0, launchPathCount(e) - 1));
         const barrage = launchPathCount(e) > 1;
         for (let i = 0; i < total; i++) push(e, named[i % named.length], e, false, barrage, i);
       } else if (e.type === "missile_drone" || e.type === "airstrike") assumed(e, e);
@@ -1812,11 +1859,57 @@
         if (km(a.lat, a.lon, b.lat, b.lon) < 25) continue;
         const lift = sea ? 0.002 : 0.012;
         arcs.push(...surfaceArcs(a, b, { _k: `sup|${f.key}|${i}`, flow: f, kind: f.status === "corroborated" ? "flow" : "flowDashed", color: rgba(f.money ? CAT_RGB.aid : CAT_RGB.supply, Math.min(1, alpha)), stroke, ms: 0, seed: 0 }, lift));
-        const pd = dimOf(S.selectedFlow === f.key);
-        if (f.active) arcs.push(...surfaceArcs(a, b, { _k: `sup|${f.key}|${i}|p`, flow: f, kind: "particles", color: [rgba([220, 250, 252], 0.25 * pd), rgba([220, 250, 252], 0.95 * pd)], stroke: Math.max(0.3, stroke * 0.8), ms: 1800, seed: Math.random() }, lift + 0.001));
       }
     }
     return arcs;
+  }
+
+  // A route stays visible; opening it sends one short pulse along its existing surface segments.
+  // No continuously moving particles, and no pulse for aid that is only pledged.
+  let routeTimers = [], routeBurst = null;
+  const routeShots = new Set();
+  function stopRouteBurst() {
+    routeTimers.forEach(clearTimeout);
+    routeTimers = [];
+    routeBurst = null;
+    if (!routeShots.size) return;
+    routeShots.forEach((a) => extraArcs.delete(a));
+    routeShots.clear();
+    pushArcs();
+  }
+  function playRouteBurst(f, flight = 0) {
+    stopRouteBurst();
+    if (reduceMotion || !f.active || S.off.has(f.money ? "coin" : "crate")
+        || !S.supply.flows.some((x) => x.key === f.key)) return;
+    const arcs = supplyArcs([f]);
+    const distances = arcs.map((a) => km(a.sLat, a.sLng, a.eLat, a.eLng));
+    const distance = distances.reduce((sum, d) => sum + d, 0);
+    if (!arcs.length || !(distance > 0)) return;
+    routeBurst = f;
+    const duration = PHONE ? 1600 : 2200;
+    const lead = Math.max(150, flight - 100);
+    const rgb = f.money ? CAT_RGB.aid : CAT_RGB.supply;
+    const named = f.from && f.to && !f.from.region && !f.to.region;
+    const alpha = STATUS[f.status].alpha * (named ? 1 : 0.6);
+    let offset = 0;
+    arcs.forEach((a, i) => {
+      const ms = duration * distances[i] / distance;
+      routeTimers.push(setTimeout(() => {
+        if (S.selectedFlow !== f.key || S.off.has(f.money ? "coin" : "crate")) return;
+        const shot = { ...a, kind: "routeShot", ms, seed: 1,
+          color: [rgba(rgb, 0.2 * alpha), rgba(rgb, alpha)], stroke: Math.max(0.45, a.stroke * 0.9) };
+        routeShots.add(shot);
+        extraArcs.add(shot);
+        pushArcs();
+        routeTimers.push(setTimeout(() => {
+          routeShots.delete(shot);
+          extraArcs.delete(shot);
+          pushArcs();
+        }, ms * 1.04));
+      }, lead + offset));
+      offset += ms;
+    });
+    routeTimers.push(setTimeout(stopRouteBurst, lead + duration * 1.04 + 50));
   }
 
   // ------------------------------------------------------------------ sea lanes for carrier lines
@@ -1970,7 +2063,10 @@
   // the globe takes a moment on a phone. A newer click or a full render supersedes a pending one.
   function frameData() {
     const events = visibleEvents();
-    const mapEvents = markerPick(events.filter(onMap));
+    const selected = S.data?.events.find((e) => e.id === S.selectedId);
+    const onGlobe = events.filter(onMap);
+    if (selected && onMap(selected) && !onGlobe.includes(selected)) onGlobe.push(selected);
+    const mapEvents = markerPick(onGlobe);
     S.supply = buildSupply();
     return { events, mapEvents };
   }
@@ -1999,6 +2095,7 @@
     renderLists(d);
   }
   function renderGlobe({ events, mapEvents }) {
+    if (routeBurst && !S.supply.flows.some((f) => f.key === routeBurst.key)) stopRouteBurst();
     newFrame();
     document.body.classList.toggle("focus", focused());
 
@@ -2110,7 +2207,7 @@
     const span = { 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[S.windowH];
     const fighting = events.filter(onMap);
     const now = [fighting.length, fighting.filter((e) => e.status === "corroborated").length];
-    $("#tally").innerHTML = `<strong>${now[0]}</strong> events in the last ${span}, <strong>${now[1]}</strong> corroborated`;
+    $("#tally").innerHTML = `<strong>${now[0]}</strong> events with reports in the last ${span}, <strong>${now[1]}</strong> corroborated`;
     // counts tick up or down to their new values
     if (tallyWas && !reduceMotion && (tallyWas[0] !== now[0] || tallyWas[1] !== now[1])) {
       const els = [...$("#tally").querySelectorAll("strong")], from = tallyWas.slice(), t0 = performance.now();
@@ -2128,6 +2225,7 @@
   // ------------------------------------------------------------------ feed and side lists
   function itemHtml(e, names) {
     const extra = [];
+    if (hasFollowup(e)) extra.push(`Updated ${ago(e._tu)}`);
     if (e.alert) extra.push(alertsText(e));
     if ((e.wave || e.alert) && e.targets.length) extra.push(`${e.targets.length} ${e.targets.length === 1 ? "location" : "locations"}`);
     if (e.wave && e.launched) extra.push(`${e.launched} launched`);
@@ -2146,6 +2244,17 @@
   // the map's own events, independent of the filters. Confidence comes from the cited events.
   const TREND = { escalating: ["▲", "Escalating"], "de-escalating": ["▼", "De-escalating"], shifting: ["◆", "Shifting"], steady: ["●", "Steady"] };
   const CONF_WORDS = { higher: "Higher confidence", moderate: "Moderate confidence", low: "Low confidence" };
+  // Keep the overview geographically varied. All judgments remain in the regional disclosure.
+  function briefHighlights(regions, byId) {
+    const confidence = { higher: 2, moderate: 1, low: 0 };
+    const latest = (j) => Math.max(0, ...(j.ids || []).map((id) => byId.get(id)?._t || 0));
+    const compare = (a, b) => Number(b.trend !== "steady") - Number(a.trend !== "steady")
+      || (confidence[b.confidence] || 0) - (confidence[a.confidence] || 0) || latest(b) - latest(a);
+    return regions.flatMap((region) => {
+      const judgment = [...(region.judgments || [])].sort(compare)[0];
+      return judgment ? [{ region, judgment }] : [];
+    }).sort((a, b) => compare(a.judgment, b.judgment)).slice(0, 3);
+  }
   function briefHtml() {
     const a = S.data && S.data.analysis;
     if (!a || !a.generated_at) return "";
@@ -2164,25 +2273,42 @@
     // flights the judgment cites: what each aircraft's transponder showed, linked to it on adsb.lol
     const flown = (list) => (list || []).length ? `<span class="cites">${list.map((f) =>
       `<a class="cite cite-flight" href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener noreferrer" title="${esc(f.what)}">${esc(f.label)}</a>`).join("")}</span>` : "";
-    const regions = a.regions || [];
-    const body = regions.length ? regions.map((r) => `
+    const regions = (a.regions || []).filter((r) => (r.judgments || []).length);
+    const judgmentHtml = (j, compact = false) => {
+      const [mark, word] = TREND[j.trend] || TREND.steady;
+      return `<div class="an-item trend-${esc(j.trend)}">
+        <p class="an-head"><span class="an-trend"><span aria-hidden="true">${mark}</span> ${esc(word)}</span><b>${esc(j.headline)}</b></p>
+        ${!compact && j.text ? `<p class="an-text">${esc(j.text)}</p>` : ""}
+        <p class="an-foot"><span class="an-conf conf-${esc(j.confidence)}">${esc(CONF_WORDS[j.confidence] || "Low confidence")}</span>${basis(j.tally || {}) ? `<span>Based on ${esc(basis(j.tally || {}))}</span>` : ""}${cites(j.ids)}${flown(j.flights)}</p>
+      </div>`;
+    };
+    const highlights = briefHighlights(regions, byId);
+    const lead = highlights.length ? `<ol class="brief-highlights">${highlights.map(({ region, judgment }) => `<li>
+      <button class="an-name" type="button" data-fly="${esc(region.theater)}" title="Fly to ${esc(region.name)}">${esc(region.name)}</button>
+      ${judgmentHtml(judgment, true)}</li>`).join("")}</ol>`
+      : `<p class="an-empty">No clear change in any region in the last ${esc(a.window_hours || 6)} hours.</p>`;
+    const body = regions.map((r) => `
       <div class="an-region">
         <button class="an-name" type="button" data-fly="${esc(r.theater)}" title="Fly to ${esc(r.name)}">${esc(r.name)}</button>
-        ${r.judgments.map((j) => {
-          const [mark, word] = TREND[j.trend] || TREND.steady;
-          return `<div class="an-item trend-${esc(j.trend)}">
-            <p class="an-head"><span class="an-trend" title="${esc(word)}"><span aria-hidden="true">${mark}</span> ${esc(word)}</span><b>${esc(j.headline)}</b></p>
-            ${j.text ? `<p class="an-text">${esc(j.text)}</p>` : ""}
-            <p class="an-foot"><span class="an-conf conf-${esc(j.confidence)}">${esc(CONF_WORDS[j.confidence] || "Low confidence")}</span><span>Based on ${esc(basis(j.tally || {}))}</span>${cites(j.ids)}${flown(j.flights)}</p>
-          </div>`;
-        }).join("")}
-      </div>`).join("") : `<p class="an-empty">No clear change in any region in the last ${esc(a.window_hours || 6)} hours.</p>`;
+        ${r.judgments.map((j) => judgmentHtml(j)).join("")}
+      </div>`).join("");
+    const written = Date.parse(a.generated_at);
+    const stale = Number.isFinite(written) && Date.now() - written > 3 * HOUR;
     return `<li class="brief analysis"><section aria-labelledby="briefTitle">
-      <div class="brief-head"><h3 id="briefTitle">What's changing, by region</h3>
+      <div class="brief-head"><h3 id="briefTitle">Situation brief</h3>
         <time datetime="${esc(a.generated_at)}">Written ${esc(ago(Date.parse(a.generated_at)))}</time></div>
-      <p class="an-sub">The last ${esc(a.window_hours || 6)} hours against the ${esc(a.context_days || 3)} days before</p>
-      ${body}
-      <p class="brief-note">Machine-written analysis of this map's own events${a.by ? ` by ${esc(a.by)}` : ""}. Confidence comes from the events each line cites (corroborated, single-source, or one side's claim) and from military flights tracked by their own transponders, which show where aircraft went, not why; open them before relying on it.${a.flight_credit ? ` <a href="${esc(safeUrl(a.flight_credit.url || "https://opendatacommons.org/licenses/odbl/1-0/"))}" target="_blank" rel="noopener noreferrer">${esc(a.flight_credit.text || "Flight data: adsb.lol contributors")}</a>.` : ""}</p>
+      <p class="an-sub">${highlights.length ? `${highlights.length} selected ${highlights.length === 1 ? "development" : "developments"} · ` : ""}All regions · last ${esc(a.window_hours || 6)} hours</p>
+      <p class="brief-note">Machine-written. Expand the regional analysis for the reasoning.</p>
+      ${stale ? '<p class="brief-stale" role="status">This analysis is over 3 hours old. Check the latest events below for newer reporting.</p>' : ""}
+      ${lead}
+      ${regions.length ? `<details class="brief-disclosure" data-brief-section="regions"${S.briefOpen.has("regions") ? " open" : ""}>
+        <summary>All regional analysis (${regions.reduce((n, r) => n + r.judgments.length, 0)})</summary>${body}</details>` : ""}
+      <details class="brief-disclosure brief-method" data-brief-section="method"${S.briefOpen.has("method") ? " open" : ""}>
+        <summary>How to read this brief</summary>
+        <p class="brief-note">Highlights prioritize changes, then confidence, then the latest cited event, with one development per region. The full regional analysis includes every judgment. This global brief uses its own ${esc(a.window_hours || 6)}-hour window against the ${esc(a.context_days || 3)} days before; map filters do not change it.</p>
+        <p class="brief-note">Machine-written analysis of this map's own events${a.by ? ` by ${esc(a.by)}` : ""}. Confidence comes from the cited events and tracked flights. Transponders show where aircraft went, not why. Open the evidence before relying on a judgment.</p>
+      </details>
+      ${a.flight_credit ? `<p class="brief-note"><a href="${esc(safeUrl(a.flight_credit.url || "https://opendatacommons.org/licenses/odbl/1-0/"))}" target="_blank" rel="noopener noreferrer">${esc(a.flight_credit.text || "Flight data: adsb.lol contributors")}</a>.</p>` : ""}
     </section></li>`;
   }
 
@@ -2267,7 +2393,7 @@
     document.querySelectorAll("[data-count]").forEach((el) => { el.textContent = counts[el.dataset.count] || 0; });
     const now = Date.now(), tempo = {};
     for (const e of S.data.events) {
-      if (!onMap(e)) continue;
+      if (e._archived || !onMap(e)) continue;
       const idx = 6 - Math.floor((now - e._t) / DAY);
       if (idx < 0 || idx > 6) continue;
       (tempo[e.theater] = tempo[e.theater] || [0, 0, 0, 0, 0, 0, 0])[idx] += 1;
@@ -2279,7 +2405,7 @@
     });
     const byStatus = {};
     for (const e of S.data.events) {
-      if (!onMap(e) || e._t < now - S.windowH * HOUR || !theaterShown(e.theater)) continue;
+      if (e._archived || !onMap(e) || activityTime(e) < now - S.windowH * HOUR || !theaterShown(e.theater)) continue;
       byStatus[e.status] = (byStatus[e.status] || 0) + 1;
     }
     document.querySelectorAll("[data-status-count]").forEach((el) => { el.textContent = byStatus[el.dataset.statusCount] || 0; });
@@ -2353,8 +2479,11 @@
   }
   function hideDetail() { $("#detail").hidden = true; $("#feedList").hidden = false; $("#feedHead").hidden = false; }
   function closeDetail() {
+    stopLaunches();
+    stopRouteBurst();
     S.selectedId = null; S.selectedHull = null; S.selectedFlow = null;
-    history.replaceState(null, "", location.pathname + location.search);
+    history.replaceState(null, "", APP_ROOT.pathname + location.search);
+    document.title = "Global Situation Monitor";
     hideDetail();
     render();
     if (S.lastFocus) { const again = document.querySelector(`[data-id="${CSS.escape(S.lastFocus)}"]`); if (again) again.focus(); }
@@ -2401,7 +2530,7 @@
     reportsFor(e).then((reps) => {
       if (reps) { if (shownReports.size > 40) shownReports.clear(); shownReports.set(e.id, reps); }
       if (S.selectedId !== e.id || !document.body.contains(slot)) return;
-      slot.innerHTML = reps ? reportsHtml(reps.slice().sort((a, b) => Date.parse(b.time) - Date.parse(a.time)))
+      slot.innerHTML = reps ? reportsHtml(reps, e)
         : '<p class="muted">The reports for this event were just updated. Close it and open it again in a moment.</p>';
     }).catch(() => {
       if (S.selectedId !== e.id || !document.body.contains(slot)) return;
@@ -2410,31 +2539,60 @@
     });
   }
 
-  const reportsHtml = (reports) => `<h2 class="reports-title">Reports (${reports.length})</h2><ul class="reports">${reports.map((r) => `
-    <li class="report ${r.side ? "sided" : ""}"><div class="report-head"><span class="report-src">${esc(r.source)}</span><span>${esc(PLATFORM[r.platform] || r.platform)}</span>
-      <span>${esc(KIND[r.kind] || r.kind)}${r.side ? `, aligned with ${esc(r.side)}` : ""}</span><span>${esc(ago(Date.parse(r.time)))}</span></div>
-      <p>${esc(r.summary)}</p><a href="${esc(safeUrl(r.url))}" target="_blank" rel="noopener noreferrer">Open the original post</a></li>`).join("")}</ul>`;
+  // Report counts and publication order describe the evidence, not independent corroboration.
+  const reportTime = (r) => { const t = Date.parse(r.time); return Number.isFinite(t) ? t : 0; };
+  function evidenceSummary(reports) {
+    const names = new Map();
+    for (const r of reports) if (r.source) names.set(r.source, Boolean(r.side) || names.get(r.source) || false);
+    return { reports: reports.length, sources: names.size, aligned: [...names.values()].filter(Boolean).length };
+  }
+  function reportsHtml(reports, e) {
+    const info = evidenceSummary(reports);
+    const ordered = [...reports].sort((a, b) => reportTime(b) - reportTime(a));
+    const dated = ordered.filter(reportTime).reverse();
+    const timestamp = (r, exact = false) => reportTime(r)
+      ? `<time datetime="${esc(r.time)}" title="${esc(new Date(reportTime(r)).toUTCString())}">${esc(exact ? fmtEvidenceTime(reportTime(r)) : ago(reportTime(r)))}</time>`
+      : '<span>Report time unknown</span>';
+    const cards = (list) => `<ul class="reports">${list.map((r) => `
+      <li class="report ${r.side || r.claim_source === "idf" ? "sided" : ""}"><div class="report-head"><span class="report-src">${esc(r.source || "Unnamed source")}</span><span>${esc(PLATFORM[r.platform] || r.platform)}</span>
+        <span>${esc(KIND[r.kind] || r.kind)}${r.side ? `, aligned with ${esc(r.side)}` : ""}${r.claim_source === "idf" ? ", IDF statement" : ""}</span>${timestamp(r)}</div>
+        <p>${esc(r.summary)}</p><a href="${esc(safeUrl(r.url))}" target="_blank" rel="noopener noreferrer">Open the original report</a></li>`).join("")}</ul>`;
+    return `<section class="event-evidence" aria-label="Event evidence">
+      <h2 class="reports-title">Evidence</h2>
+      <dl class="evidence-stats"><div><dt>Published reports</dt><dd>${info.reports}</dd></div><div><dt>Named sources</dt><dd>${info.sources}</dd></div></dl>
+      <p class="evidence-note">${info.aligned ? `${info.aligned} ${info.aligned === 1 ? "source is" : "sources are"} marked as aligned with a side. ` : ""}${reports.some((r) => r.claim_source === "idf") ? "Reports labelled IDF statement count together as Israel's side, even through different publishers. " : ""}Different source names may share a newsroom or repeat the same report. The confidence label above accounts for source independence.</p>
+      ${dated.length ? `<details class="report-timeline"><summary>Reporting timeline (${dated.length})</summary>
+        <p class="evidence-note">Publication times, earliest first. Later coverage does not change ${e?.alert ? "the first warning's" : "the event's"} date.</p>
+        <ol class="report-timeline-list">${dated.map((r) => `<li>${timestamp(r, true)}<a href="${esc(safeUrl(r.url))}" target="_blank" rel="noopener noreferrer">${esc(r.source || "Unnamed source")}</a></li>`).join("")}</ol>
+      </details>` : ""}
+      <h2 class="reports-title">Latest reports</h2>${ordered.length ? cards(ordered.slice(0, 5)) : '<p class="muted">No published reports available yet.</p>'}
+      ${ordered.length > 5 ? `<details class="earlier-reports"><summary>Show ${ordered.length - 5} earlier reports</summary>${cards(ordered.slice(5))}</details>` : ""}
+    </section>`;
+  }
 
   function select(id, fly) {
     const e = S.data && S.data.events.find((x) => x.id === id);
     if (!e) return;
+    stopRouteBurst();
     hotEvent(null);
     const fresh = id !== S.selectedId;
     S.selectedId = id; S.selectedHull = null; S.selectedFlow = null;
     markViewed(id);
-    history.replaceState(null, "", "#" + encodeURIComponent(id));
+    history.replaceState(null, "", eventLink(id));
     let flight = 0;
     if (fly) {
       const alt = Math.min(world.pointOfView().altitude, (e.wave || e.alert) && e.targets.length > 3 ? 1.45 : 1.15);
       flight = reduceMotion ? 0 : flyMs(e.lat, e.lon, alt);
       world.pointOfView({ lat: e.lat, lng: e.lon, altitude: alt }, flight);
     }
-    if (fresh) playLaunches(e, flight);
+    if (fresh && !e._archived) playLaunches(e, flight);
+    else if (fresh) stopLaunches();
     renderEventDetail(e);
     renderSoon();  // the details show at once; the globe follows a frame later
   }
 
   function renderEventDetail(e, refresh = false) {
+    document.title = `${e.summary} | Global Situation Monitor`;
     const theaterName = (S.theaters.find((t) => t.id === e.theater) || {}).name || e.theater;
     const facts = [];
     if (e.launched != null) facts.push(`<span>Launched <b>${e.launched}</b> (reported)</span>`);
@@ -2473,29 +2631,54 @@
       <div class="detail-type">${eventIcon(e)}${esc(typeLabel(e))}</div>
       ${(e.corrected || []).length ? `<div class="corrected"><span class="corrected-tag">Corrected</span><ul>${e.corrected.map((c) => `<li>${esc(c.change)}: ${esc(c.note)}</li>`).join("")}</ul></div>` : ""}
       <h3>${esc(e.summary)}</h3>
-      <p class="detail-where">${where}<br>${e.alert ? "First alert" : "Happened"} ${esc(fmtTime(e._t))}${e._tu - e._t > 30 * 60e3 ? `, latest report ${esc(ago(e._tu))}` : ""}</p>
+      <p class="detail-where">${where}</p>
+      <p><button class="linkish" type="button" id="copyEventLink">Copy event link</button>
+        <a class="linkish" href="${esc(eventLink(e.id))}" id="eventShareLink" hidden>Open share link</a></p>
+      ${e._archived ? '<p class="muted">Archived event. This published snapshot is separate from the current live feed.</p>' : ""}
+      <dl class="event-times"><div><dt>${e.alert ? "First warning" : "Event time"}</dt><dd><time datetime="${esc(e.time || e.updated)}" title="${esc(new Date(e._t).toUTCString())}">${esc(fmtEvidenceTime(e._t))}</time></dd></div>
+        <div><dt>Latest report</dt><dd><time datetime="${esc(e.updated || e.time)}" title="${esc(new Date(e._tu).toUTCString())}">${esc(fmtEvidenceTime(e._tu))}</time></dd></div></dl>
+      ${hasFollowup(e) ? '<p class="muted">Ongoing coverage of this event is grouped here. Recent reports keep it on the map; the event time stays at its original date.</p>' : ""}
       ${e.possibly_old ? `<div class="verdict verdict--doubt"><span class="conf-swatch conf-dashed" aria-hidden="true"></span><div><strong>Possibly an old story</strong><p>Only one outlet has this, and a news search found earlier coverage of the same topic but nothing current from other outlets. It may be an old article republished with a new date. It stays on the map, quieter, and is confirmed if another source reports it.</p></div></div>` : ""}
       <div class="verdict"><span class="conf-swatch conf-${STATUS[e.status].conf}" aria-hidden="true"></span><div><strong>${esc(STATUS[e.status].label)}</strong><p>${esc(STATUS[e.status].note(e.sources_count, e.news_nearby))}</p></div></div>
       ${facts.length ? `<div class="facts">${facts.join("")}</div>` : ""}
       ${e.legal_basis ? `<div class="legal-basis"><span>Stated legal basis</span><strong>${esc(e.legal_basis)}</strong><p>As reported by the sources below. The dashboard records claimed justifications; it does not assess them.</p></div>` : ""}
       ${waveBlock}${alertBlock}
-      <div id="reportsSlot">${e.reports || shownReports.has(e.id) ? reportsHtml((e.reports || shownReports.get(e.id)).slice().sort((a, b) => Date.parse(b.time) - Date.parse(a.time)))
+      <div id="reportsSlot">${e.reports || shownReports.has(e.id) ? reportsHtml(e.reports || shownReports.get(e.id), e)
         : '<h2 class="reports-title">Reports</h2><p class="muted">Loading reports\u2026</p>'}</div>
       ${news.length ? `<h2 class="reports-title">News coverage nearby (${e.news_nearby || news.length} outlets)</h2>
         <ul class="news-links">${news.map((u) => `<li><a href="${esc(safeUrl(u))}" target="_blank" rel="noopener noreferrer">${esc(u.replace(/^https?:\/\/(www\.)?/, "").slice(0, 80))}</a></li>`).join("")}</ul>` : ""}
       <p class="event-id">Event id <code>${esc(e.id)}</code></p>
     `, refresh);
+    $("#copyEventLink").addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(eventLink(e.id));
+        announce("Event link copied");
+      } catch {
+        $("#eventShareLink").hidden = false;
+        announce("Open the share link and copy its address");
+      }
+    });
     if (!e.reports) fillReports(e);
   }
 
   function selectFlow(key, pledge = false) {
+    history.replaceState(null, "", APP_ROOT.pathname + location.search);
+    document.title = "Global Situation Monitor";
     const s = S.supply;
     const f = (pledge ? s.pledges : s.flows).find((x) => x.key === key) || s.flows.find((x) => x.key === key) || s.pledges.find((x) => x.key === key);
     if (!f) return;
+    const isPledge = s.pledges.includes(f);
+    const fresh = S.selectedFlow !== key;
+    stopLaunches();
+    if (fresh || isPledge) stopRouteBurst();
     S.selectedFlow = key; S.selectedId = null; S.selectedHull = null;
     const a = f.from || countryCenter(f.supplier), b = f.to || countryCenter(f.recipient);
-    if (a && b) { const mid = slerp(a, b, 0.5); zoomTo(mid.lat, mid.lon, clamp(0.6 + km(a.lat, a.lon, b.lat, b.lon) / 5000, 1.1, 2.6)); }
-    const isPledge = s.pledges.includes(f);
+    let flight = 0;
+    if (a && b) {
+      const mid = slerp(a, b, 0.5), altitude = clamp(0.6 + km(a.lat, a.lon, b.lat, b.lon) / 5000, 1.1, 2.6);
+      flight = reduceMotion ? 0 : flyMs(mid.lat, mid.lon, altitude);
+      world.pointOfView({ lat: mid.lat, lng: mid.lon, altitude }, flight);
+    }
     const route = f.from && f.to ? `${esc(f.from.place || "origin")}${f.via.length ? ` → ${f.via.map((v) => esc(v.place || "hub")).join(" → ")}` : ""} → ${esc(f.to.place || "destination")}`
       : "Not named in reports. The line runs between the two countries and is drawn faint.";
     showDetail(`
@@ -2513,14 +2696,18 @@
       <h2 class="reports-title">${isPledge ? "Announcements" : "Reported deliveries"} (${f.events.length})</h2>
       <ul class="targets">${f.events.map((e) => `<li><button class="target" type="button" data-event="${esc(e.id)}"><span>${esc(e.summary)}</span><span class="target-meta">${esc(agoShort(e._t))}</span></button></li>`).join("")}</ul>
     `);
+    if (fresh && !isPledge) playRouteBurst(f, flight);
     renderSoon();
   }
 
   function selectCarrier(hull, fly) {
     const c = S.fleet.find((x) => x.hull === hull);
     if (!c) return;
+    stopLaunches();
+    stopRouteBurst();
     S.selectedHull = hull; S.selectedId = null; S.selectedFlow = null;
-    history.replaceState(null, "", "#" + encodeURIComponent(hull));
+    history.replaceState(null, "", APP_ROOT.pathname + location.search + "#" + encodeURIComponent(hull));
+    document.title = "Global Situation Monitor";
     if (fly) zoomTo(c._lat, c._lon, clamp(world.pointOfView().altitude, 1.3, 1.8));
     renderCarrierDetail(c);
     renderSoon();
@@ -2610,6 +2797,8 @@
     const items = document.querySelectorAll("[data-legend]");
     items.forEach((b) => b.setAttribute("aria-pressed", String(!S.off.has(b.dataset.legend))));
     S.layers = { paths: !S.off.has("paths"), supply: !S.off.has("crate"), carriers: !S.off.has("carrier") };
+    if (!S.layers.paths) stopLaunches();
+    if (routeBurst && S.off.has(routeBurst.money ? "coin" : "crate")) stopRouteBurst();
     $("#legendReset").hidden = !S.off.size;
     $("#legendNone").hidden = S.off.size >= items.length;
     renderSoon();
@@ -2690,6 +2879,13 @@
       if (b && b.dataset.id !== hotId) hotEvent(b.dataset.id);
     });
     $("#feedList").addEventListener("pointerleave", () => hotEvent(null));
+    // Keep reader-opened analysis sections open through filtering and live refreshes.
+    $("#feedList").addEventListener("toggle", (ev) => {
+      const section = ev.target.dataset && ev.target.dataset.briefSection;
+      if (section && $("#feedList").contains(ev.target)) {
+        if (ev.target.open) S.briefOpen.add(section); else S.briefOpen.delete(section);
+      }
+    }, true);
     $("#feedList").addEventListener("click", (ev) => {
       if (ev.target.closest("[data-more]")) { S.feedLimit += FEED_PAGE; render(); return; }
       const b = ev.target.closest("[data-id]");
