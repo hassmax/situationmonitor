@@ -1,6 +1,7 @@
 """Duplicates: reports pinned to a whole country or sea, attack waves across the old day
 boundary, and unattributed strikes on a wave's targets."""
 import merge
+import dedupe
 
 FAIRFORD, ENGLAND, UK = (51.71, -1.78), (52.53, -1.26), (55.38, -3.44)
 SCS, SCARBOROUGH = (12.0, 113.0), (15.15, 117.76)
@@ -18,7 +19,7 @@ def cand(e):
     return {**e, "report": e["reports"][0]}
 
 
-def test_country_level_report_joins_the_spot_it_is_about():
+def test_country_level_report_needs_same_incident_confirmation():
     spot = event("a", "Fairford", FAIRFORD, "2026-09-27T12:00:00Z",
                  "British counterterrorism police made explosives arrests near RAF Fairford, a base used by US forces.",
                  attacker="RU")
@@ -27,6 +28,8 @@ def test_country_level_report_joins_the_spot_it_is_about():
                   attacker="IR")                       # hybrid: the suspected culprit may differ between reports
     none = event("c", None, UK, "2026-09-27T14:00:00Z", "UK counter-terrorism police probe a suspected plot to bomb a base.")
     out = merge.merge([spot], [cand(broad), cand(none)])
+    assert len(out) == 3  # different occurrence times need confirmation, even with broad pins
+    out, _ = dedupe._fold(out, [(out[0]["id"], e["id"]) for e in out[1:]], set())
     assert len(out) == 1 and len(out[0]["reports"]) == 3 and out[0]["place"] == "Fairford"
 
 
@@ -143,13 +146,15 @@ def test_one_shared_word_is_not_similar_wording():
     assert len(merge.merge([], [cand(ike), cand(plane)])) == 2
 
 
-def test_country_level_fighting_joins_the_same_story_pinned_to_a_city():
+def test_country_level_fighting_needs_same_incident_confirmation():
     a = event("a", "Addis Ababa", ADDIS, "2026-09-29T08:19:00Z", "Fighting in Ethiopia intensifies amid ongoing "
               "conflict dynamics.", type_="ground", country="ET", theater="horn")
     b = event("b", "Ethiopia", ETHIOPIA, "2026-09-29T08:23:00Z", "Fighting in Ethiopia intensifies.",
               type_="ground", country="ET", theater="horn")
-    assert len(merge.merge([], [cand(a), cand(b)])) == 1
+    assert len(merge.merge([], [cand(a), cand(b)])) == 2
     out, folded = merge.consolidate([a, b], set())
+    assert len(out) == 2 and folded == []
+    out, _ = dedupe._fold(out, [("a", "b")], set())
     assert [e["id"] for e in out] == ["a"]
 
 

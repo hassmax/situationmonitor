@@ -307,7 +307,7 @@ def _same_talks(e: dict, cand: dict) -> bool:
     a, b = set(e.get("parties") or []), set(cand.get("parties") or [])
     if a and b:
         if len(a & b) >= 2:
-            return True
+            return _overlap(e["summary"], cand["summary"]) >= TALKS_SUBSET_OVERLAP
         # the same parties, or one list within the other with closer wording: "Pakistan announces Mecca
         # pact talks on the Houthis" came in with [PK] from one outlet and [PK, SA, YE] from another
         # (a Saudi cabinet meeting, [SA], and a Saudi-UAE meeting, [AE, SA], shared half their words)
@@ -353,6 +353,16 @@ def _find_match(events: list[dict], cand: dict) -> dict | None:
             continue
         d = haversine_km(e["lat"], e["lon"], cand["lat"], cand["lon"])
         radius = RADIUS_KM[fam] * (2 if (e.get("approx") or cand["approx"]) else 1)
+        # A shared place and time window identify candidates, not the same incident. Recurring
+        # incidents need the same occurrence time and matching details; uncertain pairs
+        # remain separate until dedupe confirms them. Follow-up publication times may differ.
+        if fam in ("strike", "ground", "naval", "hybrid", "incursion") and ct != parse_time(e["time"]):
+            continue
+        if d <= radius:
+            if not _similar(e, cand, STRIKE_FOLD_OVERLAP):
+                continue
+            if fam != "hybrid" and e.get("attacker") and cand.get("attacker") and e["attacker"] != cand["attacker"]:
+                continue
         if d <= radius and fam in LOOSE_FAMILIES and _broad(e) and _broad(cand) and not _similar(e, cand):
             continue  # two reports that only share a region or sea pin need similar wording too
         if d > radius:
