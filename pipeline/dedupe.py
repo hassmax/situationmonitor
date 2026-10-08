@@ -20,7 +20,7 @@ So the check is built around each event and the few events most like it:
   country or sea. Alert groups
   have their own grouping and are left out; an attack wave can take in others but two waves are
   never folded together.
-- Near-identical reports of things other than strikes and fighting ("All 12 U.S. B-1B Lancer
+- Near-identical reports of statements, deals and movements ("All 12 U.S. B-1B Lancer
   bombers have left RAF Fairford" and "... have departed RAF Fairford"), at AUTO similarity or more,
   within AUTO_HOURS and giving no different figures, are folded without asking.
 - The rest are asked: each event with its candidates not judged yet, CASES_PER_CALL a call, newest
@@ -60,14 +60,14 @@ FAR_FLOOR = 0.5         # ... anywhere else
 LATE_FLOOR = 0.18       # late details use different words; still near, bounded, and model-confirmed
 SEA_KM = 800            # events at sea (no country) this close together are near
 AUTO = 0.8              # folded without asking: near-identical wording ...
-AUTO_HOURS = 36         # ... this close in time, and not strikes or fighting
+AUTO_HOURS = 36         # ... this close in time, and not a recurring incident
 CASES_PER_CALL = 15
 MAX_CALLS_PER_RUN = 2
 EXTRA_CALLS_FLOOR = 100  # the second call in one run only while this many calls are left today
 NEW_HOURS = 36           # events this recent are compared with older ones (late follow-ups)
 LATE_DAYS = 14           # how far back
 KEEP_DAYS = 7
-VIOLENCE = {"strike", "ground"}   # never folded without the model: a city at war has many strikes a day
+VIOLENCE = {"strike", "ground", "naval", "hybrid", "incursion"}   # recurring incidents need confirmation
 # Incidents happen in one place: strikes and fighting this far apart, or incidents at sea, are
 # different ones unless either is pinned only to a whole country or sea (approximate). A trial on
 # 2026-10-06 joined the Ukrainian air force's guided-bomb reports for Dnipropetrovsk, Chernihiv and
@@ -218,7 +218,7 @@ def candidates(e: dict, pool: list[dict], vec: dict, late: bool = False) -> list
 
 
 def automatic(e: dict, f: dict, score: float, headline_score: float | None = None) -> bool:
-    """Near-identical reports of something other than a strike or fighting, close in time, giving
+    """Near-identical reports of something other than a recurring incident, close in time, giving
     no different figures: folded without asking."""
     # Report excerpts retrieve candidates only. Automatic folds still need near-identical
     # current headlines, so sharing one background report cannot join separate actions.

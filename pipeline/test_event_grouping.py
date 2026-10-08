@@ -35,6 +35,43 @@ FOLLOW = "South Korea's investigation attributes the DMZ landmine blast to North
 
 
 class EventGroupingTests(unittest.TestCase):
+    def test_nearby_different_events_are_new_alerts(self):
+        old = event("original", 0.1, "A mine explosion injured soldiers at a border checkpoint.")
+        new = event("new", 0.05, "A warehouse fire destroyed equipment near the border checkpoint.")
+        candidate = {**new, "report": new["reports"][0]}
+        result = merge.merge([old], [candidate])
+        self.assertEqual(len(result), 2)
+        self.assertEqual(result[0]["reports"], old["reports"])
+        self.assertEqual(result[1]["time"], new["time"])
+
+    def test_recurring_strikes_at_same_place_need_same_event_confirmation(self):
+        old = event("first", 0.2, BLAST)
+        new = event("second", 0.1, BLAST)
+        result = merge.merge([old], [{**new, "report": new["reports"][0]}])
+        self.assertEqual(len(result), 2, "Matching words and nearby times cannot establish one occurrence")
+        # The existing classifier can still group them if it confirms the same incident.
+        result, _ = dedupe._fold(result, [(result[0]["id"], result[1]["id"])], set())
+        self.assertEqual(len(result), 1)
+        self.assertEqual(result[0]["time"], old["time"])
+        self.assertEqual(len(result[0]["reports"]), 2)
+
+    def test_different_statements_by_same_parties_stay_separate(self):
+        old = event("talks", 0.1, "North and South Korea held a border security meeting.", "diplomacy")
+        new = event("sanctions", 0.05, "South Korea imposed financial sanctions on North Korean officials.", "diplomacy")
+        result = merge.merge([old], [{**new, "report": new["reports"][0]}])
+        self.assertEqual(len(result), 2)
+
+    def test_recurring_shipping_incidents_are_not_automatically_folded(self):
+        old = event("first", 0.2, "A cargo vessel reported an explosion near the coast.", "naval")
+        new = event("second", 0.1, old["summary"], "naval")
+        result = merge.merge([old], [{**new, "report": new["reports"][0]}])
+        self.assertEqual(len(result), 2)
+        self.assertFalse(dedupe.automatic(old, new, 1.0))
+        # A broad country/sea pin cannot bypass the occurrence check either.
+        broad = {**new, "lat": old["lat"] + 8, "approx": True}
+        result = merge.merge([old], [{**broad, "report": broad["reports"][0]}])
+        self.assertEqual(len(result), 2)
+
     def test_working_set_event_older_than_72_hours_is_a_candidate(self):
         old, new = event("original", 6, BLAST), event("update", 0.1, FOLLOW, "hybrid")
         questions, _ = dedupe.cases([old, new], [], {}, NOW)
