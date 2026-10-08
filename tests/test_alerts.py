@@ -73,13 +73,13 @@ def test_never_twice_but_escalation_alerts_again():
 
 
 def test_message_format_and_link():
-    msgs = run(started(), [ev("abc123", summary="Russian drones hit a substation.")])
+    msgs = run(started(), [ev("a99b66331f72", summary="Russian drones hit a substation.")])
     text = msgs[0]
     assert "Drone or missile attack: Kyiv, Russia-Ukraine" in text
     assert "Corroborated, 3 sources" in text
-    assert text.endswith("https://owner.github.io/situationmonitor/#abc123")
+    assert text.endswith("https://owner.github.io/situationmonitor/events/a99b66331f72/")
     env = {**ENV, "DASHBOARD_URL": "https://example.org/map"}
-    assert run(started(), [ev("x")], env=env)[0].endswith("https://example.org/map/#x")
+    assert run(started(), [ev("123456abcdef")], env=env)[0].endswith("https://example.org/map/events/123456abcdef/")
 
 
 def test_more_than_eight_become_one_digest():

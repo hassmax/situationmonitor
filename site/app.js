@@ -5,6 +5,18 @@
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const params = new URLSearchParams(location.search);
   const DEMO = params.has("demo");
+  // Freeze the asset root before event selection changes the address. Shared pages use ../../.
+  const APP_ROOT = new URL(".", document.baseURI);
+  const baseElement = document.querySelector("base");
+  if (baseElement) baseElement.href = APP_ROOT.href;
+  const eventIdFrom = (value) => {
+    try { return decodeURIComponent(value || "").trim().replace(/,+$/, ""); } catch { return ""; }
+  };
+  const INITIAL_EVENT_ID = eventIdFrom(location.hash.slice(1)) || (location.pathname.match(/\/events\/([a-f0-9]{12})\/$/) || [])[1] || "";
+  const eventLink = (id) => /^[a-f0-9]{12}$/.test(id) && !DEMO
+    ? new URL(`events/${id}/`, APP_ROOT).href : `${APP_ROOT.href}${DEMO ? "?demo" : ""}#${encodeURIComponent(id)}`;
+  let sharedSnapshot = null;
+  try { sharedSnapshot = JSON.parse(document.getElementById("sharedEvent")?.textContent || "null"); } catch { /* live data still opens */ }
   // This page's own version: the commit stamped into its script address by the update workflow
   // (app.js?v=<commit>); empty when run locally. See checkBuild.
   const OWN_BUILD = (() => {
@@ -254,8 +266,8 @@
     for (const k of Object.keys(viewed)) if (!(viewed[k] > cutoff)) delete viewed[k];
     try { localStorage.setItem("gsm_viewed", JSON.stringify(viewed)); } catch (_) { /* storage blocked */ }
   }
-  const isNew = (e) => !viewed[e.id] && !e.possibly_old && (e._t > Date.now() - HOUR || (lastSeen && e._t > lastSeen && e._t > Date.now() - DAY));
-  const isLive = (e) => !viewed[e.id] && (Date.now() - e._t < LIVE_MS || isNew(e));
+  const isNew = (e) => !e._archived && !viewed[e.id] && !e.possibly_old && (e._t > Date.now() - HOUR || (lastSeen && e._t > lastSeen && e._t > Date.now() - DAY));
+  const isLive = (e) => !e._archived && !viewed[e.id] && (Date.now() - e._t < LIVE_MS || isNew(e));
 
   // ------------------------------------------------------------------ state
   const S = {
@@ -1362,6 +1374,17 @@
       showLoadError(err);
       return;
     }
+    // A share page also carries the published snapshot, so old links still have their sources.
+    const wanted = S.selectedId || (S.firstLoad && INITIAL_EVENT_ID);
+    if (!DEMO && wanted && !(data.events || []).some((e) => e.id === wanted)) {
+      try {
+        if (sharedSnapshot?.id !== wanted && /^[a-f0-9]{12}$/.test(wanted)) {
+          const res = await fetch(new URL(`events/${wanted}/event.json`, APP_ROOT));
+          sharedSnapshot = res.ok ? await res.json() : null;
+        }
+        if (sharedSnapshot?.id === wanted) data.events = [...(data.events || []), { ...sharedSnapshot, _archived: true }];
+      } catch { /* a missing snapshot must not prevent the live dashboard from loading */ }
+    }
     try { ingest(data); } catch (err) { fatal(err); }
   }
 
@@ -1474,7 +1497,7 @@
       S.firstLoad = false;
       // Opens on the last 24 hours; if that's empty, widen to 3 days so the first view isn't blank.
       if (!data.events.some((e) => onMap(e) && activityTime(e) >= Date.now() - 24 * HOUR)) { setWindow(72); render(); }
-      const hash = decodeURIComponent(location.hash.slice(1));
+      const hash = INITIAL_EVENT_ID;
       if (hash && data.events.some((e) => e.id === hash)) select(hash, true);
       else if (/^CVN-\d{2}$/.test(hash) && S.fleet.some((c) => c.hull === hash)) selectCarrier(hash, true);
       else focusHotspot();
@@ -1549,6 +1572,7 @@
   const activityTime = (e) => e.alert || e.possibly_old || !onMap(e) ? e._t : Math.max(e._t, e._tu || e._t);
   const hasFollowup = (e) => !e.alert && !e.possibly_old && onMap(e) && e._tu >= e._t + DAY;
   function passes(e, ignoreTheater = false) {
+    if (e._archived) return false; // shared history never enters live counts or the latest list
     if (activityTime(e) < Date.now() - S.windowH * HOUR) return false;
     if (!ignoreTheater && !theaterShown(e.theater)) return false;
     if (!S.statusOn.has(e.status)) return false;
@@ -1619,7 +1643,7 @@
     const flows = new Map(), pledges = new Map();
     for (const e of S.data.events) {
       const t = e.transfer;
-      if (e.type !== "arms_transfer" || !t || e._t < since || !theaterShown(e.theater) || !S.statusOn.has(e.status)) continue;
+      if (e._archived || e.type !== "arms_transfer" || !t || e._t < since || !theaterShown(e.theater) || !S.statusOn.has(e.status)) continue;
       if (!matches(e)) continue;
       const kind = tkind(e);
       if (kind === "interdiction") continue;
@@ -1976,7 +2000,10 @@
   // the globe takes a moment on a phone. A newer click or a full render supersedes a pending one.
   function frameData() {
     const events = visibleEvents();
-    const mapEvents = markerPick(events.filter(onMap));
+    const selected = S.data?.events.find((e) => e.id === S.selectedId);
+    const onGlobe = events.filter(onMap);
+    if (selected && onMap(selected) && !onGlobe.includes(selected)) onGlobe.push(selected);
+    const mapEvents = markerPick(onGlobe);
     S.supply = buildSupply();
     return { events, mapEvents };
   }
@@ -2302,7 +2329,7 @@
     document.querySelectorAll("[data-count]").forEach((el) => { el.textContent = counts[el.dataset.count] || 0; });
     const now = Date.now(), tempo = {};
     for (const e of S.data.events) {
-      if (!onMap(e)) continue;
+      if (e._archived || !onMap(e)) continue;
       const idx = 6 - Math.floor((now - e._t) / DAY);
       if (idx < 0 || idx > 6) continue;
       (tempo[e.theater] = tempo[e.theater] || [0, 0, 0, 0, 0, 0, 0])[idx] += 1;
@@ -2314,7 +2341,7 @@
     });
     const byStatus = {};
     for (const e of S.data.events) {
-      if (!onMap(e) || activityTime(e) < now - S.windowH * HOUR || !theaterShown(e.theater)) continue;
+      if (e._archived || !onMap(e) || activityTime(e) < now - S.windowH * HOUR || !theaterShown(e.theater)) continue;
       byStatus[e.status] = (byStatus[e.status] || 0) + 1;
     }
     document.querySelectorAll("[data-status-count]").forEach((el) => { el.textContent = byStatus[el.dataset.statusCount] || 0; });
@@ -2389,7 +2416,8 @@
   function hideDetail() { $("#detail").hidden = true; $("#feedList").hidden = false; $("#feedHead").hidden = false; }
   function closeDetail() {
     S.selectedId = null; S.selectedHull = null; S.selectedFlow = null;
-    history.replaceState(null, "", location.pathname + location.search);
+    history.replaceState(null, "", APP_ROOT.pathname + location.search);
+    document.title = "Global Situation Monitor";
     hideDetail();
     render();
     if (S.lastFocus) { const again = document.querySelector(`[data-id="${CSS.escape(S.lastFocus)}"]`); if (again) again.focus(); }
@@ -2483,19 +2511,20 @@
     const fresh = id !== S.selectedId;
     S.selectedId = id; S.selectedHull = null; S.selectedFlow = null;
     markViewed(id);
-    history.replaceState(null, "", "#" + encodeURIComponent(id));
+    history.replaceState(null, "", eventLink(id));
     let flight = 0;
     if (fly) {
       const alt = Math.min(world.pointOfView().altitude, (e.wave || e.alert) && e.targets.length > 3 ? 1.45 : 1.15);
       flight = reduceMotion ? 0 : flyMs(e.lat, e.lon, alt);
       world.pointOfView({ lat: e.lat, lng: e.lon, altitude: alt }, flight);
     }
-    if (fresh) playLaunches(e, flight);
+    if (fresh && !e._archived) playLaunches(e, flight);
     renderEventDetail(e);
     renderSoon();  // the details show at once; the globe follows a frame later
   }
 
   function renderEventDetail(e, refresh = false) {
+    document.title = `${e.summary} | Global Situation Monitor`;
     const theaterName = (S.theaters.find((t) => t.id === e.theater) || {}).name || e.theater;
     const facts = [];
     if (e.launched != null) facts.push(`<span>Launched <b>${e.launched}</b> (reported)</span>`);
@@ -2535,6 +2564,9 @@
       ${(e.corrected || []).length ? `<div class="corrected"><span class="corrected-tag">Corrected</span><ul>${e.corrected.map((c) => `<li>${esc(c.change)}: ${esc(c.note)}</li>`).join("")}</ul></div>` : ""}
       <h3>${esc(e.summary)}</h3>
       <p class="detail-where">${where}</p>
+      <p><button class="linkish" type="button" id="copyEventLink">Copy event link</button>
+        <a class="linkish" href="${esc(eventLink(e.id))}" id="eventShareLink" hidden>Open share link</a></p>
+      ${e._archived ? '<p class="muted">Archived event. This published snapshot is separate from the current live feed.</p>' : ""}
       <dl class="event-times"><div><dt>${e.alert ? "First warning" : "Event time"}</dt><dd><time datetime="${esc(e.time || e.updated)}" title="${esc(new Date(e._t).toUTCString())}">${esc(fmtEvidenceTime(e._t))}</time></dd></div>
         <div><dt>Latest report</dt><dd><time datetime="${esc(e.updated || e.time)}" title="${esc(new Date(e._tu).toUTCString())}">${esc(fmtEvidenceTime(e._tu))}</time></dd></div></dl>
       ${hasFollowup(e) ? '<p class="muted">Ongoing coverage of this event is grouped here. Recent reports keep it on the map; the event time stays at its original date.</p>' : ""}
@@ -2549,10 +2581,21 @@
         <ul class="news-links">${news.map((u) => `<li><a href="${esc(safeUrl(u))}" target="_blank" rel="noopener noreferrer">${esc(u.replace(/^https?:\/\/(www\.)?/, "").slice(0, 80))}</a></li>`).join("")}</ul>` : ""}
       <p class="event-id">Event id <code>${esc(e.id)}</code></p>
     `, refresh);
+    $("#copyEventLink").addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(eventLink(e.id));
+        announce("Event link copied");
+      } catch {
+        $("#eventShareLink").hidden = false;
+        announce("Open the share link and copy its address");
+      }
+    });
     if (!e.reports) fillReports(e);
   }
 
   function selectFlow(key, pledge = false) {
+    history.replaceState(null, "", APP_ROOT.pathname + location.search);
+    document.title = "Global Situation Monitor";
     const s = S.supply;
     const f = (pledge ? s.pledges : s.flows).find((x) => x.key === key) || s.flows.find((x) => x.key === key) || s.pledges.find((x) => x.key === key);
     if (!f) return;
@@ -2584,7 +2627,8 @@
     const c = S.fleet.find((x) => x.hull === hull);
     if (!c) return;
     S.selectedHull = hull; S.selectedId = null; S.selectedFlow = null;
-    history.replaceState(null, "", "#" + encodeURIComponent(hull));
+    history.replaceState(null, "", APP_ROOT.pathname + location.search + "#" + encodeURIComponent(hull));
+    document.title = "Global Situation Monitor";
     if (fly) zoomTo(c._lat, c._lon, clamp(world.pointOfView().altitude, 1.3, 1.8));
     renderCarrierDetail(c);
     renderSoon();
