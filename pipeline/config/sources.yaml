@@ -146,6 +146,15 @@ telegram:
     group: deepstate
     weight: 3
     prefilter: false
+  - username: k_dvizh
+    # Kyiv local-news channel (Киевский Движ), reporting from a Ukrainian perspective.
+    # Keep same-side coverage from corroborating itself; filter general news and promotions.
+    name: Kyivskyi Dvizh (Kyiv local news, Ukrainian-aligned)
+    kind: news
+    side: UA
+    group: k-dvizh
+    weight: 1
+    prefilter: true
   - username: kpszsu
     name: Ukrainian Air Force (official)
     kind: official
