@@ -684,19 +684,20 @@
   const ARC = {
     strike: { dash: 0.5, gap: 0.18 }, strikeApprox: { dash: 0.34, gap: 0.28 },
     barrage: { dash: 0.035, gap: 0.05 },  // a massive barrage: a stream of small dashes from each usual launch area
-    flow: { dash: 1, gap: 0 }, flowDashed: { dash: 0.12, gap: 0.07 }, particles: { dash: 0.012, gap: 0.11 },
+    flow: { dash: 1, gap: 0 }, flowDashed: { dash: 0.12, gap: 0.07 },
+    routeShot: { dash: 0.14, gap: 4 },  // one short pulse when a reported route is opened
     track: { dash: 0.06, gap: 0.04 }, plan: { dash: 0.2, gap: 0.14 }, hit: { dash: 1, gap: 0 },
     shot: { dash: 0.14, gap: 4 },  // one bright dash that runs a launch line once (playLaunches)
   };
   // Routes and carrier lines are thin, so hovering meant being exactly on them: each gets an
   // invisible, wider twin that answers hover and taps for it.
-  const hitArcs = (arcs) => arcs.filter((a) => (a.flow || a.carrier) && a.kind !== "particles")
+  const hitArcs = (arcs) => arcs.filter((a) => (a.flow || a.carrier) && a.kind !== "routeShot")
     .map((a) => keyed({ ...a, kind: "hit", color: "rgba(0,0,0,0)", stroke: Math.max(2.8, a.stroke * 6), ms: 0, seed: 0 }, a._k && `hit|${a._k}`));
   world
     .arcStartLat("sLat").arcStartLng("sLng").arcEndLat("eLat").arcEndLng("eLng")
     .arcColor((a) => a.color).arcStroke(arcStroke)
     .arcDashLength((a) => ARC[a.kind].dash).arcDashGap((a) => ARC[a.kind].gap)
-    .arcDashInitialGap((a) => (a.kind === "flow" ? 0 : a.kind === "shot" ? 1 : a.seed))
+    .arcDashInitialGap((a) => (a.kind === "flow" ? 0 : (a.kind === "shot" || a.kind === "routeShot") ? 1 : a.seed))
     .arcDashAnimateTime((a) => (reduceMotion ? 0 : a.ms || 0))
     .arcAltitude((a) => (a.alt === undefined ? null : a.alt))
     .arcAltitudeAutoScale(0.36)
@@ -1270,7 +1271,7 @@
     const cam = world.camera().position, R = world.getGlobeRadius();
     let best = null, bestD = TAP_PX;
     for (const a of baseArcs) {
-      if (!(a.flow || a.carrier) || a.kind === "hit" || a.kind === "particles") continue;
+      if (!(a.flow || a.carrier) || a.kind === "hit" || a.kind === "routeShot") continue;
       const pts = arcOnScreen(a, cam, R);
       for (let i = 1; i < pts.length; i++) {
         if (!pts[i - 1] || !pts[i]) continue;
@@ -1858,11 +1859,57 @@
         if (km(a.lat, a.lon, b.lat, b.lon) < 25) continue;
         const lift = sea ? 0.002 : 0.012;
         arcs.push(...surfaceArcs(a, b, { _k: `sup|${f.key}|${i}`, flow: f, kind: f.status === "corroborated" ? "flow" : "flowDashed", color: rgba(f.money ? CAT_RGB.aid : CAT_RGB.supply, Math.min(1, alpha)), stroke, ms: 0, seed: 0 }, lift));
-        const pd = dimOf(S.selectedFlow === f.key);
-        if (f.active) arcs.push(...surfaceArcs(a, b, { _k: `sup|${f.key}|${i}|p`, flow: f, kind: "particles", color: [rgba([220, 250, 252], 0.25 * pd), rgba([220, 250, 252], 0.95 * pd)], stroke: Math.max(0.3, stroke * 0.8), ms: 1800, seed: Math.random() }, lift + 0.001));
       }
     }
     return arcs;
+  }
+
+  // A route stays visible; opening it sends one short pulse along its existing surface segments.
+  // No continuously moving particles, and no pulse for aid that is only pledged.
+  let routeTimers = [], routeBurst = null;
+  const routeShots = new Set();
+  function stopRouteBurst() {
+    routeTimers.forEach(clearTimeout);
+    routeTimers = [];
+    routeBurst = null;
+    if (!routeShots.size) return;
+    routeShots.forEach((a) => extraArcs.delete(a));
+    routeShots.clear();
+    pushArcs();
+  }
+  function playRouteBurst(f, flight = 0) {
+    stopRouteBurst();
+    if (reduceMotion || !f.active || S.off.has(f.money ? "coin" : "crate")
+        || !S.supply.flows.some((x) => x.key === f.key)) return;
+    const arcs = supplyArcs([f]);
+    const distances = arcs.map((a) => km(a.sLat, a.sLng, a.eLat, a.eLng));
+    const distance = distances.reduce((sum, d) => sum + d, 0);
+    if (!arcs.length || !(distance > 0)) return;
+    routeBurst = f;
+    const duration = PHONE ? 1600 : 2200;
+    const lead = Math.max(150, flight - 100);
+    const rgb = f.money ? CAT_RGB.aid : CAT_RGB.supply;
+    const named = f.from && f.to && !f.from.region && !f.to.region;
+    const alpha = STATUS[f.status].alpha * (named ? 1 : 0.6);
+    let offset = 0;
+    arcs.forEach((a, i) => {
+      const ms = duration * distances[i] / distance;
+      routeTimers.push(setTimeout(() => {
+        if (S.selectedFlow !== f.key || S.off.has(f.money ? "coin" : "crate")) return;
+        const shot = { ...a, kind: "routeShot", ms, seed: 1,
+          color: [rgba(rgb, 0.2 * alpha), rgba(rgb, alpha)], stroke: Math.max(0.45, a.stroke * 0.9) };
+        routeShots.add(shot);
+        extraArcs.add(shot);
+        pushArcs();
+        routeTimers.push(setTimeout(() => {
+          routeShots.delete(shot);
+          extraArcs.delete(shot);
+          pushArcs();
+        }, ms * 1.04));
+      }, lead + offset));
+      offset += ms;
+    });
+    routeTimers.push(setTimeout(stopRouteBurst, lead + duration * 1.04 + 50));
   }
 
   // ------------------------------------------------------------------ sea lanes for carrier lines
@@ -2048,6 +2095,7 @@
     renderLists(d);
   }
   function renderGlobe({ events, mapEvents }) {
+    if (routeBurst && !S.supply.flows.some((f) => f.key === routeBurst.key)) stopRouteBurst();
     newFrame();
     document.body.classList.toggle("focus", focused());
 
@@ -2432,6 +2480,7 @@
   function hideDetail() { $("#detail").hidden = true; $("#feedList").hidden = false; $("#feedHead").hidden = false; }
   function closeDetail() {
     stopLaunches();
+    stopRouteBurst();
     S.selectedId = null; S.selectedHull = null; S.selectedFlow = null;
     history.replaceState(null, "", APP_ROOT.pathname + location.search);
     document.title = "Global Situation Monitor";
@@ -2524,6 +2573,7 @@
   function select(id, fly) {
     const e = S.data && S.data.events.find((x) => x.id === id);
     if (!e) return;
+    stopRouteBurst();
     hotEvent(null);
     const fresh = id !== S.selectedId;
     S.selectedId = id; S.selectedHull = null; S.selectedFlow = null;
@@ -2617,11 +2667,18 @@
     const s = S.supply;
     const f = (pledge ? s.pledges : s.flows).find((x) => x.key === key) || s.flows.find((x) => x.key === key) || s.pledges.find((x) => x.key === key);
     if (!f) return;
+    const isPledge = s.pledges.includes(f);
+    const fresh = S.selectedFlow !== key;
     stopLaunches();
+    if (fresh || isPledge) stopRouteBurst();
     S.selectedFlow = key; S.selectedId = null; S.selectedHull = null;
     const a = f.from || countryCenter(f.supplier), b = f.to || countryCenter(f.recipient);
-    if (a && b) { const mid = slerp(a, b, 0.5); zoomTo(mid.lat, mid.lon, clamp(0.6 + km(a.lat, a.lon, b.lat, b.lon) / 5000, 1.1, 2.6)); }
-    const isPledge = s.pledges.includes(f);
+    let flight = 0;
+    if (a && b) {
+      const mid = slerp(a, b, 0.5), altitude = clamp(0.6 + km(a.lat, a.lon, b.lat, b.lon) / 5000, 1.1, 2.6);
+      flight = reduceMotion ? 0 : flyMs(mid.lat, mid.lon, altitude);
+      world.pointOfView({ lat: mid.lat, lng: mid.lon, altitude }, flight);
+    }
     const route = f.from && f.to ? `${esc(f.from.place || "origin")}${f.via.length ? ` → ${f.via.map((v) => esc(v.place || "hub")).join(" → ")}` : ""} → ${esc(f.to.place || "destination")}`
       : "Not named in reports. The line runs between the two countries and is drawn faint.";
     showDetail(`
@@ -2639,6 +2696,7 @@
       <h2 class="reports-title">${isPledge ? "Announcements" : "Reported deliveries"} (${f.events.length})</h2>
       <ul class="targets">${f.events.map((e) => `<li><button class="target" type="button" data-event="${esc(e.id)}"><span>${esc(e.summary)}</span><span class="target-meta">${esc(agoShort(e._t))}</span></button></li>`).join("")}</ul>
     `);
+    if (fresh && !isPledge) playRouteBurst(f, flight);
     renderSoon();
   }
 
@@ -2646,6 +2704,7 @@
     const c = S.fleet.find((x) => x.hull === hull);
     if (!c) return;
     stopLaunches();
+    stopRouteBurst();
     S.selectedHull = hull; S.selectedId = null; S.selectedFlow = null;
     history.replaceState(null, "", APP_ROOT.pathname + location.search + "#" + encodeURIComponent(hull));
     document.title = "Global Situation Monitor";
@@ -2739,6 +2798,7 @@
     items.forEach((b) => b.setAttribute("aria-pressed", String(!S.off.has(b.dataset.legend))));
     S.layers = { paths: !S.off.has("paths"), supply: !S.off.has("crate"), carriers: !S.off.has("carrier") };
     if (!S.layers.paths) stopLaunches();
+    if (routeBurst && S.off.has(routeBurst.money ? "coin" : "crate")) stopRouteBurst();
     $("#legendReset").hidden = !S.off.size;
     $("#legendNone").hidden = S.off.size >= items.length;
     renderSoon();

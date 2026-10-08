@@ -49,6 +49,7 @@ jobs:
           node tests/source-evidence.cjs
           node tests/event-sharing.cjs
           node tests/launch-paths.cjs
+          node tests/route-bursts.cjs
 
       - name: Load the data branch (state and archive)
         env:
