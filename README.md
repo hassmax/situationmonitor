@@ -174,6 +174,7 @@ Grouping regressions run before each data update: `python -m unittest discover -
 ## Customizing
 
 - **Sources:** `pipeline/config/sources.yaml`. The `outlets` list there says how Google News results from each outlet count: tier 1 for established outlets (processed first and preferred for headline summaries), tier 2 for other known outlets, and a `side` for state or partisan media. Each source has a `kind` and optionally a `side`; that is what drives the confidence colors, so label partisan and official channels honestly. The dashboard's Sources panel shows which ones are failing. The starter lists are thinnest for the Middle East, Africa, and the Indo-Pacific.
+  Kyiv local reporting includes [Kyivskyi Dvizh (Киевский Движ)](https://t.me/k_dvizh). Its Ukrainian-aligned reports count as that side's coverage, and the existing keyword filter screens general news and promotions before event extraction.
 - **Theaters:** `pipeline/config/theaters.yaml` (countries, map boxes, camera positions). If you add or rename a theater, update the theater list in the prompt in `pipeline/extract.py` too.
 - **Corrections:** `pipeline/config/corrections.yaml`. Every event's id is shown at the bottom of its detail view (also the part after `#` in the page address). Each entry needs the id and a short `note`, and does one of three things:
 
