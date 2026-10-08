@@ -398,6 +398,7 @@ outlets:
   - {domain: denvergazette.com, name: The Denver Gazette, tier: 2, group: clarity-media, names: [denvergazette.com]}
   - {domain: intellinews.com, name: IntelliNews, tier: 2}
   # Middle East
+  - {domain: idf.il, name: IDF (official), kind: official, tier: 2, side: IL, group: idf, names: [IDF, Israel Defense Forces, Israeli Defense Forces]}
   - {domain: timesofisrael.com, name: The Times of Israel, tier: 1, group: timesofisrael}
   - {domain: haaretz.com, name: Haaretz, tier: 1}
   - {domain: jpost.com, name: The Jerusalem Post, tier: 2}

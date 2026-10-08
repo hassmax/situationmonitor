@@ -398,6 +398,7 @@ def place_record(rec: dict, geocoder: Geocoder, theaters: list[dict]) -> dict | 
             "group": item["group"],
             "weight": item.get("weight", 1),
             "claim": rec["claim"],
+            **({"claim_source": rec["claim_source"]} if "claim_source" in rec else {}),
             "launched": rec.get("launched"),
             "url": item["url"],
             "time": item["time"],

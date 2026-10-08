@@ -37,7 +37,7 @@
     corroborated: { label: "Corroborated", rank: 3, conf: "solid", alpha: 0.95,
       note: (n, news) => `Reported by ${n} independent sources${news >= 3 ? ", including nearby news coverage" : ""}.` },
     unconfirmed: { label: "Single source", rank: 2, conf: "outline", alpha: 0.7, note: () => "Only one source so far. Treat it as unverified." },
-    claimed: { label: "One side's claim", rank: 1, conf: "dashed", alpha: 0.6, note: () => "Reported only by sources aligned with one side of the conflict." },
+    claimed: { label: "One side's claim", rank: 1, conf: "dashed", alpha: 0.6, note: () => "Based on statements or reports from one side of the conflict." },
   };
   const TYPES = {
     airstrike: "Airstrike", missile_drone: "Drone or missile attack", artillery: "Shelling", ground: "Ground fighting",
@@ -2460,13 +2460,13 @@
       ? `<time datetime="${esc(r.time)}" title="${esc(new Date(reportTime(r)).toUTCString())}">${esc(exact ? fmtEvidenceTime(reportTime(r)) : ago(reportTime(r)))}</time>`
       : '<span>Report time unknown</span>';
     const cards = (list) => `<ul class="reports">${list.map((r) => `
-      <li class="report ${r.side ? "sided" : ""}"><div class="report-head"><span class="report-src">${esc(r.source || "Unnamed source")}</span><span>${esc(PLATFORM[r.platform] || r.platform)}</span>
-        <span>${esc(KIND[r.kind] || r.kind)}${r.side ? `, aligned with ${esc(r.side)}` : ""}</span>${timestamp(r)}</div>
+      <li class="report ${r.side || r.claim_source === "idf" ? "sided" : ""}"><div class="report-head"><span class="report-src">${esc(r.source || "Unnamed source")}</span><span>${esc(PLATFORM[r.platform] || r.platform)}</span>
+        <span>${esc(KIND[r.kind] || r.kind)}${r.side ? `, aligned with ${esc(r.side)}` : ""}${r.claim_source === "idf" ? ", IDF statement" : ""}</span>${timestamp(r)}</div>
         <p>${esc(r.summary)}</p><a href="${esc(safeUrl(r.url))}" target="_blank" rel="noopener noreferrer">Open the original report</a></li>`).join("")}</ul>`;
     return `<section class="event-evidence" aria-label="Event evidence">
       <h2 class="reports-title">Evidence</h2>
       <dl class="evidence-stats"><div><dt>Published reports</dt><dd>${info.reports}</dd></div><div><dt>Named sources</dt><dd>${info.sources}</dd></div></dl>
-      <p class="evidence-note">${info.aligned ? `${info.aligned} ${info.aligned === 1 ? "source is" : "sources are"} marked as aligned with a side. ` : ""}Different source names may share a newsroom or repeat the same report. The confidence label above accounts for source independence.</p>
+      <p class="evidence-note">${info.aligned ? `${info.aligned} ${info.aligned === 1 ? "source is" : "sources are"} marked as aligned with a side. ` : ""}${reports.some((r) => r.claim_source === "idf") ? "Reports labelled IDF statement count together as Israel's side, even through different publishers. " : ""}Different source names may share a newsroom or repeat the same report. The confidence label above accounts for source independence.</p>
       ${dated.length ? `<details class="report-timeline"><summary>Reporting timeline (${dated.length})</summary>
         <p class="evidence-note">Publication times, earliest first. Later coverage does not change ${e?.alert ? "the first warning's" : "the event's"} date.</p>
         <ol class="report-timeline-list">${dated.map((r) => `<li>${timestamp(r, true)}<a href="${esc(safeUrl(r.url))}" target="_blank" rel="noopener noreferrer">${esc(r.source || "Unnamed source")}</a></li>`).join("")}</ol>
