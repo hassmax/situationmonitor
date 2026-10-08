@@ -24,6 +24,11 @@ rules:
   major_corroborated:
     enabled: true
 
+  # High-impact single-source reports remain explicitly unconfirmed; never imply verification.
+  major_reported:
+    enabled: true
+    min_severity: 3
+
   # A large drone and missile attack wave: this many launched, or this many locations hit.
   attack_wave:
     enabled: true
