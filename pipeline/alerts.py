@@ -28,7 +28,7 @@ TYPES = {
 }
 CONFIDENCE = {"corroborated": "Corroborated", "unconfirmed": "Single source", "claimed": "One side's claim"}
 REASON = {"major": "major corroborated event", "wave": "large attack wave", "legal": "new legal step",
-          "tg_pair": "reported by two OSINT Telegram channels", "major_reported": "major event reported, awaiting independent corroboration"}
+          "tg_pair": "reported by two OSINT Telegram channels"}
 KEEP_DAYS = 30
 
 
@@ -55,10 +55,6 @@ def event_matches(e: dict, rules: dict) -> list[str]:
     hits = []
     if _rule(rules, "major_corroborated") and (e.get("severity") or 0) >= 3 and e.get("status") == "corroborated":
         hits.append("major")
-    reported = _rule(rules, "major_reported")
-    if (reported and (e.get("severity") or 0) >= int(reported.get("min_severity", 3))
-            and e.get("status") == "unconfirmed" and (e.get("reports") or [])):
-        hits.append("major_reported")
     wave = _rule(rules, "attack_wave")
     if wave and e.get("wave") and ((e.get("launched") or 0) >= int(wave.get("min_launched", 100))
                                    or len(e.get("targets") or []) >= int(wave.get("min_locations", 8))):
