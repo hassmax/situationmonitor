@@ -725,6 +725,14 @@ rss:
     kind: news
     group: google-news
     weight: 2
+  # Catch a third country entering an existing conflict, even when the headline names
+  # the new belligerent rather than Iran, Israel, or the original parties.
+  - id: gnews-crossborder-entry
+    name: Google News (new military intervention and cross-border strikes)
+    url: https://news.google.com/rss/search?q=%28%22Pakistan%22+OR+%22Saudi+Arabia%22+OR+%22Turkey%22+OR+%22Egypt%22+OR+%22UAE%22+OR+%22United+States%22+OR+%22Iran%22%29+%28%22Yemen%22+OR+%22Houthis%22+OR+%22Sudan%22+OR+%22Syria%22+OR+%22Lebanon%22+OR+%22Somalia%22%29+%28%22airstrikes%22+OR+%22fighter+jets%22+OR+%22bombed%22+OR+%22strikes%22+OR+%22military+intervention%22+OR+%22joined+the+war%22%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
+    kind: news
+    group: google-news
+    weight: 4
   - id: gnews-iran-gulf
     name: Google News (Iran, Gulf, Yemen, Red Sea)
     url: https://news.google.com/rss/search?q=%28Iran+OR+IRGC+OR+Houthi+OR+Yemen+OR+Hormuz+OR+%22Red+Sea%22+OR+Iraq%29+%28strike+OR+attack+OR+missile+OR+drone+OR+blockade+OR+seized%29+when%3A12h&hl=en-US&gl=US&ceid=US%3Aen
