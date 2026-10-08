@@ -248,13 +248,27 @@ def skip_rejected(items: list[dict], state: dict, now: datetime) -> list[dict]:
     return keep
 
 
+# Prioritize reporting of a new state conducting combat operations in another
+# country. This changes queue order only; the extractor still verifies the claim,
+# event type, date, and confidence using its normal rules.
+_CROSS_BORDER_ACTOR = re.compile(r"\\b(?:Pakistan(?:i)?|Saudi|Turkish|Turkey|Egyptian|Emirati|UAE|Iranian|American|US|British|French)\\b", re.I)
+_CROSS_BORDER_ACTION = re.compile(r"\\b(?:air\\s*strikes?|bomb(?:ed|ing|s)?|fighter\\s*jets?|warplanes?|struck|strikes?|interven(?:e|ed|tion)|joins?\\s+(?:the\\s+)?war)\\b", re.I)
+_CROSS_BORDER_TARGET = re.compile(r"\\b(?:Houthis?|Yemen|Sudan|Syria|Lebanon|Somalia|Iraq)\\b", re.I)
+
+
+def strategic_priority(item: dict) -> int:
+    text = item.get("text") or ""
+    return 4 if (_CROSS_BORDER_ACTOR.search(text) and _CROSS_BORDER_ACTION.search(text)
+                 and _CROSS_BORDER_TARGET.search(text)) else int(item.get("weight", 1))
+
+
 def build_queue(pending: list[dict], fresh: list[dict], now: datetime, settings: dict) -> list[dict]:
     by_id: dict[str, dict] = {}
     for it in pending + fresh:
         # backfilled items carry their own, longer age limit
         if hours_since(it.get("time"), now) <= it.get("max_age_h", settings["max_item_age_hours"]):
             by_id[it["id"]] = it
-    queue = sorted(by_id.values(), key=lambda it: (-int(it.get("weight", 1)), -_ts(it)))
+    queue = sorted(by_id.values(), key=lambda it: (-strategic_priority(it), -_ts(it)))
     return queue[: settings["pending_max"]]
 
 
