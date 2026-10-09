@@ -292,3 +292,16 @@ def test_a_waves_place_keeps_its_first_and_latest_report_time():
     out = merge.merge([], [cand(later), cand(first)])
     t = out[0]["targets"][0]
     assert t["time"] == "2026-09-28T08:53:00Z" and t["last"] == "2026-09-28T11:33:00Z" and t["reports"] == 2
+
+
+def test_manual_report_nearby_news_does_not_corroborate(monkeypatch):
+    e = event("manual-pakistan-houthi-airstrikes-20261008", "Yemen", (15.37, 44.19),
+              "2026-10-08T09:40:00Z", "Pakistani fighter jets reportedly struck Houthi targets.",
+              type_="airstrike", country="YE", theater="mideast")
+    monkeypatch.setattr(merge, "news_domains_near", lambda *_: {"a.com", "b.com", "c.com"})
+    merge.apply_status([e], [])
+    assert e["news_nearby"] == 3
+    assert e["status"] == "unconfirmed" and e["sources_count"] == 1
+    e["reports"].append({**e["reports"][0], "group": "independent", "url": "https://independent.com"})
+    merge.apply_status([e], [])
+    assert e["status"] == "corroborated" and e["sources_count"] == 2

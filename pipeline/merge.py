@@ -965,9 +965,10 @@ def apply_status(events: list[dict], cells: list[dict]) -> None:
         if FAMILY.get(e["type"]) in ("strike", "ground") and not e.get("alert"):
             news = news_domains_near(index, e)
         e["news_nearby"] = len(news)
+        # Manual reports require corroboration from their attached evidence, not nearby news.
         # Nearby headlines don't establish independence from an IDF statement. An event
         # resting only on Israeli-side evidence stays claimed until independent evidence joins.
-        if len(news) >= 3 and not ("idf" in sided and not (neutral - WEAK_GROUPS) and sides == {"IL"}):
+        if len(news) >= 3 and not e.get("id", "").startswith("manual-") and not ("idf" in sided and not (neutral - WEAK_GROUPS) and sides == {"IL"}):
             neutral.add("gdelt")
         groups = neutral | sided
         # Google News results from outlets not listed in sources.yaml share one group, as do posts
