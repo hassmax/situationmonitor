@@ -1546,8 +1546,8 @@
   }
   function focusHotspot() {
     const h = hotspot();
-    if (!h) { world.pointOfView({ lat: 30, lng: 38, altitude: isMobile() ? 3.0 : 2.2 }, reduceMotion ? 0 : 2600); return; }
-    world.pointOfView({ lat: h.lat, lng: h.lon, altitude: isMobile() ? h.altitude + 0.5 : h.altitude }, reduceMotion ? 0 : 2800);
+    if (!h) { world.pointOfView({ lat: 30, lng: 38, altitude: isMobile() ? 4.2 : 2.2 }, reduceMotion ? 0 : 2600); return; }
+    world.pointOfView({ lat: h.lat, lng: h.lon, altitude: isMobile() ? 4.2 : 2.2 }, reduceMotion ? 0 : 1800);
     const span = { 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[S.windowH];
     const toast = $("#focusToast");
     toast.innerHTML = `<span class="focus-k">Most active now</span> <strong>${esc(h.theater)}</strong> <span>${h.n} ${h.n === 1 ? "event" : "events"} in the last ${span}, led by ${esc(typeLabel(h.top).toLowerCase())}${h.top.place ? ` near ${esc(h.top.place)}` : ""}</span>`;
@@ -2206,7 +2206,7 @@
     const span = { 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[S.windowH];
     const fighting = events.filter(onMap);
     const now = [fighting.length, fighting.filter((e) => e.status === "corroborated").length];
-    $("#tally").innerHTML = `<strong>${now[0]}</strong> events in the last ${span}, <strong>${now[1]}</strong> corroborated`;
+    $("#tally").innerHTML = `<span class="stat"><strong>${now[0]}</strong><span>Mapped events <small>${span}</small></span></span><span class="stat"><strong>${now[1]}</strong><span>Corroborated <small>Independent evidence</small></span></span>`;
     // counts tick up or down to their new values
     if (tallyWas && !reduceMotion && (tallyWas[0] !== now[0] || tallyWas[1] !== now[1])) {
       const els = [...$("#tally").querySelectorAll("strong")], from = tallyWas.slice(), t0 = performance.now();
@@ -2772,7 +2772,7 @@
   const sheetHeights = () => {
     const height = viewportHeight();
     const short = height < 500;
-    return [short ? 64 : 78, Math.round(height * (short ? 0.48 : 0.42)), Math.round(height * (short ? 0.9 : 0.8))];
+    return [short ? 86 : 94, Math.round(height * (short ? 0.48 : 0.42)), Math.round(height * (short ? 0.9 : 0.8))];
   };
   function setSheet(n, instant) {
     if (!isMobile()) return;
@@ -2869,6 +2869,16 @@
   }
 
   function wire() {
+    $("#overviewBtn").addEventListener("click", () => {
+      selectRegion("world");
+      world.pointOfView({ lat: 22, lng: 28, altitude: isMobile() ? 4.2 : 2.4 }, reduceMotion ? 0 : 900);
+    });
+    [ ["#zoomInBtn", 0.72], ["#zoomOutBtn", 1.4] ].forEach(([id, scale]) => {
+      $(id).addEventListener("click", () => {
+        const pov = world.pointOfView();
+        world.pointOfView({ ...pov, altitude: clamp(pov.altitude * scale, 0.12, 5.4) }, reduceMotion ? 0 : 300);
+      });
+    });
     $("#windowSeg").addEventListener("click", (ev) => {
       const b = ev.target.closest("[data-window]");
       if (b) { setWindow(Number(b.dataset.window)); renderSoon(); }
