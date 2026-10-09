@@ -9,7 +9,7 @@ function rotation(reduceMotion = false) {
   const timers = new Map(), document = { ...eventTarget(), hidden: false };
   const orbit = { ...eventTarget(), autoRotate: false };
   const button = { ...eventTarget(), dataset: {}, setAttribute(k, v) { this[k] = v; } };
-  const ctx = { reduceMotion, document, setTimeout(fn, ms) { timers.set(++id, { at: now + ms, fn }); return id; }, clearTimeout(id) { timers.delete(id); } };
+  const ctx = { reduceMotion, document, updateRenderRatio() {}, setTimeout(fn, ms) { timers.set(++id, { at: now + ms, fn }); return id; }, clearTimeout(id) { timers.delete(id); } };
   vm.createContext(ctx);
   vm.runInContext(section('  function setupIdleRotation(', '  // ------------------------------------------------------------------ land, borders'), ctx);
   ctx.setupIdleRotation(orbit, button);

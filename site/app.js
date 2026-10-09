@@ -318,11 +318,11 @@
   controls.autoRotate = false;
   controls.minDistance = 106; // globe radius is 100: close to city scale (the painted land is coarse this close)
   controls.maxDistance = 650;
-  // Render sharpness: phones at most 1.5 times; other screens at their own. On a sharp screen the
-  // globe is drawn at normal sharpness while it is dragged or pinched (a 2x screen has four times
-  // the pixels to fill every frame), and at full sharpness again once it settles.
-  const fullRatio = () => (PHONE ? Math.min(1.5, window.devicePixelRatio || 1) : window.devicePixelRatio || 1);
+  // Bound WebGL pixel cost on high-density displays. Moving scenes use one device pixel
+  // per CSS pixel; static scenes restore detail. HTML text and symbols stay native resolution.
+  const fullRatio = () => Math.min(PHONE ? 1.25 : 1.5, window.devicePixelRatio || 1);
   const setRatio = (r) => { const rd = world.renderer(); if (Math.abs(rd.getPixelRatio() - r) > 0.01) rd.setPixelRatio(r); };
+  const updateRenderRatio = () => setRatio((moving || controls.autoRotate) ? Math.min(1, fullRatio()) : fullRatio());
   setRatio(fullRatio());
   // Hover testing: 20 times a second, even with the pointer still, the library tests the pointer
   // against every object on the globe (and toGlobeCoords does on every pointer move), hidden ones
@@ -390,14 +390,14 @@
     clearTimeout(settleTimer);
     moving = true;
     document.body.classList.add("moving");
-    if (fullRatio() > 1.2) setRatio(Math.max(1, fullRatio() * 0.6));
+    updateRenderRatio();
   });
   controls.addEventListener("end", () => {
     clearTimeout(settleTimer);
     settleTimer = setTimeout(() => {
       moving = false;
       document.body.classList.remove("moving");
-      setRatio(fullRatio());
+      updateRenderRatio();
       applyZoomScale();
       queueDeclutter();
     }, 350);
@@ -409,7 +409,9 @@
     orbit.autoRotateSpeed = 0.18;
     function stop() {
       clearTimeout(timer);
+      const wasRotating = orbit.autoRotate;
       orbit.autoRotate = false;
+      if (wasRotating) updateRenderRatio();
       button.dataset.rotating = "false";
     }
     function arm() {
@@ -417,6 +419,7 @@
       if (!enabled || interacting || document.hidden) return;
       timer = setTimeout(() => {
         orbit.autoRotate = true;
+        updateRenderRatio();
         button.dataset.rotating = "true";
       }, 30000);
     }
@@ -1047,12 +1050,14 @@
 
   // ------------------------------------------------------------------ declutter
   // Markers that land within ~20 px of each other fan out in a ring around the spot.
-  // During a gesture the layout runs at most every 60 ms (180 ms on phones) instead of every frame.
+  // Rotation emits the same camera events as dragging. Bound layout work for both,
+  // including programmatic flights; CSS marker positions still follow every rendered frame.
   let declutterQueued = false, lastDeclutter = 0;
+  const declutterInterval = () => controls.autoRotate ? (PHONE ? 250 : 200) : moving ? (PHONE ? 180 : 60) : 100;
   function queueDeclutter() {
     if (declutterQueued) return;
     declutterQueued = true;
-    const wait = moving ? Math.max(0, lastDeclutter + (PHONE ? 180 : 60) - performance.now()) : 0;
+    const wait = Math.max(0, lastDeclutter + declutterInterval() - performance.now());
     const run = () => requestAnimationFrame(() => { declutterQueued = false; lastDeclutter = performance.now(); declutter(); });
     if (wait) setTimeout(run, wait); else run();
   }
@@ -1074,7 +1079,8 @@
     if (lead) {
       const c = el.querySelector(".mk-count");
       if (c && c.textContent !== String(count)) c.textContent = String(count);
-      el.firstChild.title = `${count} events here. Click to zoom in.`;
+      const title = `${count} events here. Click to zoom in.`;
+      if (el.firstChild.title !== title) el.firstChild.title = title;
     } else if (el.firstChild.title) el.firstChild.title = "";
   }
   function setHidden(d, hidden) { if (d.el.classList.contains("clustered") !== hidden) d.el.classList.toggle("clustered", hidden); }
@@ -1108,16 +1114,15 @@
       return groups;
     };
     // Pass 1 (zoomed out only): 3+ events on one spot collapse into a count bubble.
-    const hidden = new Set();
-    vis.forEach((v) => { if (v.d.isEvent) setCluster(v.d, 0); });
+    const hidden = new Set(), counts = new Map();
     if (clusterMode) {
       // the selected event always stays visible
       for (const g of group(vis.filter((v) => v.d.isEvent && v.d.key !== `ev:${S.selectedId}`), R * 1.6)) {
         if (g.m.length < 3) continue;
-        g.m.forEach((v, i) => { if (i === 0) { setCluster(v.d, g.m.length); v.d.el._members = g.m.map((x) => x.d.ev); } else hidden.add(v); });
+        g.m.forEach((v, i) => { if (i === 0) { counts.set(v.d, g.m.length); v.d.el._members = g.m.map((x) => x.d.ev); } else hidden.add(v); });
       }
     }
-    vis.forEach((v) => { if (v.d.isEvent) setHidden(v.d, hidden.has(v)); });
+    vis.forEach((v) => { if (v.d.isEvent) { setCluster(v.d, counts.get(v.d) || 0); setHidden(v.d, hidden.has(v)); } });
     // Pass 2: everything still showing (events, count bubbles, carriers) fans out where it overlaps.
     for (const g of group(vis.filter((v) => !hidden.has(v)))) {
       const n = g.m.length;
@@ -3027,6 +3032,12 @@
   } catch (err) {
     fatal(err);
   }
+  const syncAnimationVisibility = () => {
+    if (document.hidden) world.pauseAnimation();
+    else world.resumeAnimation();
+  };
+  document.addEventListener("visibilitychange", syncAnimationVisibility);
+  if (document.hidden) world.pauseAnimation();
   if (!DEMO) {
     setInterval(checkForUpdate, 60e3);
     document.addEventListener("visibilitychange", () => { if (document.hidden) reloadIfIdle(); else checkForUpdate(); });

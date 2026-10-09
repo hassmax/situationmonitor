@@ -10,7 +10,7 @@
 body { background: radial-gradient(ellipse at 50% 46%, #172c38 0%, #09121b 48%, #04080c 85%); }
 body::before { content: ''; position: fixed; inset: 0; pointer-events: none; background-image: radial-gradient(#9abfcb44 .6px, transparent .7px); background-size: 39px 39px; opacity: .24; }
 .hud { grid-template-rows: 86px minmax(0, 1fr) 86px; gap: 18px; }
-.panel { border-radius: 18px; border-color: var(--line); background: var(--panel); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); box-shadow: 0 12px 45px #0005, inset 0 1px 0 #d7ffff08; }
+.panel { border-radius: 18px; border-color: var(--line); background: var(--panel); backdrop-filter: none; -webkit-backdrop-filter: none; box-shadow: 0 12px 45px #0005, inset 0 1px 0 #d7ffff08; }
 .brand { grid-column: 1 / -1; grid-row: 1; display: flex; align-items: center; gap: 28px; padding: 16px 22px; border-radius: 17px; background: rgba(9,17,24,.96); }
 .brand-row { display: flex; align-items: center; flex: 1; justify-content: flex-start; gap: 13px; }
 .brand-orbit { display: grid; place-items: center; width: 44px; height: 44px; flex: none; color: var(--signal); border: 1px solid #a9f3cf33; border-radius: 13px; background: #a9f3cf08; }
@@ -133,3 +133,9 @@ kbd { font: inherit; padding: 1px 4px; border: 1px solid var(--line-strong); bor
 @media (max-height: 540px) and (max-width: 1023px) { .hud { grid-template-rows: 66px minmax(0,1fr) auto; }.brand { padding-block: 6px; }.feed { max-height: calc(100dvh - 90px); }.map-dock { justify-self: start; padding: 2px 8px; }.dock-button:not(.rotation-toggle) { display: none; } }
 @media (max-width: 1023px) { .rotation-toggle { min-width: 44px; }.map-dock .seg button { min-height: 44px; } }
 @media (max-width: 420px) { .map-dock .dock-button { min-width: 44px; }.map-dock .dock-button span { display: none; } }
+
+/* Keep the moving WebGL scene out of backdrop-blur compositing passes. */
+.panel, .focus-toast, .fly { backdrop-filter: none; -webkit-backdrop-filter: none; }
+
+/* Cache only visible marker surfaces while the camera moves. */
+.mk[data-visible="1"]:not(.clustered) { will-change: transform; }

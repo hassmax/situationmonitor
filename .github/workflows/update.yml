@@ -46,6 +46,7 @@ jobs:
           python -m unittest discover -s pipeline -p 'test_share.py'
           node --check site/app.js
           node tests/atlas-interaction.cjs
+          node tests/atlas-performance.cjs
           node tests/theater-focus.cjs
           node tests/event-grouping.cjs
           node tests/source-evidence.cjs
