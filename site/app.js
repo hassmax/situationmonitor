@@ -70,26 +70,26 @@
   const CAT_RGB = { strike: [255, 91, 58], ground: [245, 165, 36], naval: [76, 195, 255], deploy: [159, 184, 212],
     hybrid: [177, 140, 255], diplo: [233, 238, 245], supply: [63, 193, 201], aid: [96, 214, 122], fleet: [205, 228, 255] };
   const ICONS = {
-    missile: '<path d="M13.6 2.4 7 5.4 4.6 7.9l3.5 3.5 2.5-2.4z" fill="currentColor"/><path d="M4.6 7.9l-2.1.8M8.1 11.4l-.8 2.1M5.4 10.6l-2.6 2.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>',
-    air: '<path d="M8 1.3 9 5.9l5.5 2.5v1.5L9 8.8l-.4 3.1 1.6 1.3v1.2L8 13.7l-2.2.7v-1.2l1.6-1.3L7 8.8 1.5 9.9V8.4L7 5.9z" fill="currentColor"/>',
-    shield: '<path d="M8 1.5l5.5 2v4.4c0 3.3-2.4 5.4-5.5 6.6-3.1-1.2-5.5-3.3-5.5-6.6V3.5z" fill="currentColor"/>',
-    blast: '<circle cx="8" cy="8" r="3" fill="currentColor"/><path d="M8 1.5v2.2M8 12.3v2.2M1.5 8h2.2M12.3 8h2.2M3.4 3.4l1.5 1.5M11.1 11.1l1.5 1.5M3.4 12.6l1.5-1.5M11.1 4.9l1.5-1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
-    artillery: '<path d="M8 1.3l1.4 4.1 4.2-1.3-2.6 3.4 3.6 2.4-4.3.3.2 4.2L8 11l-2.5 3.4.2-4.2-4.3-.3 3.6-2.4-2.6-3.4 4.2 1.3z" fill="currentColor"/>',
-    ground: '<path d="M3 3l9.4 9.4M13 3 3.6 12.4M10 13.2 13.2 10M2.8 10 6 13.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"/>',
-    territory: '<path d="M4 14.5V1.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M4.6 2.2h8.2l-2 3.1 2 3.1H4.6z" fill="currentColor"/>',
-    naval: '<circle cx="8" cy="3.3" r="1.6" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M8 4.9V14M4.6 7.2h6.8M2.4 9.4c.5 3 3 4.6 5.6 4.6s5.1-1.6 5.6-4.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>',
-    deploy: '<path d="M3 9.6 8 5l5 4.6M3 13.6 8 9l5 4.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
-    hybrid: '<path d="M9.6 1.4 3.4 9h4l-1 5.6L12.6 7h-4z" fill="currentColor"/>',
-    incursion: '<path d="M1.8 8h8.8M7.6 4.6 11 8l-3.4 3.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M13.6 2.2v11.6" stroke="currentColor" stroke-width="1.5" stroke-dasharray="1.6 1.6"/>',
-    diplo: '<circle cx="6" cy="8" r="3.4" stroke="currentColor" stroke-width="1.6" fill="none"/><circle cx="10" cy="8" r="3.4" stroke="currentColor" stroke-width="1.6" fill="none"/>',
-    legal: '<path d="M8 2v11.6M4 14.4h8M2.8 4.6h10.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M2.8 4.6 1 9h3.6zM13.2 4.6 11.4 9H15z" fill="currentColor"/>',
-    coin: '<circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M10.1 5.9c-.4-.7-1.2-1.1-2.1-1.1-1.2 0-2.1.6-2.1 1.5 0 2.1 4.3 1.1 4.3 3.3 0 .9-1 1.6-2.2 1.6-1 0-1.9-.4-2.3-1.2M8 3.6v1.2M8 11.3v1.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" fill="none"/>',
-    crate: '<path d="M2 5.2 8 2.3l6 2.9v5.6L8 13.7l-6-2.9z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none"/><path d="M2 5.2 8 8.1l6-2.9M8 8.1v5.6" stroke="currentColor" stroke-width="1.4" fill="none"/>',
-    factory: '<path d="M1.6 14.2V7.4l3.6 2.3V7.4l3.6 2.3V2.4h1.7v-.8h2.2v.8h1.7v11.8z" fill="currentColor"/>',
-    carrier: '<path d="M.8 9.6 2.9 6h10.3l2.2 1.6v1.8l-1.6 1.6H2.6z" fill="currentColor"/><rect x="10.4" y="3.8" width="2.2" height="2.4" rx=".3" fill="currentColor"/>',
-    alert: '<path d="M4.4 12.2V9a3.6 3.6 0 0 1 7.2 0v3.2z" fill="currentColor"/><rect x="2.6" y="12.7" width="10.8" height="1.9" rx=".6" fill="currentColor"/><path d="M8 1.4v2.1M2.8 3.6l1.5 1.5M13.2 3.6l-1.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
+    missile: '<path d="m12 2 2 2-5 7-4-4zM5 7l-3 1 2 2M9 11l-1 3-2-2M4 12l-2 2M10 4l2 2"/>',
+    air: '<path d="M8 1v12M8 4l6 5v2l-6-2-6 2V9zM5 14l3-2 3 2"/>',
+    shield: '<path d="m8 1 6 3v4c0 3-3 5-6 7-3-2-6-4-6-7V4zM5 8l2 2 4-4"/>',
+    blast: '<path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3M8 5v6M5 8h6"/><circle cx="8" cy="8" r="3"/>',
+    artillery: '<path d="M2 12h12M4 10l7-7 2 2-7 7M2 14l3-4M12 2l2 2"/><circle cx="5" cy="12" r="2"/>',
+    ground: '<path d="M2 3h12v10H2zM2 3l12 10M14 3 2 13"/>',
+    territory: '<path d="M3 14V2h10l-2 3 2 3H3M1 14h4"/>',
+    naval: '<path d="M3 7h10l-2 5H5zM6 7V4h4v3M8 4V1M1 14l3-1 4 1 4-1 3 1"/>',
+    deploy: '<path d="m3 7 5-4 5 4M3 12l5-4 5 4M3 15h10"/>',
+    hybrid: '<path d="M5 5h6v6H5zM2 2l3 3M11 5l3-3M2 14l3-3M11 11l3 3M8 1v2M8 13v2M1 8h2M13 8h2"/>',
+    incursion: '<path d="M2 8h9M8 5l3 3-3 3M13 2v4M13 10v4"/>',
+    diplo: '<path d="m2 6 3-3 6 10 3-3M2 10l3 3L11 3l3 3M1 8h4M11 8h4"/>',
+    legal: '<path d="M8 2v12M4 14h8M2 4h12M3 4l-2 6h4zM13 4l-2 6h4z"/>',
+    coin: '<path d="m8 1 6 3v8l-6 3-6-3V4zM10 5H6v3h4v3H6M8 3v2M8 11v2"/>',
+    crate: '<path d="m2 5 6-3 6 3v6l-6 3-6-3zM2 5l6 3 6-3M8 8v6M5 3.5l6 3v3"/>',
+    factory: '<path d="M2 14V8l4-3v3l4-3v3h4v6zM11 8V2h3v6M5 11v1M8 11v1M11 11v1"/>',
+    carrier: '<path d="m1 9 2-3h10l2 2-2 4H3zM5 8h6M9 6V3h3v3M5 14h6"/>',
+    alert: '<path d="m8 2 7 12H1zM8 6v4M8 12v.1"/>',
   };
-  const svgIcon = (name) => `<svg viewBox="0 0 16 16" aria-hidden="true">${ICONS[name] || ICONS.blast}</svg>`;
+  const svgIcon = (name) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">${ICONS[name] || ICONS.blast}</svg>`;
   // "On the map": each entry is also a filter. The key is the marker's icon (see legendKey).
   const LEGEND = [
     ["missile", "strike", "Drone or missile"], ["air", "strike", "Airstrike"],
@@ -403,6 +403,38 @@
     }, 350);
   });
 
+  // Idle rotation is driven by manual start/end events, never by camera change events.
+  function setupIdleRotation(orbit, button) {
+    let timer = null, interacting = false, enabled = !reduceMotion;
+    orbit.autoRotateSpeed = 0.18;
+    function stop() {
+      clearTimeout(timer);
+      orbit.autoRotate = false;
+      button.dataset.rotating = "false";
+    }
+    function arm() {
+      stop();
+      if (!enabled || interacting || document.hidden) return;
+      timer = setTimeout(() => {
+        orbit.autoRotate = true;
+        button.dataset.rotating = "true";
+      }, 30000);
+    }
+    function label() {
+      button.setAttribute("aria-pressed", String(enabled));
+      button.setAttribute("aria-label", enabled ? "Pause automatic rotation" : "Enable automatic rotation");
+      button.title = enabled ? "Automatic rotation after 30 seconds idle" : "Automatic rotation paused";
+    }
+    orbit.addEventListener("start", () => { interacting = true; stop(); });
+    orbit.addEventListener("end", () => { interacting = false; arm(); });
+    document.addEventListener("visibilitychange", arm);
+    document.addEventListener("pointerdown", arm);
+    document.addEventListener("keydown", arm);
+    button.addEventListener("click", () => { enabled = !enabled; label(); arm(); });
+    label();
+    arm();
+  }
+
   // ------------------------------------------------------------------ land, borders, country centers
   const centers = new Map();
   function sanitize(f) {
@@ -526,7 +558,17 @@
   // apart, and the ocean showed through the land in dark streaks while moving.
   let landShapes = [], landUrl = null, borderPaths = [], controlOutlines = [], hatch = null;
   // always shown, not a filter: published control maps, then the site's own front-line areas
-  const controlLayers = () => [...((S.data && S.data.control) || []), ...((S.data && S.data.frontline && S.data.frontline.areas) || [])];
+  const CONTROL_THEATER = { ukraine: "ukraine", yemen: "mideast", israel: "mideast",
+    sudan: "horn", ethiopia: "horn", somalia: "horn", drc: "drc_sahel", sahel: "drc_sahel", myanmar: "indopac" };
+  function controlInRegion(layer) {
+    if (S.region === null) return false;
+    const listed = S.theaters.filter((t) => t.listed !== false);
+    const theaterId = CONTROL_THEATER[layer.conflict];
+    const countryId = ISO_NUM.get(layer.country) || layer.country;
+    return listed.some((t) => (S.region === "world" || S.region === t.id) &&
+      (theaterId ? t.id === theaterId : countryId && (t.highlight || []).includes(countryId)));
+  }
+  const controlLayers = () => [...((S.data && S.data.control) || []), ...((S.data && S.data.frontline && S.data.frontline.areas) || [])].filter(controlInRegion);
   // Infiltration (forces present, not in control) is hatched rather than filled.
   function hatchPattern(g) {
     if (hatch) return hatch;
@@ -2869,6 +2911,7 @@
   }
 
   function wire() {
+    setupIdleRotation(controls, $("#rotationBtn"));
     $("#overviewBtn").addEventListener("click", () => {
       selectRegion("world");
       world.pointOfView({ lat: 22, lng: 28, altitude: isMobile() ? 4.2 : 2.4 }, reduceMotion ? 0 : 900);
