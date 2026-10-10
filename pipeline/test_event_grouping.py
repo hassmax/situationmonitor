@@ -492,6 +492,24 @@ class CampaignRepairTests(unittest.TestCase):
         merge.apply_status(out, [])
         self.assertEqual(current['sources_count'], 3)
 
+    def test_omitted_report_is_classified_explicitly_before_atomic_validation(self):
+        reply = deepcopy(self.reply)
+        reply['groups'][2]['reports'] = []
+        seen = []
+        def ask(prompt, payload, *args, **kwargs):
+            seen.append(json.loads(payload))
+            return {'groups': [{'reports': [2], 'group': 2}]}
+        completed = self.incidents.complete_partition(self.parent, reply, ask, {}, {}, NOW)
+        self.assertEqual([r['r'] for r in seen[0]['reports']], [2])
+        self.assertEqual(len(self.parts(completed)), 3)
+        self.assertEqual(reply['groups'][2]['reports'], [])
+        # A duplicate, invented index or invalid destination never changes the proposal.
+        for patch in ({'groups': [{'reports': [2, 2], 'group': 2}]},
+                      {'groups': [{'reports': [3], 'group': 2}]},
+                      {'groups': [{'reports': [2], 'group': 99}]}):
+            self.assertEqual(self.incidents.complete_partition(self.parent, reply, lambda *a, **k: patch,
+                                                               {}, {}, NOW), reply)
+
 
 if __name__ == "__main__":
     unittest.main()
