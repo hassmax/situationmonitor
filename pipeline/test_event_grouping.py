@@ -686,7 +686,7 @@ class FacilitySourceProtocolTests(unittest.TestCase):
         self.assertIsNone(newer['killed'])
         self.assertEqual(newer['injured'], 80)
         self.assertEqual(older['killed'], 3)
-        self.assertEqual(older['time'][:10], iso(NOW - timedelta(days=2))[:10])
+        self.assertEqual(older['time'][:10], iso(NOW - timedelta(days=1))[:10])
         self.assertEqual({r['url'] for e in out for r in e['reports']}, before)
         self.assertEqual(len(newer['reports']), 1)
         self.assertEqual(len(older['reports']), 2)
@@ -697,3 +697,23 @@ class FacilitySourceProtocolTests(unittest.TestCase):
         newer['killed'] = 3
         helper.incidents.protect_prior_casualties(out, {'facility_episodes': registry})
         self.assertEqual(newer['killed'], 3)
+
+    def test_two_confirmed_days_keep_their_ids_when_reports_are_published_today(self):
+        helper, mixed, follow, prototypes = self.fixture()
+        yesterday = deepcopy(mixed)
+        yesterday.update(id='yesterday', time=iso(NOW - timedelta(days=1)), injured=None,
+                         reports=[{**mixed['reports'][0], 'time': iso(NOW),
+                                   'summary': "Yesterday's attack on Riyadh airport killed three people."}])
+        today = deepcopy(follow)
+        today.update(id='today', time=iso(NOW), killed=None, injured=80)
+        confirmed = [{"key": e['id'], **{k: e.get(k) for k in ('type', 'summary', 'place', 'country',
+                'theater', 'attacker', 'severity', 'killed', 'injured', 'lat', 'lon')},
+                'happened': e['time'], 'occurrence_day': e['time'][:10]} for e in [yesterday, today]]
+        def ask(prompt, payload, *args, **kwargs):
+            body = json.loads(payload)
+            self.assertIn('episodes', body, 'Reviewed episodes must not be replanned')
+            return {'assignments': [{'r': r['r'], 'episode': 'yesterday' if 'Yesterday' in r['summary'] else 'today'} for r in body['reports']]}
+        out, _ = helper.incidents.repair_facility_sources([yesterday, today], [yesterday, today], yesterday,
+            {}, ask, {}, NOW, helper.geo, helper.theaters, confirmed=confirmed)
+        self.assertEqual({e['id']: e['time'] for e in out}, {'yesterday': yesterday['time'], 'today': today['time']})
+        self.assertEqual(sum(len(e['reports']) for e in out), 2)
