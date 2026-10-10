@@ -248,6 +248,8 @@ def ask_routed(system_prompt: str, user_text: str, state: dict, settings: dict, 
     """Ask the providers routed for `purpose`, in order, within their token caps. None if none answered."""
     import extract
 
+    if purpose == "incident_grouping" and effort is None:
+        effort = "low"  # reserve the bounded answer for complete source assignments
     need = extract._estimate_tokens(system_prompt) + extract._estimate_tokens(user_text) + max_tokens // 4
     for p, cap in routes(settings, purpose):
         if not has_room(p, cap, state, now, purpose, need, env):
