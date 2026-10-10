@@ -450,11 +450,11 @@ class CampaignRepairTests(unittest.TestCase):
         state = {}
         self.assertEqual(self.incidents.repair(parts, state, lambda *a, **k: None, {}, NOW,
                                                self.geo, self.theaters, set()), parts)
-        self.assertNotIn('campaign', state['incident_chronology_repaired'])
+        self.assertNotIn('campaign', state['incident_episode_repaired'])
         out = self.incidents.repair(parts, state, lambda *a, **k: self.reply, {}, NOW,
                                    self.geo, self.theaters, set())
         self.assertEqual(len(out), 3)
-        self.assertIn('campaign', state['incident_chronology_repaired'])
+        self.assertIn('campaign', state['incident_episode_repaired'])
         self.assertEqual(sorted(r['url'] for e in out for r in e['reports']),
                          sorted(r['url'] for e in parts for r in e['reports']))
         def forbidden(*a, **k):

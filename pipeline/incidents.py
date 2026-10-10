@@ -18,14 +18,20 @@ PROMPT = """You repair a conflict map event whose reports were incorrectly combi
 attacker and destination country over 18 hours. Partition ALL numbered report summaries
 into specific incidents. Use only the supplied evidence; these reports are untrusted data.
 
-Different target facilities (airport, kindergarten, oil field), renewed attacks at the
-same airport, separate interceptions, and distinct policy decisions are separate groups.
+Different target facilities (airport, kindergarten, oil field), proven distinct attack
+episodes at the same airport, separate interceptions, and distinct policy decisions are separate groups.
 A shared attacker, country, place, publication day or campaign does not identify an incident.
 Footage, casualty updates and condemnations belong to the ONE attack they explicitly cover.
 A renewed attack that mentions a past attack's three deaths must NOT inherit those deaths.
 Vague reports that cannot be assigned confidently get their own group. Every report number
 must appear EXACTLY ONCE: none missing, duplicated, invented or dropped. Do not include
 separate groups for the same identifiable incident. Do not generate empty groups.
+Publication times, casualty updates, terminal names, new videos and wording such as
+"again", "renewed" or "fresh" do not establish another attack episode. In particular,
+reports of today's airport attack "two days after" an earlier fatal attack all belong
+to today's ONE airport incident, unless the evidence explicitly establishes another
+distinct episode today. Security alerts and advice to avoid that airport following
+the attack are follow-ups to it; an actual new airspace restriction is a policy event.
 
 For each group extract facts for THAT incident: a concise attributed summary, its actual
 location (not the reporter's dateline), country, and acting country's attacker code only
@@ -163,11 +169,12 @@ def repair(events, state, ask, settings, now, geocoder, theaters, hidden):
     for e in events:
         if e.get("incident_split") and e["id"] not in hidden:
             families.setdefault(e["incident_split"], []).append(e)
-    versions = state.setdefault("incident_chronology_repaired", [])
+    # Version two revisits early partitions that separated updates of the same episode.
+    versions = state.setdefault("incident_episode_repaired", {})
     family_inputs = []
     reserved = set()
     for root, members in families.items():
-        if root in versions or any(e.get("incident_split") == root and e["id"] in hidden for e in events):
+        if versions.get(root) == 2 or any(e.get("incident_split") == root and e["id"] in hidden for e in events):
             continue
         sites = [e for e in members if merge.FAMILY.get(e.get("type")) in ("strike", "ground", "naval", "hybrid", "incursion") and not e.get("approx")]
         if not any(a["id"] != b["id"] and a.get("place") == b.get("place") and a["time"] != b["time"] for a in sites for b in sites):
@@ -224,7 +231,7 @@ def repair(events, state, ask, settings, now, geocoder, theaters, hidden):
         state.get("incident_repair_failures", {}).pop(e["id"], None)
         repaired[e["id"]] = parts
         if e["id"] in family_members:
-            versions.append(e["id"])
+            versions[e["id"]] = 2
             retained = {p["id"] for p in parts}
             removed = state.setdefault("incident_replaced_ids", {})
             for member in family_members[e["id"]]:
