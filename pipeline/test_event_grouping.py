@@ -733,3 +733,25 @@ class FacilitySourceProtocolTests(unittest.TestCase):
         out, folded = helper.incidents.route_facility_updates([older, newer, footage], state, set())
         self.assertEqual(len(out), 3)
         self.assertEqual(folded, [], 'This source needs identity review, not a publication-day merge')
+
+    def test_pending_two_episode_repair_precedes_a_more_crowded_other_facility(self):
+        helper, mixed, follow, _ = self.fixture()
+        older = deepcopy(mixed)
+        older.update(id='older', time=iso(NOW - timedelta(days=1)), reports=[mixed['reports'][0]], injured=None)
+        newer = deepcopy(follow)
+        newer.update(id='newer')
+        unrelated = [event(f'cargo-{i}', 0, 'Transport aircraft arrived at Ramstein Air Base.', 'arms_transfer') for i in range(8)]
+        for e in unrelated:
+            e.update(country='DE', place='Ramstein Air Base', lat=49.44, lon=7.60)
+        state = {'facility_episodes': {e['id']: {'country': 'SA', 'day': e['time'][:10],
+            'lat': e['lat'], 'lon': e['lon'], 'aliases': ['king khalid', 'riyadh'], 'source_reviewed': True}
+            for e in [older, newer]}}
+        calls = []
+        def ask(prompt, payload, *args, **kwargs):
+            body = json.loads(payload)
+            calls.append(body)
+            self.assertEqual({p['key'] for p in body['episodes']}, {'older', 'newer'})
+            return None
+        helper.incidents.group_facility_episodes([older, newer] + unrelated, state, ask, {}, NOW,
+            set(), helper.geo, helper.theaters)
+        self.assertEqual(len(calls), 1)
