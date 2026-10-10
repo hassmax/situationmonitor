@@ -140,6 +140,10 @@ def protect_prior_casualties(events, state):
                 newer["headline"] = newer["summary"]
             if moved:
                 log(f"[episodes] chronology: {len(moved)} earlier-attack reports {eid} -> {older['id']}")
+    for e in events:
+        reviewed = registry.get(e["id"], {})
+        if reviewed.get("source_reviewed"):
+            e["occurrence_day"] = reviewed["day"]
     return events
 
 def route_facility_updates(events, state, hidden):

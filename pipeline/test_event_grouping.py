@@ -717,6 +717,7 @@ class FacilitySourceProtocolTests(unittest.TestCase):
             {}, ask, {}, NOW, helper.geo, helper.theaters, confirmed=confirmed)
         self.assertEqual({e['id']: e['time'] for e in out}, {'yesterday': yesterday['time'], 'today': today['time']})
         self.assertEqual(sum(len(e['reports']) for e in out), 2)
+        self.assertEqual({e['id']: e['occurrence_day'] for e in out}, {'yesterday': yesterday['time'][:10], 'today': today['time'][:10]})
 
     def test_publication_today_cannot_assign_undated_footage_to_todays_attack(self):
         helper, mixed, follow, _ = self.fixture()
