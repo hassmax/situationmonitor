@@ -524,7 +524,9 @@ class CampaignRepairTests(unittest.TestCase):
         reply = {'groups': [
             {'ids': [older['id']], 'summary': 'Three killed in the earlier airport attack.', 'happened': older['reports'][0]['time'], 'killed': 3, 'injured': None},
             {'ids': [current['id'], 'evacuation'], 'summary': 'Today\'s airport attack injured 80 people and prompted evacuation.', 'happened': current['time'], 'killed': None, 'injured': 80}]}
-        state = {}
+        from common import short_hash
+        state = {'facility_episode_reviews': {short_hash('SA', 'King Khalid International Airport'):
+                 short_hash(*sorted([older['id'], current['id'], 'evacuation']))}}
         out, folded = self.incidents.group_facility_episodes(parts + [follow], state, lambda *a, **k: reply, {}, NOW, set())
         self.assertEqual(len(out), 3)  # oil field untouched, two airport episodes
         self.assertEqual(len(folded), 1)

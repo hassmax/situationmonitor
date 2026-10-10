@@ -155,7 +155,7 @@ def group_facility_episodes(events, state, ask, settings, now, hidden):
                    and _facility_context(anchor, e)]
         if not 2 <= len(members) <= 50:
             continue
-        key = short_hash(anchor.get("country"), anchor.get("place"))
+        key = short_hash("facility-episodes-v3", anchor.get("country"), anchor.get("place"))
         signature = short_hash(*sorted(e["id"] for e in members))
         if reviews.get(key) == signature:
             continue
