@@ -101,8 +101,14 @@ def repair(events, state, ask, settings, now, geocoder, theaters, hidden):
         parts = replacements(e, reply, geocoder, theaters, {x["id"] for x in events} |
                              {p["id"] for ps in repaired.values() for p in ps})
         if parts is None:
-            log(f"[incidents] {e['id']}: incomplete/invalid repair; original retained for retry")
+            failures = state.setdefault("incident_repair_failures", {})
+            failures[e["id"]] = {"at": iso(now), "reply": reply}
+            while len(failures) > 3:
+                failures.pop(next(iter(failures)))
+            groups = reply.get("groups") if isinstance(reply, dict) else None
+            log(f"[incidents] {e['id']}: invalid repair; reply keys {list(reply) if isinstance(reply, dict) else type(reply).__name__}; groups {len(groups) if isinstance(groups, list) else 'missing'}; original retained for retry")
             continue
+        state.get("incident_repair_failures", {}).pop(e["id"], None)
         repaired[e["id"]] = parts
         log(f"[incidents] {e['id']}: {len(e['reports'])} reports -> {len(parts)} specific incidents")
     state["incident_repair"] = {"at": iso(now), "remaining": len(waiting) - len(repaired),
