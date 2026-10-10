@@ -294,7 +294,7 @@
     supply: { flows: [], pledges: [] },
     firstLoad: true,
     lastFocus: null,
-    sheet: 0,
+    sheet: 1,
   };
 
   const reportFiles = new Map();  // reports files by bucket, for the loaded copy of the data (reportsFor)
@@ -854,7 +854,6 @@
     const live = animate && !reduceMotion && !e.possibly_old;
     const size = e.alert ? "md" : e.severity >= 3 ? "lg" : e.severity === 2 ? "md" : "sm";
     el.style.setProperty("--s", `${markerPx(e, size).toFixed(1)}px`);
-    el._baseLabel = `${typeLabel(e)}, ${metaLine(e)}. ${STATUS[e.status].label}.`;
     el.className = `mk cat-${cat} conf-${STATUS[e.status].conf} size-${size}${live && fx ? ` fx-${fx}` : ""}${e.id === S.selectedId ? " is-selected" : ""}${e.id === hotId ? " is-hot" : ""}${layoutClasses(el)}`;
     el.style.setProperty("--fade", String(fade(e)));
     const label = labelIt ? (e.alert ? alertsText(e) : e.wave ? (e.launched ? `${e.launched} launched` : `${e.targets.length} places hit`) : e.place || "") : "";
@@ -863,13 +862,12 @@
     setHtml(el, `${svgIcon(icon)}${label ? `<span class="mk-label">${esc(label)}</span>` : ""}<span class="mk-count" aria-hidden="true"></span>`);
     btn.setAttribute("aria-label", `${typeLabel(e)}, ${metaLine(e)}. ${STATUS[e.status].label}.`);
     const open = () => {
-      if (el.classList.contains("cluster-lead")) { closeFly(); showFly(el, tipCluster(el._members, e), true); fly.classList.add("is-pinned"); }
+      if (el.classList.contains("cluster-lead")) zoomTo(e.lat, e.lon, 0.35); // a count bubble zooms in to show its events
       else select(e.id, true);
     };
     // pointing at a marker slides a card open beside it (a count bubble's lists every event it holds)
     // and lights its row in the feed
     const peek = () => {
-      if (fly.classList.contains("is-pinned")) return;
       const members = el.classList.contains("cluster-lead") && el._members;
       if (members) showFly(el, tipCluster(members, e), true);
       else showFly(el, tipEvent(e, true), placesOf(e).length > 1, open);
@@ -877,7 +875,6 @@
     };
     btn.onclick = (ev) => {
       ev.stopPropagation();
-      if (el.classList.contains("cluster-lead")) { open(); return; }
       if (!canHover() && !(flyFor === el && !fly.hidden)) { peek(); return; }  // first tap on a phone: the card
       closeFly();
       open();
@@ -928,7 +925,6 @@
   // `act` opens what the card shows: on phones a tap on the card does that
   function showFly(el, html, live = false, act = null) {
     clearTimeout(flyTimer);
-    if (fly.classList.contains("is-pinned") && flyFor !== el) return;
     hideTip();
     const over = !fly.hidden && flyFor && flyFor !== el;
     flyFor = el;
@@ -977,13 +973,13 @@
     clearTimeout(flyTimer);
     if (fly.hidden) return;
     fly.hidden = true;
-    fly.classList.remove("glide", "open", "is-pinned");
+    fly.classList.remove("glide", "open");
     flyFor = null;
     if (flyRing) placeRing(null);
     if (fly.classList.contains("is-live")) hotEvent(null);
   }
   // a short wait, so the pointer can reach a list card, or the next marker can take the card over
-  function hideFly() { if (fly.classList.contains("is-pinned")) return; clearTimeout(flyTimer); flyTimer = setTimeout(closeFly, fly.classList.contains("is-live") ? 350 : 90); }
+  function hideFly() { clearTimeout(flyTimer); flyTimer = setTimeout(closeFly, fly.classList.contains("is-live") ? 350 : 90); }
   // a phone: touching anything but the card or a marker puts the card away
   window.addEventListener("pointerdown", (ev) => {
     if (!fly.hidden && !canHover() && !fly.contains(ev.target) && !(ev.target.closest && ev.target.closest(".mk"))) closeFly();
@@ -1002,7 +998,6 @@
     else { const [lat, lon] = row.dataset.place.split(",").map(Number); placeRing({ lat, lon }); hotRow(row.dataset.open, row.dataset.place); }
   });
   fly.addEventListener("click", (ev) => {
-    if (ev.target.closest("[data-close-cluster]")) { const source = flyFor; closeFly(); source?.firstChild.focus(); return; }
     const b = ev.target.closest("[data-id], [data-zoom], [data-open]");
     if (!b) {
       // a phone: the card itself opens what it shows
@@ -1054,7 +1049,7 @@
   }
 
   // ------------------------------------------------------------------ declutter
-  // Screen-space grouping and shared collision spacing keep dense areas readable.
+  // Markers that land within ~20 px of each other fan out in a ring around the spot.
   // Rotation emits the same camera events as dragging. Bound layout work for both,
   // including programmatic flights; CSS marker positions still follow every rendered frame.
   let declutterQueued = false, lastDeclutter = 0;
@@ -1084,33 +1079,32 @@
     if (lead) {
       const c = el.querySelector(".mk-count");
       if (c && c.textContent !== String(count)) c.textContent = String(count);
-      const title = `${count} nearby events. Open event list.`;
+      const title = `${count} events here. Click to zoom in.`;
       if (el.firstChild.title !== title) el.firstChild.title = title;
-      if (el.firstChild.getAttribute("aria-label") !== title) el.firstChild.setAttribute("aria-label", title);
-    } else if (el.firstChild.title) { el.firstChild.title = ""; el.firstChild.setAttribute("aria-label", el._baseLabel || "Event"); }
+    } else if (el.firstChild.title) el.firstChild.title = "";
   }
   function setHidden(d, hidden) { if (d.el.classList.contains("clustered") !== hidden) d.el.classList.toggle("clustered", hidden); }
 
-  // Group nearby events at overview scale, and keep dense locations grouped at every zoom.
+  // Whole-globe view: 3+ events on one spot become the most important one's icon with a count.
+  // Closer in (or for 2 events): they fan out around the spot instead.
   let clusterMode = false;
   const CLUSTER_ON = 0.55, CLUSTER_OFF = 0.45;
   function declutter() {
     if (!S.html.length) return;
-    const viewportW = window.innerWidth, viewportH = window.innerHeight;
     const pov = world.pointOfView();
     const horizon = (Math.acos(1 / (1 + pov.altitude)) * 180) / Math.PI - 1;
-    const R = isMobile() ? 52 : 42; // Leave room for touch targets and count chips.
+    const R = isMobile() ? 30 : 27; // about one marker width
     // Count bubbles appear above 0.55 and go away below 0.45, so a pinch near the line doesn't flicker.
     clusterMode = clusterMode ? pov.altitude > CLUSTER_OFF : pov.altitude > CLUSTER_ON;
     const vis = [];
     for (const d of S.html) {
       if (!d.el) continue;
-      if (km(pov.lat, pov.lng, d.lat, d.lon) / 111.2 > horizon) { setOffset(d, 0, 0); if (d.isEvent) setCluster(d, 0); setHidden(d, true); continue; }
+      if (km(pov.lat, pov.lng, d.lat, d.lon) / 111.2 > horizon) { setOffset(d, 0, 0); if (d.isEvent) { setCluster(d, 0); setHidden(d, false); } continue; }
       const s = world.getScreenCoords(d.lat, d.lon, d.hAlt || 0.012);
-      if (!s || s.x < -60 || s.x > viewportW + 60 || s.y < -60 || s.y > viewportH + 60) { setHidden(d, true); continue; }
+      if (!s) continue;
       vis.push({ d, x: s.x, y: s.y });
     }
-    vis.sort((a, b) => Number(b.d.key === `ev:${S.selectedId}`) - Number(a.d.key === `ev:${S.selectedId}`) || b.d.prio - a.d.prio || a.d.key.localeCompare(b.d.key));
+    vis.sort((a, b) => b.d.prio - a.d.prio);
     const group = (items, radius = R) => {
       const groups = [];
       for (const v of items) {
@@ -1119,43 +1113,26 @@
       }
       return groups;
     };
-    // Pass 1: nearby events collapse into an explorable count chip.
+    // Pass 1 (zoomed out only): 3+ events on one spot collapse into a count bubble.
     const hidden = new Set(), counts = new Map();
-    {
-      // Dense locations stay grouped even when zoomed in; selected events stay visible.
-      for (const g of group(vis.filter((v) => v.d.isEvent && v.d.key !== `ev:${S.selectedId}`), R * (clusterMode ? 1.5 : 1))) {
-        if (g.m.length < (clusterMode ? 2 : 3)) continue;
+    if (clusterMode) {
+      // the selected event always stays visible
+      for (const g of group(vis.filter((v) => v.d.isEvent && v.d.key !== `ev:${S.selectedId}`), R * 1.6)) {
+        if (g.m.length < 3) continue;
         g.m.forEach((v, i) => { if (i === 0) { counts.set(v.d, g.m.length); v.d.el._members = g.m.map((x) => x.d.ev); } else hidden.add(v); });
       }
     }
-    vis.forEach((v) => { if (v.d.isEvent) setCluster(v.d, counts.get(v.d) || 0); setHidden(v.d, hidden.has(v)); });
-    // Pack the whole visible set together, rather than fanning each group into its neighbours.
-    // A spatial index keeps collision checks local; no DOM measurements in this pass.
-    const cell = 80, grid = new Map(), gap = isMobile() ? 14 : 12;
-    const cells = (r) => {
-      const keys = [];
-      for (let x = Math.floor(r.l / cell); x <= Math.floor(r.r / cell); x++)
-        for (let y = Math.floor(r.t / cell); y <= Math.floor(r.b / cell); y++) keys.push(`${x}:${y}`);
-      return keys;
-    };
-    const collides = (r) => cells(r).some(k => (grid.get(k) || []).some(b => r.l < b.r && r.r > b.l && r.t < b.b && r.b > b.t));
-    for (const v of vis.filter(v => !hidden.has(v))) {
-      const w = counts.has(v.d) ? (isMobile() ? 76 : 68) : 46;
-      const h = 46;
-      let placed = null, dx = 0, dy = 0;
-      // Deterministic rings keep positions stable and always preserve a leader line to the location.
-      for (let ring = 0; ring <= 12 && !placed; ring++) {
-        const n = ring ? ring * 8 : 1, radius = ring * (isMobile() ? 30 : 26);
-        for (let i = 0; i < n; i++) {
-          const a = -Math.PI / 2 + i * 2 * Math.PI / n;
-          dx = Math.round(Math.max((w + gap)/2 - v.x, Math.min(viewportW - (w + gap)/2 - v.x, Math.cos(a) * radius)));
-          dy = Math.round(Math.max((h + gap)/2 - v.y, Math.min(viewportH - (h + gap)/2 - v.y, Math.sin(a) * radius)));
-          const r = {l:v.x + dx - (w + gap)/2, r:v.x + dx + (w + gap)/2, t:v.y + dy - (h + gap)/2, b:v.y + dy + (h + gap)/2};
-          if (!collides(r)) { placed = r; break; }
-        }
-      }
-      if (placed) for (const k of cells(placed)) { if (!grid.has(k)) grid.set(k, []); grid.get(k).push(placed); }
-      setOffset(v.d, dx, dy);
+    vis.forEach((v) => { if (v.d.isEvent) { setCluster(v.d, counts.get(v.d) || 0); setHidden(v.d, hidden.has(v)); } });
+    // Pass 2: everything still showing (events, count bubbles, carriers) fans out where it overlaps.
+    for (const g of group(vis.filter((v) => !hidden.has(v)))) {
+      const n = g.m.length;
+      g.m.forEach((v, i) => {
+        if (n === 1) { setOffset(v.d, 0, 0); return; }
+        let r, a;
+        if (n <= 8) { r = 18 + 3.2 * n; a = -Math.PI / 2 + (i * 2 * Math.PI) / n; }
+        else { r = 16 + 10 * Math.sqrt(i + 1); a = i * 2.39996; }
+        setOffset(v.d, g.x - v.x + Math.cos(a) * r, g.y - v.y + Math.sin(a) * r);
+      });
     }
     hidden.forEach((v) => setOffset(v.d, 0, 0));
   }
@@ -1182,9 +1159,8 @@
   // A count bubble: every event it holds, most important first, each one a button that opens it.
   function tipCluster(evs, lead) {
     const recentFirst = evs.filter(Boolean).sort((a, b) => b._t - a._t);
-    return `<div class="tip tip-list"><div class="tip-meta"><b>${evs.length} nearby events</b><button type="button" class="cluster-close" data-close-cluster aria-label="Close event group">×</button></div>
-      <p class="cluster-context">${esc(lead.place || metaLine(lead))} and surrounding area</p>
-      <ul class="fly-rows">${recentFirst.map((e) => `<li><button type="button" data-id="${esc(e.id)}">${eventIcon(e)}<span><b>${esc(typeLabel(e))} · ${esc(e.place || metaLine(e))}</b><span class="cluster-summary">${esc(e.summary || "")}</span><span class="cluster-evidence">${esc(STATUS[e.status].label)}</span></span><time>${esc(agoShort(e._t))}</time></button></li>`).join("")}</ul><button type="button" class="fly-zoom" data-zoom="${lead.lat},${lead.lon}">Explore this area ↗</button></div>`;
+    return `<div class="tip tip-list"><div class="tip-meta"><b>${evs.length} events here</b><button type="button" class="fly-zoom" data-zoom="${lead.lat},${lead.lon}">Zoom in</button></div>
+      <ul class="fly-rows">${recentFirst.map((e, i) => `<li style="--i:${Math.min(i, 10)}"><button type="button" data-id="${esc(e.id)}">${eventIcon(e)}<span><b>${esc(typeLabel(e))}</b> ${esc(e.place || metaLine(e))}</span><time>${esc(agoShort(e._t))}</time></button></li>`).join("")}</ul></div>`;
   }
   function tipCarrier(c, quick = false) {
     return `<div class="tip"><div class="tip-meta">${iconBadge("carrier", "fleet")}<b>${esc(c.name)}</b><span>${esc(c.hull)}</span></div>
@@ -3030,7 +3006,7 @@
     document.addEventListener("keydown", (ev) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
       if (ev.key === "Escape") {
-        if (!fly.hidden) { closeFly(); return; }
+        closeFly();
         if (!$("#detail").hidden) closeDetail();
         else if ($("#filters").classList.contains("open")) toggleFilters(false);
         else if (selectedRegion()) selectRegion("world");
@@ -3050,7 +3026,7 @@
     buildStaticControls();
     renderTheaters();
     wire();
-    if (isMobile()) setSheet(0, true);
+    if (isMobile()) setSheet(1, true);
     layout();
     load();
   } catch (err) {
