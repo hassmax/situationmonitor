@@ -368,6 +368,7 @@ def main() -> int:
     for d in state.get("dropped_as_old", []):
         if d.get("event"):
             taken_down[d["event"]["id"]] = archive._day(d["event"])
+    taken_down.update(state.pop("incident_replaced_ids", {}))
     written = archive.update(state_dir, published, taken_down, fleet.public(state, t0), t0, events)
     log(f"[archive] {written} files updated")
 

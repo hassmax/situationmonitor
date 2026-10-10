@@ -415,10 +415,82 @@ class CampaignRepairTests(unittest.TestCase):
         self.assertEqual(len(out), 3)
         self.assertEqual(state['dedupe']['judged'], {'other|unrelated': {'same': True}})
 
+    def test_fresh_followup_cannot_join_older_same_site_sibling(self):
+        parts = self.parts()
+        older, newer = parts[0], parts[2]
+        older['time'] = iso(NOW - timedelta(days=2))
+        newer['time'] = iso(NOW - timedelta(hours=4))
+        coverage = event('coverage', 0.01, 'Many injured in Riyadh airport strike.', 'missile_drone')
+        coverage.update(place=older['place'], country='SA', injured=80)
+        out, _ = dedupe._fold([older, newer, coverage], [(older['id'], 'coverage'),
+                              (newer['id'], 'coverage')], set())
+        self.assertEqual(len(out), 2)
+        self.assertEqual(older['killed'], 3)
+        self.assertIsNone(older['injured'])
+        self.assertEqual(newer['injured'], 80)
+        self.assertIsNone(newer['killed'])
+
+    def test_explicit_original_occurrence_still_reaches_older_sibling(self):
+        parts = self.parts()
+        older, newer = parts[0], parts[2]
+        older['time'] = iso(NOW - timedelta(days=2))
+        newer['time'] = iso(NOW - timedelta(hours=4))
+        coverage = event('coverage', 2, 'Casualty update on the original airport strike.', 'missile_drone', updated_age=0.01)
+        coverage.update(place=older['place'], country='SA')
+        self.assertFalse(dedupe.older_partition(older, coverage, [older, newer, coverage]))
+        out, _ = dedupe._fold([older, newer, coverage], [(older['id'], 'coverage')], set())
+        self.assertEqual(len(out), 2)
+        self.assertEqual(len(older['reports']), 2)
+        self.assertEqual(len(newer['reports']), 1)
+
+    def test_same_site_family_is_repaired_once_and_invalid_reply_preserves_every_member(self):
+        parts = self.parts()
+        parts[0]['time'] = iso(NOW - timedelta(days=2))
+        parts[2]['time'] = iso(NOW - timedelta(hours=4))
+        state = {}
+        self.assertEqual(self.incidents.repair(parts, state, lambda *a, **k: None, {}, NOW,
+                                               self.geo, self.theaters, set()), parts)
+        self.assertNotIn('campaign', state['incident_chronology_repaired'])
+        out = self.incidents.repair(parts, state, lambda *a, **k: self.reply, {}, NOW,
+                                   self.geo, self.theaters, set())
+        self.assertEqual(len(out), 3)
+        self.assertIn('campaign', state['incident_chronology_repaired'])
+        self.assertEqual(sorted(r['url'] for e in out for r in e['reports']),
+                         sorted(r['url'] for e in parts for r in e['reports']))
+        def forbidden(*a, **k):
+            self.fail('chronology repair must only happen once')
+        self.assertEqual(self.incidents.repair(out, state, forbidden, {}, NOW, self.geo, self.theaters, set()), out)
+
     def test_invalid_event_type_is_not_silently_retyped(self):
         reply = deepcopy(self.reply)
         reply['groups'][0]['event']['type'] = 'new_alert_category'
         self.assertIsNone(self.parts(reply))
+
+    def test_today_airport_followups_become_one_incident_with_all_sources(self):
+        parts = self.parts()
+        parts[0]['time'] = iso(NOW - timedelta(days=2))
+        parts[2]['time'] = iso(NOW - timedelta(hours=4))
+        coverage = event('evacuation', 0.01, 'Terminal evacuated after today\'s Riyadh airport attack.', 'missile_drone')
+        coverage.update(country='SA', theater='mideast', place='Riyadh', lat=24.6389, lon=46.716)
+        injured = deepcopy(coverage)
+        injured.update(id='injuries', reports=[{**coverage['reports'][0], 'url': 'https://example.org/injuries',
+                       'summary': '80 injured in today\'s Riyadh airport attack.', 'source': 'hospital', 'group': 'hospital'}])
+        reply = deepcopy(self.reply)
+        reply['groups'][2]['reports'] = [2, 3, 4]
+        reply['groups'][2]['event']['injured'] = 80
+        state = {}
+        out = self.incidents.repair(parts + [coverage, injured], state, lambda *a, **k: reply, {}, NOW,
+                                   self.geo, self.theaters, set())
+        self.assertEqual(len(out), 3)
+        current = next(e for e in out if e['injured'] == 80)
+        self.assertEqual(len(current['reports']), 3)
+        self.assertIsNone(current['killed'])
+        self.assertEqual(next(e for e in out if e['killed'] == 3)['injured'], None)
+        self.assertEqual(sorted(r['url'] for e in out for r in e['reports']),
+                         sorted(r['url'] for e in parts + [coverage, injured] for r in e['reports']))
+        self.assertIn('evacuation', state['incident_replaced_ids'])
+        merge.apply_status(out, [])
+        self.assertEqual(current['sources_count'], 3)
 
 
 if __name__ == "__main__":

@@ -198,12 +198,38 @@ def separate_incidents(e: dict, f: dict) -> bool:
             bool(e.get("incident_split") and e.get("incident_split") == f.get("incident_split")))
 
 
+def older_partition(e: dict, f: dict, pool: list[dict]) -> bool:
+    """Exclude an older sibling when coverage's occurrence is nearer a later same-site incident.
+
+    This narrows candidates, never confirms a duplicate. Explicit older occurrence dates still
+    reach the older incident; a fresh publication alone cannot revive it past a renewed attack.
+    """
+    if f.get("incident_split") and not e.get("incident_split"):
+        return older_partition(f, e, pool)
+    if not e.get("incident_split") or f.get("incident_split") or e.get("approx"):
+        return False
+    site = (e.get("place") or "").strip().casefold()
+    if not site or FAMILY.get(e.get("type")) not in VIOLENCE:
+        return False
+    et, ft = parse_time(e["time"]), parse_time(f["time"])
+    for sibling in pool:
+        if (sibling["id"] == e["id"] or sibling.get("incident_split") != e["incident_split"]
+                or sibling.get("approx") or sibling.get("country") != e.get("country")
+                or (sibling.get("place") or "").strip().casefold() != site
+                or FAMILY.get(sibling.get("type")) not in VIOLENCE):
+            continue
+        st = parse_time(sibling["time"])
+        if et < st <= ft and abs(ft - st) < abs(ft - et):
+            return True
+    return False
+
+
 def candidates(e: dict, pool: list[dict], vec: dict, late: bool = False) -> list[tuple[float, dict]]:
     """The events most like e (score, event), best first: within PAIR_WINDOW, or for late
     follow-ups older than that, up to LATE_DAYS."""
     out = []
     for f in pool:
-        if f["id"] == e["id"] or separate_incidents(e, f) or f.get("alert") or apart(e, f):
+        if f["id"] == e["id"] or separate_incidents(e, f) or f.get("alert") or apart(e, f) or older_partition(e, f, pool):
             continue
         gap = _gap(e, f)
         if late:
@@ -307,7 +333,8 @@ def _fold(events: list[dict], same: list[tuple[str, str]], skip: set[str], histo
             if a in skip or b in skip:
                 continue
             for old, current in ((a, b), (b, a)):
-                if current in by_id and old in archived and old not in by_id and not separate_incidents(by_id[current], archived[old]):
+                if current in by_id and old in archived and old not in by_id and not separate_incidents(by_id[current], archived[old]) and not older_partition(
+                        archived[old], by_id[current], list(by_id.values()) + list(archived.values())):
                     by_id[old] = deepcopy(archived[old])
                     changed = True
     parent = {i: i for i in by_id}
@@ -328,7 +355,7 @@ def _fold(events: list[dict], same: list[tuple[str, str]], skip: set[str], histo
     for a, b in same:
         if a in by_id and b in by_id and a not in skip and b not in skip:
             ra, rb = root(a), root(b)
-            if ra != rb and not any(separate_incidents(by_id[x], by_id[y])
+            if ra != rb and not older_partition(by_id[a], by_id[b], list(by_id.values())) and not any(separate_incidents(by_id[x], by_id[y])
                                    for x in by_id if root(x) == ra
                                    for y in by_id if root(y) == rb):
                 first, second = sorted((ra, rb), key=rank)

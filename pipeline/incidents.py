@@ -12,7 +12,7 @@ from datetime import timedelta
 import extract
 import geo
 import merge
-from common import iso, log, parse_time, short_hash
+from common import haversine_km, iso, log, parse_time, short_hash
 
 PROMPT = """You repair a conflict map event whose reports were incorrectly combined by
 attacker and destination country over 18 hours. Partition ALL numbered report summaries
@@ -39,6 +39,10 @@ Use the input theater unless the evidence clearly concerns another configured th
 Countries and attacker use ISO alpha-2, not country names. Happened is the original incident
 UTC date/time when evidence gives or implies it, using report publication dates as context;
 otherwise null. Never invent a date or copy a publication date as a known occurrence.
+Use cross-group chronology: a report of a renewed attack today "two days after a strike
+killed three" dates that earlier fatal strike two days earlier. Its casualties belong to
+that earlier incident; current injuries belong to the renewed attack. Establish this
+chronology before grouping. State the original date in the summary when supported.
 Coordinates must identify the group's named place; input targets are location hints ONLY,
 not evidence of casualties or attack identity. Country-level reporting keeps a country-level
 place and approximate coordinates, never a precise facility without supporting evidence.
@@ -85,6 +89,9 @@ def replacements(parent, reply, geocoder, theaters, existing_ids):
         eid = parent["id"] if earliest in group["reports"] else short_hash(
             "incident", parent["id"], *sorted(r["url"] for r in evidence))
         if eid in used:
+            eid = short_hash("incident", parent["id"], *sorted(r["url"] for r in evidence),
+                             rec["summary"], rec.get("happened"))
+        if eid in used:
             return None
         used.add(eid)
         event.update(id=eid, reports=evidence, incident_split=parent["id"],
@@ -107,9 +114,40 @@ def invalidate_campaign_links(state, roots):
 def repair(events, state, ask, settings, now, geocoder, theaters, hidden):
     """Bounded, resumable migration; legacy campaigns cannot take in fresh reports."""
     invalidate_campaign_links(state, {e["incident_split"] for e in events if e.get("incident_split")})
+    families = {}
+    for e in events:
+        if e.get("incident_split") and e["id"] not in hidden:
+            families.setdefault(e["incident_split"], []).append(e)
+    versions = state.setdefault("incident_chronology_repaired", [])
+    family_inputs = []
+    reserved = set()
+    for root, members in families.items():
+        if root in versions or any(e.get("incident_split") == root and e["id"] in hidden for e in events):
+            continue
+        sites = [e for e in members if merge.FAMILY.get(e.get("type")) in ("strike", "ground", "naval", "hybrid", "incursion") and not e.get("approx")]
+        if not any(a["id"] != b["id"] and a.get("place") == b.get("place") and a["time"] != b["time"] for a in sites for b in sites):
+            continue
+        # Include nearby independent alerts in the evidence review, not just the old
+        # partition. Proximity selects context; the classifier still decides identity.
+        members = members + [e for e in events if e["id"] not in hidden | reserved
+                             and not e.get("incident_split") and not e.get("wave") and not e.get("alert")
+                             and merge.FAMILY.get(e.get("type")) in ("strike", "ground", "naval", "hybrid", "incursion")
+                             and any(e.get("country") == s.get("country")
+                                     and abs(parse_time(e["time"]) - parse_time(s["time"])) <= timedelta(days=3)
+                                     and all(isinstance(x, (int, float)) for x in (e.get("lat"), e.get("lon"), s.get("lat"), s.get("lon")))
+                                     and haversine_km(e["lat"], e["lon"], s["lat"], s["lon"]) <= 50
+                                     for s in sites)]
+        reserved.update(e["id"] for e in members)
+        reports = {(r["url"], r.get("summary"), r.get("time")): r for e in members for r in e.get("reports") or []}
+        parent = {**members[0], "id": root, "wave": True, "reports": list(reports.values()),
+                  "updated": max(e["updated"] for e in members), "targets": [
+                      {k: e.get(k) for k in ("place", "lat", "lon")} for e in members]}
+        family_inputs.append((parent, members))
     waiting = [e for e in events if e.get("wave") and e["id"] not in hidden and e.get("reports")
                and parse_time(e.get("updated") or e["time"]) >= now - timedelta(days=14)]
-    waiting.sort(key=lambda e: (e.get("updated", e["time"]), len(e["reports"])), reverse=True)
+    waiting += [parent for parent, _ in family_inputs]
+    family_members = {parent["id"]: members for parent, members in family_inputs}
+    waiting.sort(key=lambda e: (e["id"] in family_members, e.get("updated", e["time"]), len(e["reports"])), reverse=True)
     repaired = {}
     for e in waiting[:int(settings.get("incident_repairs_per_run", 3))]:
         payload = {"theater": e["theater"], "country": e.get("country"),
@@ -121,7 +159,8 @@ def repair(events, state, ask, settings, now, geocoder, theaters, hidden):
                     max_tokens=16000 if len(e["reports"]) > 120 else 8000, purpose="incident_repair")
         if reply is None:
             break  # budget/provider unavailable; preserve all remaining originals
-        parts = replacements(e, reply, geocoder, theaters, {x["id"] for x in events} |
+        removed_ids = {x["id"] for x in family_members.get(e["id"], [])}
+        parts = replacements(e, reply, geocoder, theaters, ({x["id"] for x in events} - removed_ids) |
                              {p["id"] for ps in repaired.values() for p in ps})
         if parts is None:
             failures = state.setdefault("incident_repair_failures", {})
@@ -133,10 +172,24 @@ def repair(events, state, ask, settings, now, geocoder, theaters, hidden):
             continue
         # The retained ID now identifies one incident, not the old campaign. Cached links
         # to archived aliases of other attacks must be judged again against its new evidence.
-        invalidate_campaign_links(state, {e["id"]})
+        reset_ids = {e["id"]} | removed_ids
+        state["incident_cache_checked"] = [root for root in state.get("incident_cache_checked", []) if root not in reset_ids]
+        invalidate_campaign_links(state, reset_ids)
         state.get("incident_repair_failures", {}).pop(e["id"], None)
         repaired[e["id"]] = parts
+        if e["id"] in family_members:
+            versions.append(e["id"])
+            retained = {p["id"] for p in parts}
+            removed = state.setdefault("incident_replaced_ids", {})
+            for member in family_members[e["id"]]:
+                if member["id"] not in retained:
+                    removed[member["id"]] = member["time"][:10]
         log(f"[incidents] {e['id']}: {len(e['reports'])} reports -> {len(parts)} specific incidents")
     state["incident_repair"] = {"at": iso(now), "remaining": len(waiting) - len(repaired),
                                 "repaired": list(repaired)}
-    return [part for e in events for part in repaired.get(e["id"], [e])]
+    replaced_members = {m["id"] for root, members in family_members.items() if root in repaired for m in members}
+    output = [part for e in events if e["id"] not in replaced_members for part in repaired.get(e["id"], [e])]
+    for root in family_members:
+        if root in repaired:
+            output.extend(repaired[root])
+    return output
