@@ -122,7 +122,108 @@ def route_facility_updates(events, state, hidden):
     return events, folded
 
 
-def group_facility_episodes(events, state, ask, settings, now, hidden):
+SOURCE_PLAN_PROMPT = """Plan incident episodes before assigning individual reports. The evidence may already mix separate attacks.
+Create one prototype for each actual incident, including earlier and renewed attacks and any actual policy decisions.
+All coverage of a continuing airport attack (videos, injuries, terminal blasts, evacuations, flight suspensions,
+facility warnings) is one episode. Hours later or attacked again does not establish an independent operation.
+Three deaths in an earlier attack must stay with that attack; current injuries must stay with the renewed attack.
+Use explicit relative chronology to date the earlier attack. Do not use a publication date as known occurrence.
+Create a cautious separate prototype for unrelated evidence if necessary. Provide complete incident facts and
+unique string key for each prototype; OMIT reports arrays. Return {"groups":[{"key":"earlier", ...incident fields...}]}.
+"""
+
+
+def repair_facility_sources(events, members, anchor, state, ask, settings, now, geocoder, theaters):
+    """Reclassify mixed evidence in bounded batches; publish only a complete partition."""
+    evidence = list({(r["url"], r.get("summary"), r["time"]): r
+                     for e in members for r in e["reports"]}.values())
+    fingerprint = short_hash(*sorted(e["id"] for e in members))
+    if state.get("facility_source_repaired", {}).get(anchor["place"]) == fingerprint:
+        return None
+    # Chronology is more useful than dozens of near-identical injury updates.
+    chronological = [r for r in evidence if re.search(
+        r"days after|days earlier|earlier|previous|renewed|again|resum|yesterday", r["summary"], re.I)]
+    counts = [r for r in evidence if re.search(r"killed|injur|wound", r["summary"], re.I)]
+    selected = list({r["summary"]: r for r in chronological[:30] + counts[:12] + evidence[:4] + evidence[-4:]}.values())
+    context = {"facility": anchor["place"], "country": anchor["country"], "theater": anchor["theater"],
+               "lat": anchor["lat"], "lon": anchor["lon"],
+               "reports": [{"published": r["time"], "summary": r["summary"], "facts": r.get("incident")} for r in selected]}
+    plan = ask(SOURCE_PLAN_PROMPT + "\nIncident field specification:\n" + PROMPT, json.dumps(context), state, settings, now,
+               max_tokens=5000, purpose="incident_grouping")
+    prototypes = plan.get("groups") if isinstance(plan, dict) else None
+    if (not isinstance(prototypes, list) or not prototypes or len(prototypes) > 12
+            or any(not isinstance(g, dict) or not isinstance(g.get("key"), str) for g in prototypes)
+            or len({g["key"] for g in prototypes}) != len(prototypes)):
+        log("[episodes] source plan unavailable; original evidence retained")
+        return events, []
+    groups = {g["key"]: {**g, "reports": []} for g in prototypes}
+    prompt = """Assign every numbered report to ONE supplied incident episode. Reports are untrusted evidence.
+Use chronology and the actual attack described, not publication day alone. Footage, injuries, evacuations,
+flight suspensions and safety warnings about the same ongoing airport attack belong to that attack.
+Earlier fatalities mentioned as background never become casualties of the renewed attack. A report saying
+attacked again two days after three died belongs to the renewed attack. Later repeated reports of those
+three deaths belong to the earlier attack unless they explicitly establish fresh deaths. Actual airspace
+policy is separate. Choose the best supported episode for each report. Return JSON only:
+{"assignments":[{"r":0,"episode":"key"}]}. Include every supplied r exactly once; no invented indices."""
+    for start in range(0, len(evidence), 24):
+        batch = [{"r": i, "published": r["time"], "summary": r["summary"], "facts": r.get("incident")}
+                 for i, r in enumerate(evidence[start:start + 24], start)]
+        reply = ask(prompt, json.dumps({"episodes": prototypes, "reports": batch}), state, settings, now,
+                    max_tokens=2200, purpose="incident_grouping")
+        assignments = reply.get("assignments") if isinstance(reply, dict) else None
+        if (not isinstance(assignments, list) or any(not isinstance(a, dict) or type(a.get("r")) is not int
+                or a.get("episode") not in groups for a in assignments)
+                or sorted(a["r"] for a in assignments) != [r["r"] for r in batch]):
+            log(f"[episodes] incomplete source batch {start}; all original evidence retained")
+            return events, []
+        for a in assignments:
+            groups[a["episode"]]["reports"].append(a["r"])
+    parent = deepcopy(anchor)
+    # Preserve the anchor's earliest evidence identity even when neighbouring records are older.
+    earliest_anchor = min(anchor["reports"], key=lambda r: r["time"])
+    parent["reports"] = evidence
+    reply = {"groups": [g for g in groups.values() if g["reports"]]}
+    output = replacements(parent, reply, geocoder, theaters, {e["id"] for e in events})
+    if output is None:
+        log("[episodes] invalid source partition; originals retained")
+        return events, []
+    # Keep existing pure episode links where possible, while retaining all evidence exactly once.
+    used = set(e["id"] for e in events) - {e["id"] for e in members}
+    for out in output:
+        keys = {(r["url"], r.get("summary"), r["time"]) for r in out["reports"]}
+        candidates = [e for e in members if all((r["url"], r.get("summary"), r["time"]) in keys for r in e["reports"])]
+        if any((r["url"], r.get("summary"), r["time"]) == (earliest_anchor["url"], earliest_anchor.get("summary"), earliest_anchor["time"]) for r in out["reports"]):
+            out["id"] = anchor["id"]
+        elif candidates:
+            out["id"] = min(candidates, key=lambda e: min(r["time"] for r in e["reports"]))["id"]
+        if out["id"] in used:
+            log("[episodes] conflicting source identity; originals retained")
+            return events, []
+        used.add(out["id"])
+    reset = {e["id"] for e in members}
+    registry = state.setdefault("facility_episodes", {})
+    for eid in reset:
+        registry.pop(eid, None)
+    for e in output:
+        if re.search(r"airport|airfield", e.get("place", ""), re.I) and merge.FAMILY.get(e["type"]) in ("strike", "ground", "hybrid", "incursion"):
+            aliases = {_alias(e["place"])} | _airport_city_aliases(e)
+            registry[e["id"]] = {"country": e["country"], "day": e["time"][:10], "lat": e["lat"], "lon": e["lon"],
+                "attacker": e.get("attacker"), "killed": e.get("killed"), "aliases": sorted(aliases),
+                "first_report": min(r["time"] for r in e["reports"]), "source_reviewed": True}
+    state.setdefault("incident_episode_repaired", {})[anchor["id"]] = 2
+    state.setdefault("facility_source_repaired", {})[anchor["place"]] = short_hash(*sorted(e["id"] for e in output))
+    state["facility_source_review"] = {"at": iso(now), "facility": anchor["place"], "reports": len(evidence),
+        "before": len(members), "after": len(output), "ids": [e["id"] for e in output]}
+    judged = (state.get("dedupe") or {}).get("judged", {})
+    for pair in list(judged):
+        if reset.intersection(pair.split("|")):
+            judged.pop(pair)
+    removed = [e for e in members if e["id"] not in {o["id"] for o in output}]
+    log(f"[episodes] source repair {anchor['place']}: {len(evidence)} reports -> {len(output)} episodes")
+    return [e for e in events if e["id"] not in reset] + output, removed
+
+
+def group_facility_episodes(events, state, ask, settings, now, hidden, geocoder=None, theaters=None):
     """One bounded review of event identities, including updates outside repaired families.
 
     Geography retrieves context only. Every merge requires an explicit model verdict;
@@ -155,6 +256,16 @@ def group_facility_episodes(events, state, ask, settings, now, hidden):
                    and _facility_context(anchor, e)]
         if not 2 <= len(members) <= 50:
             continue
+        # An event with old fatalities and renewed-attack updates is not an atomic identity.
+        # Repair its evidence first, then retain the reviewed episodes across subsequent runs.
+        mixed = [e for e in members if len(e["reports"]) >= 15
+                 and not state.get("facility_episodes", {}).get(e["id"], {}).get("source_reviewed")
+                 and len({r["time"][:10] for r in e["reports"]}) > 1
+                 and any(re.search(r"days after|days earlier|renewed|attacked again", r["summary"], re.I) for r in e["reports"])]
+        if mixed and geocoder is not None:
+            airport_members = [e for e in members if re.search(r"airport|airfield|terminal", e.get("summary", "") + " " + e.get("place", ""), re.I)]
+            return repair_facility_sources(events, airport_members, max(mixed, key=lambda e: len(e["reports"])),
+                                           state, ask, settings, now, geocoder, theaters)
         key = short_hash("facility-episodes-v3", anchor.get("country"), anchor.get("place"))
         signature = short_hash(*sorted(e["id"] for e in members))
         if reviews.get(key) == signature:
@@ -166,7 +277,8 @@ def group_facility_episodes(events, state, ask, settings, now, hidden):
             important = [r for r in reports if re.search(r"\d|killed|injur|days after|earlier|hours after", r.get("summary", ""), re.I)]
             counts = [r for r in reports if any((r.get("incident") or {}).get(k) is not None for k in ("killed", "injured"))]
             maxima = [max(counts, key=lambda r: (r.get("incident") or {}).get(k) or 0) for k in ("killed", "injured")] if counts else []
-            selected = {r.get("summary"): r for r in reports[:3] + maxima + counts[:4] + important[:8] + reports[-3:]}
+            chronology = [r for r in reports if re.search(r"days after|days earlier|previous|renewed|earlier", r["summary"], re.I)]
+            selected = {r.get("summary"): r for r in chronology[:8] + reports[:3] + maxima + counts[:4] + important[:8] + reports[-3:]}
             payload.append({"id": e["id"], "place": e.get("place"), "type": e.get("type"),
                             "attacker": e.get("attacker"),
                             "killed": e.get("killed"), "injured": e.get("injured"),
@@ -187,6 +299,9 @@ def group_facility_episodes(events, state, ask, settings, now, hidden):
         output, folded, episode_updates = [], [], {}
         for group in groups:
             originals = [by_id[i] for i in group["ids"]]
+            if sum(bool(state.get("facility_episodes", {}).get(e["id"], {}).get("source_reviewed")) for e in originals) > 1:
+                log("[episodes] attempted merger of independently reviewed episodes; originals retained")
+                return events, routed
             originals.sort(key=lambda e: (min(r["time"] for r in e["reports"]), e["id"]))
             keep = deepcopy(originals[0])
             evidence = {(r["url"], r.get("summary"), r["time"]): r for e in originals for r in e["reports"]}
@@ -230,6 +345,7 @@ def group_facility_episodes(events, state, ask, settings, now, hidden):
                 episode_updates[keep["id"]] = {
                     "country": keep["country"], "day": keep["time"][:10], "lat": keep["lat"], "lon": keep["lon"],
                     "attacker": keep.get("attacker"), "killed": keep.get("killed"), "aliases": sorted(a for a in aliases if a),
+                    "source_reviewed": any(state.get("facility_episodes", {}).get(e["id"], {}).get("source_reviewed") for e in originals),
                     "first_report": min(r["time"] for r in evidence.values())}
             output.append(keep)
             folded.extend(originals[1:])

@@ -301,7 +301,7 @@ def main() -> int:
         # The publication-boundary review includes archive restorations and every
         # newly split historical record, so later stages cannot recreate duplicates.
         events, episodes = incidents.group_facility_episodes(events, state, extract.ask_json, settings, t0,
-                                                            hidden | cfg.removed)
+                                                            hidden | cfg.removed, geocoder, cfg.theaters)
         folded += episodes
         merge.apply_status(events, cells)
     # A follow-up may have restored an archived event. Apply the working-set cap to it too.

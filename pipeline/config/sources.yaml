@@ -45,7 +45,7 @@ settings:
   provider_routes:
     analysis: {cerebras: 380000}
     incident_repair: {cerebras: 150000}
-    incident_grouping: {cerebras: 60000}
+    incident_grouping: {cerebras: 100000}
     recency: {cerebras: 50000}
     frontline_review: {cerebras: 80000}
     frontline_isw: {cerebras: 100000}

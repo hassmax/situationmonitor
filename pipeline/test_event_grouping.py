@@ -580,3 +580,71 @@ class CampaignRepairTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FacilitySourceProtocolTests(unittest.TestCase):
+    def fixture(self):
+        helper = CampaignRepairTests()
+        helper.setUp()
+        old, _, current = helper.parts()
+        old['time'] = iso(NOW - timedelta(days=2))
+        old['reports'][0]['time'] = old['time']
+        current['time'] = iso(NOW)
+        current['reports'][0]['time'] = current['time']
+        current['reports'][0]['summary'] = 'Riyadh airport attacked again two days after three died; 80 injured today.'
+        current['reports'][0]['incident'] = {'injured': 80, 'killed': None}
+        current['injured'] = 80
+        mixed = deepcopy(old)
+        mixed['reports'] += deepcopy(current['reports'])
+        mixed['injured'] = 80
+        follow = deepcopy(current)
+        follow.update(id='follow-up', reports=[{**current['reports'][0], 'url': 'https://example.org/footage',
+            'summary': 'Footage of the ongoing Riyadh airport attack today.'}])
+        prototypes = []
+        for key, e in [('old', old), ('today', current)]:
+            prototypes.append({'key': key, **{k: e.get(k) for k in ('type', 'summary', 'place', 'country',
+                'theater', 'attacker', 'severity', 'killed', 'injured', 'lat', 'lon')}, 'happened': e['time']})
+        return helper, mixed, follow, prototypes
+
+    def test_mixed_casualties_are_repaired_and_followup_joins_current_episode(self):
+        helper, mixed, follow, prototypes = self.fixture()
+        calls = []
+        def ask(prompt, payload, *args, **kwargs):
+            b = json.loads(payload)
+            calls.append(b)
+            if 'episodes' not in b:
+                return {'groups': prototypes}
+            return {'assignments': [{'r': r['r'], 'episode': 'old' if 'Three killed' in r['summary'] else 'today'} for r in b['reports']]}
+        state = {}
+        out, folded = helper.incidents.repair_facility_sources([mixed, follow], [mixed, follow], mixed,
+            state, ask, {}, NOW, helper.geo, helper.theaters)
+        self.assertEqual(len(out), 2)
+        old = next(e for e in out if e['killed'] == 3)
+        today = next(e for e in out if e['injured'] == 80)
+        self.assertIsNone(old['injured'])
+        self.assertIsNone(today['killed'])
+        self.assertEqual(old['id'], mixed['id'])
+        self.assertEqual(today['id'], follow['id'])
+        self.assertEqual(sum(len(e['reports']) for e in out), 3)
+        self.assertEqual({r['url'] for e in out for r in e['reports']},
+                         {r['url'] for e in [mixed, follow] for r in e['reports']})
+        self.assertTrue(all(v['source_reviewed'] for v in state['facility_episodes'].values()))
+        # A later model answer cannot undo this source-level episode partition.
+        def bad_merge(*args, **kwargs):
+            return {'groups': [{'ids': [e['id'] for e in out], 'summary': 'Combined airport attack.',
+                'happened': None, 'killed': 3, 'injured': 80}]}
+        preserved, _ = helper.incidents.group_facility_episodes(out, state, bad_merge, {}, NOW, set())
+        self.assertEqual(preserved, out)
+
+    def test_incomplete_batch_preserves_all_originals_and_registry(self):
+        helper, mixed, follow, prototypes = self.fixture()
+        before = deepcopy([mixed, follow])
+        state = {'facility_episodes': {'existing': {'source_reviewed': True}}}
+        saved = deepcopy(state)
+        def ask(prompt, payload, *args, **kwargs):
+            return {'assignments': [{'r': 0, 'episode': 'old'}]} if 'episodes' in json.loads(payload) else {'groups': prototypes}
+        out, folded = helper.incidents.repair_facility_sources(before, before, mixed, state, ask, {}, NOW,
+            helper.geo, helper.theaters)
+        self.assertEqual(out, before)
+        self.assertEqual(state, saved)
+        self.assertEqual(folded, [])
