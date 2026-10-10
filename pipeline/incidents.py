@@ -39,6 +39,25 @@ def _alias(text):
                     if w not in {"airport", "airfield", "international", "terminal", "the"})
 
 
+def _airport_city_aliases(event):
+    return {_alias(m[1]) for r in event.get("reports") or []
+            for m in re.finditer(r"\b([A-Z][a-z]+) (?:airport|Airport)\b", r.get("summary", ""))
+            if m[1].lower() not in {"saudi", "arabia", "an", "new", "major", "international", "the"}}
+
+
+def _facility_context(anchor, event):
+    if event.get("country") != anchor.get("country"):
+        return False
+    if all(isinstance(event.get(k), (int, float)) for k in ("lat", "lon")) and haversine_km(
+            event["lat"], event["lon"], anchor["lat"], anchor["lon"]) <= 50:
+        return True
+    # City-level updates can carry a stale centroid. Explicit facility/city identity
+    # retrieves them for review; a weak coordinate must not exclude their evidence.
+    cities = _airport_city_aliases(anchor)
+    return bool(_alias(event.get("place") or "") in cities and
+                re.search(r"\b(airport|airfield|terminal)\b", event.get("summary") or "", re.I))
+
+
 def route_facility_updates(events, state, hidden):
     """Reuse a reviewed episode for unambiguous same-facility/day coverage.
 
@@ -64,15 +83,18 @@ def route_facility_updates(events, state, hidden):
         fresh = bool(re.search(r"today|renewed|again|fresh|current", text, re.I))
         if re.search(r"earlier|previous|original|yesterday|days (?:after|earlier)", text, re.I) and not fresh:
             continue
-        words = set(re.findall(r"[a-z]+", text.lower()))
+        words = set(re.findall(r"[a-z]+", (text + " " + (e.get("place") or "")).lower()))
         matches = []
         for eid, episode in registry.items():
             keep = by_id[eid]
             if (eid in hidden or e.get("country") != episode["country"] or e["time"][:10] != episode["day"]
                     or (e.get("attacker") and episode.get("attacker") and e["attacker"] != episode["attacker"])
-                    or haversine_km(e["lat"], e["lon"], episode["lat"], episode["lon"]) > 50
+                    or (haversine_km(e["lat"], e["lon"], episode["lat"], episode["lon"]) > 50
+                        and _alias(e.get("place") or "") not in episode["aliases"])
                     or not any(set(alias.split()) <= words for alias in episode["aliases"] if alias)):
                 continue
+            if min(r["time"] for r in e["reports"]) < episode.get("first_report", min(r["time"] for r in keep["reports"])):
+                continue  # a warning published before this attack needs chronology review
             # An undated repeat of the previous fatality count needs review, not a
             # transfer of those deaths into today's attack.
             if e.get("killed") and not fresh and any(old.get("day") < episode["day"]
@@ -118,7 +140,7 @@ def group_facility_episodes(events, state, ask, settings, now, hidden):
                     and parse_time(e.get("updated", e["time"])) >= now - timedelta(days=3)
                     and re.search(r"\b" + word + r"\b", (e.get("summary") or "") + " " + (e.get("place") or ""), re.I)
                     and all(isinstance(x, (int, float)) for x in (e.get("lat"), e.get("lon")))
-                    and haversine_km(e["lat"], e["lon"], anchor["lat"], anchor["lon"]) <= 50)
+                    and _facility_context(anchor, e))
         return count, anchor.get("updated", anchor["time"])
     anchors.sort(key=priority, reverse=True)
     reviews = state.setdefault("facility_episode_reviews", {})
@@ -130,7 +152,7 @@ def group_facility_episodes(events, state, ask, settings, now, hidden):
                         or re.search(r"\b" + facility_word + r"\b", (e.get("summary") or "") + " " + (e.get("place") or ""), re.I))
                    and parse_time(e.get("updated", e["time"])) >= now - timedelta(days=3)
                    and all(isinstance(x, (int, float)) for x in (e.get("lat"), e.get("lon"), anchor.get("lat"), anchor.get("lon")))
-                   and haversine_km(e["lat"], e["lon"], anchor["lat"], anchor["lon"]) <= 50]
+                   and _facility_context(anchor, e)]
         if not 2 <= len(members) <= 50:
             continue
         key = short_hash(anchor.get("country"), anchor.get("place"))
@@ -146,6 +168,7 @@ def group_facility_episodes(events, state, ask, settings, now, hidden):
             maxima = [max(counts, key=lambda r: (r.get("incident") or {}).get(k) or 0) for k in ("killed", "injured")] if counts else []
             selected = {r.get("summary"): r for r in reports[:3] + maxima + counts[:4] + important[:8] + reports[-3:]}
             payload.append({"id": e["id"], "place": e.get("place"), "type": e.get("type"),
+                            "attacker": e.get("attacker"),
                             "killed": e.get("killed"), "injured": e.get("injured"),
                             "reports": [{"published": r["time"], "summary": r["summary"],
                                          "injured": (r.get("incident") or {}).get("injured"),
@@ -206,7 +229,8 @@ def group_facility_episodes(events, state, ask, settings, now, hidden):
                                if m[1].lower() not in {"saudi", "arabia", "an", "new", "major"})
                 episode_updates[keep["id"]] = {
                     "country": keep["country"], "day": keep["time"][:10], "lat": keep["lat"], "lon": keep["lon"],
-                    "attacker": keep.get("attacker"), "killed": keep.get("killed"), "aliases": sorted(a for a in aliases if a)}
+                    "attacker": keep.get("attacker"), "killed": keep.get("killed"), "aliases": sorted(a for a in aliases if a),
+                    "first_report": min(r["time"] for r in evidence.values())}
             output.append(keep)
             folded.extend(originals[1:])
         # Apply only after the entire identity partition and its facts pass validation.

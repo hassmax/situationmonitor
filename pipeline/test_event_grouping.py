@@ -558,6 +558,10 @@ class CampaignRepairTests(unittest.TestCase):
                     update('suspension', 'Riyadh airport suspended operations following the attack.', type='diplomacy'),
                     update('warning', 'The UK warns citizens to avoid Riyadh airport after the attack.', type='diplomacy'),
                     update('again', 'Riyadh airport is attacked again hours after earlier blasts.')]
+        # A city-centroid error must not split an explicitly identified airport update.
+        centroid = update('centroid', 'Officials say the airport in Saudi Arabia\'s capital was attacked again.',
+                          place='Riyadh', lat=25.2663, lon=47.7789)
+        coverage.append(centroid)
         prior = update('prior-count', 'Three killed in the Riyadh airport strike.')
         prior['killed'] = 3
         policy = update('airspace', 'EASA expanded its airspace warning following Riyadh airport attacks.', type='diplomacy')
@@ -565,7 +569,7 @@ class CampaignRepairTests(unittest.TestCase):
         state = {'facility_episodes': registry}
         out, folded = self.incidents.route_facility_updates([old, oil, current] + coverage + [prior, policy, other], state, set())
         self.assertEqual({e['id'] for e in folded}, {e['id'] for e in coverage})
-        self.assertEqual(len(current['reports']), 5)
+        self.assertEqual(len(current['reports']), 6)
         self.assertEqual(current['injured'], 80)
         self.assertIsNone(current['killed'])
         self.assertEqual(current['time'], iso(NOW - timedelta(hours=2)))
