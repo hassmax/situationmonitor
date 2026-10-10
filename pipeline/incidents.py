@@ -254,7 +254,7 @@ def group_facility_episodes(events, state, ask, settings, now, hidden, geocoder=
                    and parse_time(e.get("updated", e["time"])) >= now - timedelta(days=3)
                    and all(isinstance(x, (int, float)) for x in (e.get("lat"), e.get("lon"), anchor.get("lat"), anchor.get("lon")))
                    and _facility_context(anchor, e)]
-        if not 2 <= len(members) <= 50:
+        if not 1 <= len(members) <= 50:
             continue
         # An event with old fatalities and renewed-attack updates is not an atomic identity.
         # Repair its evidence first, then retain the reviewed episodes across subsequent runs.
@@ -264,8 +264,11 @@ def group_facility_episodes(events, state, ask, settings, now, hidden, geocoder=
                  and any(re.search(r"days after|days earlier|renewed|attacked again", r["summary"], re.I) for r in e["reports"])]
         if mixed and geocoder is not None:
             airport_members = [e for e in members if re.search(r"airport|airfield|terminal", e.get("summary", "") + " " + e.get("place", ""), re.I)]
-            return repair_facility_sources(events, airport_members, max(mixed, key=lambda e: len(e["reports"])),
-                                           state, ask, settings, now, geocoder, theaters)
+            repaired, removed = repair_facility_sources(events, airport_members, max(mixed, key=lambda e: len(e["reports"])),
+                                                       state, ask, settings, now, geocoder, theaters)
+            return repaired, routed + removed
+        if len(members) < 2:
+            continue
         key = short_hash("facility-episodes-v3", anchor.get("country"), anchor.get("place"))
         signature = short_hash(*sorted(e["id"] for e in members))
         if reviews.get(key) == signature:
