@@ -396,6 +396,15 @@ def group_facility_episodes(events, state, ask, settings, now, hidden, geocoder=
             prototypes = [{"key": e["id"], **{k: e.get(k) for k in ("type", "summary", "place", "country",
                 "theater", "attacker", "severity", "killed", "injured", "lat", "lon")},
                 "happened": e["time"], "occurrence_day": e["time"][:10]} for e in reviewed]
+            for prototype, e in zip(prototypes, reviewed):
+                day = prototype["occurrence_day"]
+                # Older reports could not describe a later attack. For the newer
+                # profile, use explicitly renewed coverage and the maximum injury evidence.
+                dated = [r for r in e["reports"] if r["time"][:10] <= day]
+                fresh_reports = [r for r in dated if re.search(r"renewed|attacked again|attack.*today|today.*attack", r["summary"], re.I)]
+                casualty = sorted(dated, key=lambda r: (r.get("incident") or {}).get("injured") or 0, reverse=True)
+                profile = fresh_reports[:3] + casualty[:1] if day == max(x["time"][:10] for x in reviewed) else dated[:5]
+                prototype["known_reports"] = list(dict.fromkeys(r["summary"] for r in profile))
             repaired, removed = repair_facility_sources(events, reviewed, reviewed[0], state, ask, settings,
                                                         now, geocoder, theaters, confirmed=prototypes)
             if state.get("facility_source_review", {}).get("at") == iso(now):
