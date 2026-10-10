@@ -63,7 +63,8 @@ def group_facility_episodes(events, state, ask, settings, now, hidden):
             reports = list(unique.values())
             important = [r for r in reports if re.search(r"\d|killed|injur|days after|earlier|hours after", r.get("summary", ""), re.I)]
             counts = [r for r in reports if any((r.get("incident") or {}).get(k) is not None for k in ("killed", "injured"))]
-            selected = {r.get("summary"): r for r in reports[:3] + counts[:4] + important[:8] + reports[-3:]}
+            maxima = [max(counts, key=lambda r: (r.get("incident") or {}).get(k) or 0) for k in ("killed", "injured")] if counts else []
+            selected = {r.get("summary"): r for r in reports[:3] + maxima + counts[:4] + important[:8] + reports[-3:]}
             payload.append({"id": e["id"], "place": e.get("place"), "type": e.get("type"),
                             "killed": e.get("killed"), "injured": e.get("injured"),
                             "reports": [{"published": r["time"], "summary": r["summary"],
