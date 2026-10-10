@@ -1015,8 +1015,6 @@
     if (id) select(id, true);
   });
 
-  window.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && !fly.hidden) closeFly(); });
-
   // Map and feed answer each other (desktop): pointing at an event in the feed lights its marker
   // and rings its spot on the globe; pointing at a marker lights its row, scrolled into view if the
   // pointer stays a moment.
@@ -3032,7 +3030,7 @@
     document.addEventListener("keydown", (ev) => {
       const typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement && document.activeElement.tagName);
       if (ev.key === "Escape") {
-        closeFly();
+        if (!fly.hidden) { closeFly(); return; }
         if (!$("#detail").hidden) closeDetail();
         else if ($("#filters").classList.contains("open")) toggleFilters(false);
         else if (selectedRegion()) selectRegion("world");
