@@ -44,8 +44,8 @@ not evidence of casualties or attack identity. Country-level reporting keeps a c
 place and approximate coordinates, never a precise facility without supporting evidence.
 
 Return a valid JSON object only, with exactly this shape. All report numbers are integers.
-Do not add explanation, markdown or a trailing comma. Each group needs a complete event:
-{"groups":[{"reports":[0,1],"event":{"type":"missile_drone","summary":"Reported strike on an airport.","place":"Example airport","country":"SA","theater":"mideast","attacker":null,"severity":2,"happened":null,"killed":null,"injured":null,"lat":24.9,"lon":46.7}}]}
+Do not add explanation, markdown or a trailing comma. Each group contains report numbers and the complete incident fields directly:
+{"groups":[{"reports":[0,1],"type":"missile_drone","summary":"Reported strike on an airport.","place":"Example airport","country":"SA","theater":"mideast","attacker":null,"severity":2,"happened":null,"killed":null,"injured":null,"lat":24.9,"lon":46.7}]}
 """
 
 
@@ -59,7 +59,7 @@ def replacements(parent, reply, geocoder, theaters, existing_ids):
     for group in groups:
         if not isinstance(group, dict) or not isinstance(group.get("reports"), list) or not group["reports"]:
             return None
-        if not isinstance(group.get("event"), dict):
+        if "event" in group and not isinstance(group["event"], dict):
             return None
         flat.extend(group["reports"])
     if any(type(k) is not int for k in flat) or sorted(flat) != list(range(len(reports))):
@@ -73,7 +73,7 @@ def replacements(parent, reply, geocoder, theaters, existing_ids):
         item = {**first, "text": first["summary"], "platform": first.get("platform", "rss"),
                 "kind": first.get("kind", "news"), "group": first.get("group") or first.get("source"),
                 "source": first.get("source", "unknown")}
-        facts = group["event"]
+        facts = group.get("event", group)
         if facts.get("type") not in extract.EVENT_TYPES or not isinstance(facts.get("summary"), str):
             return None
         rec = extract._clean_record({**facts, "relevant": True, "alert": False}, item)

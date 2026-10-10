@@ -944,6 +944,8 @@ def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, no
         _tally_tokens(state, purpose, usage_tokens(r) or _estimate_tokens(system_prompt + user_text + content))
         parsed = _parse_json_object(content)
         if parsed is None:
+            if purpose == "incident_repair":
+                state["incident_repair_raw"] = {"at": iso(now), "content": content[:20000]}
             log(f"[extract] one-off call ({purpose}): the reply was not JSON ({len(content)} characters): {json_error(content)}")
         return parsed
     except requests.RequestException as exc:

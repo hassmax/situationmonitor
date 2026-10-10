@@ -400,6 +400,12 @@ class CampaignRepairTests(unittest.TestCase):
         self.assertEqual(done, {'input'})
         self.assertEqual(records[0]['item']['url'], records[1]['item']['url'])
 
+    def test_flat_repair_schema_keeps_full_validation(self):
+        reply = {'groups': [{'reports': g['reports'], **g['event']} for g in self.reply['groups']]}
+        self.assertEqual(self.parts(reply), self.parts())
+        reply['groups'][1]['reports'] = [0]
+        self.assertIsNone(self.parts(reply))
+
     def test_invalid_event_type_is_not_silently_retyped(self):
         reply = deepcopy(self.reply)
         reply['groups'][0]['event']['type'] = 'new_alert_category'
