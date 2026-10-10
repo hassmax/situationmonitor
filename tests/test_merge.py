@@ -69,32 +69,32 @@ def wave(i, time, targets, attacker="IR", country="IQ"):
     return e
 
 
-def test_one_attack_wave_across_the_old_day_boundary():
+def test_repeated_attacks_across_day_boundary_need_confirmation():
     first = wave("a", "2026-09-28T08:53:00Z", [("Erbil", (36.19, 44.01))])
     later = wave("b", "2026-09-28T11:33:00Z", [("Erbil", (36.19, 44.01))])
     out = merge.merge([], [cand(first), cand(later)])
-    assert len(out) == 1 and out[0]["wave"] and len(out[0]["reports"]) == 2
+    assert len(out) == 2 and not any(e.get("wave") for e in out)
 
 
-def test_unattributed_strike_on_a_wave_target_joins_the_wave():
+def test_unattributed_strike_near_another_target_needs_confirmation():
     w = wave("a", "2026-09-28T08:53:00Z", [("Erbil", (36.19, 44.01))])
     hit = event("h", "Erbil", (36.2, 44.02), "2026-09-28T09:30:00Z", "Three drones targeted a camp in Erbil.",
                 type_="missile_drone", country="IQ", theater="mideast")
     far = event("f", "Basra", (30.5, 47.8), "2026-09-28T09:30:00Z", "A drone struck an oil field near Basra.",
                 type_="missile_drone", country="IQ", theater="mideast")
     out = merge.merge([], [cand(w), cand(hit), cand(far)])
-    assert len(out) == 2 and len(next(e for e in out if e.get("wave"))["reports"]) == 2
+    assert len(out) == 3 and all(len(e["reports"]) == 1 for e in out)
 
 
-def test_consolidate_folds_stored_waves_and_hits():
-    a = merge.merge([], [cand(wave("a", "2026-09-28T08:53:00Z", [("Erbil", (36.19, 44.01))]))])[0]
-    b = dict(a, id="b", wave_key="other", time="2026-09-28T11:33:00Z", updated="2026-09-28T11:33:00Z",
-             reports=[dict(a["reports"][0], url="https://example.com/b2")], targets=[dict(a["targets"][0])] if a["targets"] else [])
-    hit = event("h", "Erbil", (36.2, 44.02), "2026-09-28T09:30:00Z", "Drones hit Erbil.", type_="missile_drone",
-                country="IQ", theater="mideast")
+def test_consolidate_does_not_enlarge_legacy_campaigns():
+    a = wave("a", "2026-09-28T08:53:00Z", [("Erbil", (36.19, 44.01))])
+    a.update(wave=True, targets=[])
+    b = dict(a, id="b", time="2026-09-28T11:33:00Z",
+             reports=[dict(a["reports"][0], url="https://example.com/b2")])
+    hit = event("h", "Erbil", (36.2, 44.02), "2026-09-28T09:30:00Z", "Drones hit Erbil.",
+                type_="missile_drone", country="IQ", theater="mideast")
     out, folded = merge.consolidate([b, hit, a], set())
-    assert [e["id"] for e in out] == [a["id"]] and sorted(e["id"] for e in folded) == ["b", "h"]
-    assert len(out[0]["reports"]) == 3
+    assert {e["id"] for e in out} == {"a", "b", "h"} and folded == []
 
 
 HAGUE, BERLIN, NYC = (52.08, 4.30), (52.52, 13.40), (40.71, -74.0)
@@ -233,7 +233,7 @@ def test_production_reports_merge_into_one_event():
     assert m.FAMILY["production"] == "production" and m.RADIUS_KM["production"] > 0
 
 
-def test_launches_into_one_sea_are_one_wave_whatever_country_the_reports_give():
+def test_launches_into_one_sea_need_incident_confirmation():
     # North Korea's launch came in "toward the Sea of Japan" with country JP; Seoul's outlets say
     # "East Sea", with KR or no country
     jp = event("j", "Sea of Japan", (40.0, 135.0), "2026-10-02T21:42:00Z", "North Korea launched missiles toward the Sea of Japan.",
@@ -243,10 +243,12 @@ def test_launches_into_one_sea_are_one_wave_whatever_country_the_reports_give():
     none = event("n", "Sea of Japan", (40.0, 135.0), "2026-10-02T22:30:00Z", "Japan says a North Korean missile fell outside its EEZ.",
                  type_="missile_drone", country=None, attacker="KP", theater="indopac")
     out = merge.merge([], [cand(jp), cand(kr), cand(none)])
-    assert len(out) == 1 and out[0]["wave"] and len(out[0]["reports"]) == 3
+    assert len(out) == 3 and not any(e.get("wave") for e in out)
+    out, _ = dedupe._fold(out, [(out[0]["id"], e["id"]) for e in out[1:]], set())
+    assert len(out) == 1 and len(out[0]["reports"]) == 3
 
 
-def test_a_launch_report_becomes_the_waves_launch_area():
+def test_launch_area_does_not_join_a_campaign_on_time_alone():
     # "fired a ballistic missile from Wonsan" was its own event pinned at Wonsan, and the wave's line
     # started from an assumed launch area
     w = event("w", "Sea of Japan", (40.0, 135.0), "2026-10-02T21:42:00Z", "North Korea launched missiles toward the Sea of Japan.",
@@ -257,8 +259,8 @@ def test_a_launch_report_becomes_the_waves_launch_area():
     test = event("t", "Pyongyang", (39.03, 125.75), "2026-10-02T22:50:00Z", "North Korea held a missile parade in Pyongyang.",
                  type_="missile_drone", country="KP", attacker="KP", theater="indopac")
     out, folded = merge.launch_sites([w, site, test], set())
-    assert [e["id"] for e in folded] == ["s"] and {e["id"] for e in out} == {"w", "t"}
-    assert w["origins"] == [{"place": "Wonsan", "lat": 39.17, "lon": 127.43}] and len(w["reports"]) == 2
+    assert not folded and {e["id"] for e in out} == {"w", "s", "t"}
+    assert w["origins"] == [] and len(w["reports"]) == 1
     denial = event("d", "Tehran", (35.69, 51.39), "2026-10-02T22:50:00Z",
                    "A military source denies reports that a missile was launched from Iran toward Jordan.",
                    type_="missile_drone", country="IR", attacker="IR", theater="mideast")
@@ -286,12 +288,12 @@ def test_talks_with_one_party_list_within_the_other_and_close_wording_merge():
     assert not merge._same_talks(visit, cabinet)
 
 
-def test_a_waves_place_keeps_its_first_and_latest_report_time():
+def test_repeated_attacks_keep_separate_occurrence_and_report_times():
     first = wave("a", "2026-09-28T08:53:00Z", [("Erbil", (36.19, 44.01))])
     later = wave("b", "2026-09-28T11:33:00Z", [("Erbil", (36.19, 44.01))])
     out = merge.merge([], [cand(later), cand(first)])
-    t = out[0]["targets"][0]
-    assert t["time"] == "2026-09-28T08:53:00Z" and t["last"] == "2026-09-28T11:33:00Z" and t["reports"] == 2
+    assert [e["time"] for e in out] == [first["time"], later["time"]]
+    assert all(e["updated"] == e["time"] and len(e["reports"]) == 1 for e in out)
 
 
 def test_manual_report_nearby_news_does_not_corroborate(monkeypatch):

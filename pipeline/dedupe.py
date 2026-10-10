@@ -18,8 +18,8 @@ So the check is built around each event and the few events most like it:
   FAR_FLOOR (one cockpit attack on a flydubai flight was pinned to four countries); never strikes,
   fighting or incidents at sea farther apart than INCIDENT_KM unless one is pinned only to a whole
   country or sea. Alert groups
-  have their own grouping and are left out; an attack wave can take in others but two waves are
-  never folded together.
+  have their own grouping and are left out; legacy campaigns and validated partition siblings
+  are excluded from folding.
 - Near-identical reports of statements, deals and movements ("All 12 U.S. B-1B Lancer
   bombers have left RAF Fairford" and "... have departed RAF Fairford"), at AUTO similarity or more,
   within AUTO_HOURS and giving no different figures, are folded without asking.
@@ -79,6 +79,7 @@ PROMPT = """You check a live conflict map for duplicates. Each case is one event
 
 For each case, list the candidates that describe the same specific incident or statement as the event: the same strike, arrests, seizure, test, exercise, announcement, deal, meeting, visit or call, vote, filing or ruling, including follow-up coverage of it over the following days (new details, reactions, denials, a rising death toll).
 Include reports whose central subject is that same incident: investigation findings, attribution, denials, casualty updates, and officials' reactions or threats about it. For example, reports about a Korean DMZ mine explosion, who caused that explosion, and denials of responsibility belong to that one incident even if filed as explosion, incursion, hybrid or diplomacy. A report's publication date is not a new occurrence date. Use the report excerpts as well as the headline to identify the incident.
+An airport strike and an oil-field strike are separate incidents. A renewed airport attack remains separate from the earlier attack even when the same article mentions both; never transfer the earlier attack's casualties to the newer one.
 Leave out candidates that are separate incidents that resemble it (two strikes on the same city on the same day, two drills, two meetings between the same countries), that are only background to it, or when you are unsure. A distinct action in response, such as sanctions actually imposed, a new deployment, mine-clearing operation, formal meeting or retaliatory strike, remains its own event. Shared countries, a place, or a topic alone never establish the same incident.
 Times matter. Reports on different days are the same incident only when they clearly describe it again (follow-up coverage of the same strike, deal or move). Many kinds of report recur and are separate incidents each time: an air force's daily report of guided bombs or drones on a region, strikes on the same front, aircraft landing at the same airport, attacks on ships in the same waters. Different regions or provinces in the summaries mean different incidents.
 
@@ -191,12 +192,18 @@ def _gap(e: dict, f: dict) -> timedelta:
     return abs((parse_time(e.get("time")) or parse_time(f.get("time"))) - (parse_time(f.get("time")) or parse_time(e.get("time"))))
 
 
+def separate_incidents(e: dict, f: dict) -> bool:
+    """Legacy campaigns and explicitly partitioned siblings must never be folded back."""
+    return (bool(e.get("wave") or f.get("wave")) or
+            bool(e.get("incident_split") and e.get("incident_split") == f.get("incident_split")))
+
+
 def candidates(e: dict, pool: list[dict], vec: dict, late: bool = False) -> list[tuple[float, dict]]:
     """The events most like e (score, event), best first: within PAIR_WINDOW, or for late
     follow-ups older than that, up to LATE_DAYS."""
     out = []
     for f in pool:
-        if f["id"] == e["id"] or (e.get("wave") and f.get("wave")) or f.get("alert") or apart(e, f):
+        if f["id"] == e["id"] or separate_incidents(e, f) or f.get("alert") or apart(e, f):
             continue
         gap = _gap(e, f)
         if late:
@@ -266,7 +273,7 @@ def cases(events: list[dict], history: list[dict], judged: dict, now) -> tuple[l
     new_since = now - timedelta(hours=NEW_HOURS)
     for e in order:
         if e.get("wave"):
-            continue  # a wave is a candidate for others; its own reports are grouped by merge
+            continue  # a legacy campaign waits for atomic incident repair
         found = candidates(e, pool, vec)
         if parse_time(e.get("updated") or e["time"]) >= new_since:
             found += candidates(e, pool + old, vec, late=True)
@@ -287,7 +294,7 @@ def cases(events: list[dict], history: list[dict], judged: dict, now) -> tuple[l
 
 def _fold(events: list[dict], same: list[tuple[str, str]], skip: set[str], history: list[dict] | None = None,
           kinds: dict[str, str] | None = None) -> tuple[list[dict], list[dict]]:
-    """Fold events judged the same: into an attack wave if one is among them, else the earliest.
+    """Fold events judged the same, preserving a repaired identity or the earliest incident.
     Restore a matching archived event with its original id, date and reports, then append coverage.
     `kinds`: the kind chosen for a folded set, by member id."""
     archived = {h["id"]: h for h in history or []}
@@ -300,7 +307,7 @@ def _fold(events: list[dict], same: list[tuple[str, str]], skip: set[str], histo
             if a in skip or b in skip:
                 continue
             for old, current in ((a, b), (b, a)):
-                if current in by_id and old in archived and old not in by_id:
+                if current in by_id and old in archived and old not in by_id and not separate_incidents(by_id[current], archived[old]):
                     by_id[old] = deepcopy(archived[old])
                     changed = True
     parent = {i: i for i in by_id}
@@ -316,12 +323,14 @@ def _fold(events: list[dict], same: list[tuple[str, str]], skip: set[str], histo
         # identity created by the first published report of the incident.
         first_report = min((r.get("time") or by_id[i]["time"] for r in by_id[i].get("reports") or []),
                            default=by_id[i]["time"])
-        return (not by_id[i].get("wave"), first_report, by_id[i]["time"], i)
+        return (not bool(by_id[i].get("incident_split")), first_report, by_id[i]["time"], i)
 
     for a, b in same:
         if a in by_id and b in by_id and a not in skip and b not in skip:
             ra, rb = root(a), root(b)
-            if ra != rb and not (by_id[ra].get("wave") and by_id[rb].get("wave")):
+            if ra != rb and not any(separate_incidents(by_id[x], by_id[y])
+                                   for x in by_id if root(x) == ra
+                                   for y in by_id if root(y) == rb):
                 first, second = sorted((ra, rb), key=rank)
                 parent[second] = first
     folded = []

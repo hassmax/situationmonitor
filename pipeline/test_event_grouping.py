@@ -289,5 +289,122 @@ class EventGroupingTests(unittest.TestCase):
             self.assertEqual(restored[0]["reports"][0]["group"], "agency")
 
 
+
+class CampaignRepairTests(unittest.TestCase):
+    def setUp(self):
+        import config
+        import incidents
+        self.incidents = incidents
+        self.theaters = config.load().theaters
+        self.parent = event('campaign', 0.1, 'Campaign aggregate', 'missile_drone')
+        self.parent.update(wave=True, theater='mideast', country='SA', attacker='YE', killed=9,
+                           status='corroborated', sources_count=17, targets=[], headline='Mixed headline')
+        summaries = ['Three killed in a Riyadh airport strike.',
+                     'Smoke reported at Ghawar after a missile strike.',
+                     'Riyadh airport attacked again, two days after the strike that killed three.']
+        self.parent['reports'] = [{**self.parent['reports'][0], 'summary': text, 'url': f'https://example.org/report-{i}',
+                                   'source': f'source-{i}', 'group': f'group-{i}'} for i, text in enumerate(summaries)]
+        self.reply = {'groups': [{'reports': [i], 'event': {'type': 'missile_drone', 'summary': text,
+                      'place': 'Ghawar' if i == 1 else 'King Khalid International Airport', 'country': 'SA',
+                      'theater': 'mideast', 'attacker': 'YE', 'lat': 25 if i == 1 else 24.9586,
+                      'lon': 49.1667 if i == 1 else 46.711, 'severity': 2, 'happened': None,
+                      'killed': 3 if i == 0 else None, 'injured': None}}
+                      for i, text in enumerate(summaries)]}
+        class Places:
+            def locate(self, place, admin1, country, hint):
+                return hint
+        self.geo = Places()
+
+    def parts(self, reply=None):
+        return self.incidents.replacements(self.parent, self.reply if reply is None else reply,
+                                           self.geo, self.theaters, {self.parent['id']})
+
+    def test_airport_oilfield_and_renewed_airport_are_separate(self):
+        parts = self.parts()
+        self.assertEqual(len(parts), 3)
+        self.assertEqual(parts[0]['id'], 'campaign')
+        self.assertEqual([e['killed'] for e in parts], [3, None, None])
+        self.assertTrue(all(not e.get('wave') and 'headline' not in e and 'status' not in e for e in parts))
+        self.assertEqual(sorted(r['url'] for e in parts for r in e['reports']),
+                         sorted(r['url'] for r in self.parent['reports']))
+        merge.apply_status(parts, [])
+        self.assertTrue(all(e['sources_count'] == 1 and e['status'] == 'unconfirmed' for e in parts))
+        self.assertTrue(all('incident_split' not in merge.public_event(e) for e in parts))
+
+    def test_missing_duplicate_boolean_or_out_of_range_report_rejects_whole_partition(self):
+        for indices in ([[0], [1]], [[0], [1], [1, 2]], [[False], [1], [2]], [[0], [1], [3]]):
+            reply = deepcopy(self.reply)
+            reply['groups'] = [{**self.reply['groups'][min(i, 2)], 'reports': g} for i, g in enumerate(indices)]
+            self.assertIsNone(self.parts(reply))
+
+    def test_unplaceable_group_preserves_whole_original(self):
+        reply = deepcopy(self.reply)
+        reply['groups'][1]['event'].update(place=None, lat=None, lon=None)
+        self.assertIsNone(self.parts(reply))
+
+    def test_invalid_or_unavailable_reply_retries_without_mutation(self):
+        for answer in (None, {'groups': []}):
+            original = deepcopy(self.parent)
+            state = {}
+            out = self.incidents.repair([self.parent], state, lambda *a, **k: answer, {}, NOW,
+                                        self.geo, self.theaters, set())
+            self.assertEqual(out, [original])
+            self.assertEqual(state['incident_repair']['remaining'], 1)
+
+    def test_success_is_stable_idempotent_and_hidden_campaigns_are_untouched(self):
+        parts = self.parts()
+        self.assertEqual([e['id'] for e in parts], [e['id'] for e in self.parts()])
+        def forbidden(*a, **k):
+            self.fail('completed or hidden repair must not call the model')
+        self.assertEqual(self.incidents.repair(parts, {}, forbidden, {}, NOW, self.geo, self.theaters, set()), parts)
+        self.assertEqual(self.incidents.repair([self.parent], {}, forbidden, {}, NOW, self.geo, self.theaters,
+                                              {'campaign'}), [self.parent])
+
+    def test_cached_duplicates_and_transitive_bridges_cannot_refold_siblings(self):
+        parts = self.parts()
+        bridge = event('bridge', 0.1, parts[0]['summary'], 'missile_drone')
+        out, _ = dedupe._fold(parts + [bridge], [(parts[0]['id'], 'bridge'),
+                            ('bridge', parts[2]['id']), (parts[0]['id'], parts[1]['id'])], set())
+        self.assertEqual(len(out), 3)
+        out, folded = merge.consolidate(out, set())
+        self.assertEqual(len(out), 3)
+        self.assertFalse(folded)
+
+    def test_known_attacker_no_longer_bypasses_incident_identity(self):
+        parts = self.parts()
+        candidates = [{**e, 'report': e['reports'][0]} for e in parts]
+        out = merge.merge([], candidates)
+        self.assertEqual(len(out), 3)
+        self.assertTrue(all(not e.get('wave') for e in out))
+
+    def test_archive_preserves_partition_to_prevent_late_refolding(self):
+        parts = self.parts()
+        merge.apply_status(parts, [])
+        with TemporaryDirectory() as folder:
+            root = Path(folder)
+            archive.update(root, [merge.public_event(e) for e in parts], {}, [], NOW, parts)
+            archived = archive.recent(root, NOW, 14, set())
+            self.assertEqual(len(archived), 3)
+            self.assertTrue(all(e.get('incident_split') == 'campaign' for e in archived))
+            out, folded = dedupe._fold([parts[0]], [(parts[0]['id'], parts[2]['id'])], set(), archived)
+            self.assertEqual(len(out), 1)
+            self.assertFalse(folded)
+
+    def test_multiple_incidents_in_one_input_keep_the_same_source_reference(self):
+        import extract
+        item = {**self.parent['reports'][0], 'id': 'input', 'platform': 'rss', 'text': 'Airport and oil-field attacks'}
+        reply = {'events': [{**g['event'], 'i': 0, 'relevant': True} for g in self.reply['groups'][:2]]}
+        records, carriers, done = [], [], set()
+        extract._absorb(reply, [item], {}, NOW, records, carriers, done)
+        self.assertEqual(len(records), 2)
+        self.assertEqual(done, {'input'})
+        self.assertEqual(records[0]['item']['url'], records[1]['item']['url'])
+
+    def test_invalid_event_type_is_not_silently_retyped(self):
+        reply = deepcopy(self.reply)
+        reply['groups'][0]['event']['type'] = 'new_alert_category'
+        self.assertIsNone(self.parts(reply))
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -7,10 +7,10 @@ Confidence rules (what the colors on the globe mean):
   claimed       only sources aligned with one side (e.g. a ministry and friendly bloggers)
 Nearby news coverage picked up by GDELT (3+ distinct outlets) counts as one unaligned source.
 
-Attack waves: missile, drone, and interception reports with a known attacker are grouped
-into one event per direction per day (e.g. Russia -> Ukraine on 26 September), listing every
-location hit and every launch area named. Days run 09:00 to 09:00 UTC so an overnight
-attack stays in one wave.
+Actual attacks are grouped by specific incident, never by attacker/destination or an
+18-hour campaign window. Recurring attacks and different targets remain separate until
+an incident-level duplicate check confirms they describe the same occurrence.
+Legacy attack waves are retained only until their evidence has been re-read atomically.
 
 Alerts: real-time warnings that drones or missiles are in flight ("a drone is heading toward
 Poltava") with nothing reported hit. An air force can post dozens a night, so all alerts about
@@ -344,6 +344,8 @@ def _find_match(events: list[dict], cand: dict) -> dict | None:
     for e in events:
         if e.get("wave") or e.get("alert"):
             continue
+        if e.get("incident_split") and e.get("incident_split") == cand.get("incident_split"):
+            continue  # a validated partition has already established separate incidents
         if talks:
             if FAMILY.get(e["type"]) not in TALKS or not _same_talks(e, cand):
                 continue
@@ -670,18 +672,12 @@ def merge(events: list[dict], candidates: list[dict]) -> list[dict]:
         if _is_alert(cand):
             _merge_alert(events, cand)
             continue
-        if _is_wave(cand):
-            _merge_wave(events, cand)
-            continue
-        wave = _hit_in_wave(events, cand)
-        if wave is not None:
-            _merge_wave(events, cand, wave)
-            continue
         rep = cand["report"]
         match = _find_match(events, cand)
         if match is None:
             events.append({
                 "id": _new_id(events, rep["url"], cand["summary"]), "alert": False,
+                **({"incident_split": cand["incident_split"]} if cand.get("incident_split") else {}),
                 "theater": cand["theater"], "type": cand["type"], "summary": cand["summary"],
                 "place": cand["place"], "country": cand["country"], "attacker": cand.get("attacker"),
                 "lat": cand["lat"], "lon": cand["lon"], "approx": cand["approx"],
@@ -727,17 +723,15 @@ def consolidate(events: list[dict], skip: set[str]) -> tuple[list[dict], list[di
         if e["id"] in skip or e.get("alert"):
             pass
         elif e.get("wave"):
-            match = _wave_for(pool, e, e.get("attacker"))
+            pass  # legacy campaigns wait for incident repair; never absorb more reports
         elif FAMILY.get(e["type"]) in LOOSE_FAMILIES:
             match = _find_match(pool, e)
         elif FAMILY.get(e["type"]) in ("strike", "ground"):
             # same place, same kind, within the window AND closely matching wording: one incident
             # split when its reports arrived out of order. Place alone isn't enough: broad pins like
             # "Gaza" or "Sudan" hold many separate strikes.
-            match = _hit_in_wave(pool, e)
-            if match is None:
-                m = _find_match(pool, e)
-                match = m if m is not None and _similar(m, e, STRIKE_FOLD_OVERLAP) else None
+            m = _find_match(pool, e)
+            match = m if m is not None and _similar(m, e, STRIKE_FOLD_OVERLAP) else None
         elif FAMILY.get(e["type"]) in TALKS:
             # the same parties and closely matching wording, whatever theater or type each was
             # filed under; looser pairs (a meeting and a reaction to it) are left to the dedupe check
@@ -788,30 +782,15 @@ def launch_sites(events: list[dict], skip: set[str]) -> tuple[list[dict], list[d
     """Fold launch reports ("fired a ballistic missile from Wonsan", pinned at Wonsan) into the
     attacker's attack wave within WINDOW, with their place as a named launch area: the wave's line
     is then drawn from there, not from an assumed one. Returns (events, the events folded away)."""
-    folded = []
-    for e in events:
-        if e["id"] in skip or not _launch_report(e):
-            continue
-        t = parse_time(e["time"])
-        waves = [w for w in events if w.get("wave") and w["id"] not in skip and w.get("attacker") == e["attacker"]
-                 and w["theater"] == e["theater"] and abs(parse_time(w["time"]) - t) <= WINDOW]
-        if not waves:
-            continue
-        w = min(waves, key=lambda w: abs(parse_time(w["time"]) - t))
-        urls = {r["url"] for r in w["reports"]}
-        w["reports"] += [r for r in e["reports"] if r["url"] not in urls]
-        _add_origins(w, [{"place": e.get("place"), "lat": e["lat"], "lon": e["lon"]}] + list(e.get("origins") or []))
-        w["updated"] = max(w["updated"], e["updated"])
-        w["severity"] = max(w["severity"], e["severity"])
-        folded.append(e)
-    if folded:
-        log(f"[merge] {len(folded)} launch reports folded into their attack waves as launch areas")
-    gone = {id(e) for e in folded}
-    return [e for e in events if id(e) not in gone], folded
+    # A shared attacker and time window cannot identify which attack a launch belongs to.
+    # Named origins extracted from the same incident still travel with its own record.
+    return events, []
 
 
 def _absorb(match: dict, cand: dict) -> None:
     """Take what a matching report (or event) adds to an event."""
+    if cand.get("incident_split"):
+        match.setdefault("incident_split", cand["incident_split"])
     match["time"] = min(match["time"], cand["time"])
     match["updated"] = max(match["updated"], cand.get("updated") or cand["time"],
                            (cand.get("report") or {}).get("time") or cand["time"])
@@ -968,7 +947,7 @@ def apply_status(events: list[dict], cells: list[dict]) -> None:
         # Manual reports require corroboration from their attached evidence, not nearby news.
         # Nearby headlines don't establish independence from an IDF statement. An event
         # resting only on Israeli-side evidence stays claimed until independent evidence joins.
-        if len(news) >= 3 and not e.get("id", "").startswith("manual-") and not ("idf" in sided and not (neutral - WEAK_GROUPS) and sides == {"IL"}):
+        if len(news) >= 3 and not e.get("incident_split") and not e.get("id", "").startswith("manual-") and not ("idf" in sided and not (neutral - WEAK_GROUPS) and sides == {"IL"}):
             neutral.add("gdelt")
         groups = neutral | sided
         # Google News results from outlets not listed in sources.yaml share one group, as do posts
@@ -1004,7 +983,7 @@ def prune(events: list[dict], now: datetime, retention_days: int, max_events: in
 
 def public_event(e: dict) -> dict:
     """Strip internal fields before publishing."""
-    out = {k: v for k, v in e.items() if k not in ("reports", "us", "cn", "wave_key", "alert_key", "origin", "checked", "checks", "headline", "coverage", "dated")}
+    out = {k: v for k, v in e.items() if k not in ("reports", "us", "cn", "wave_key", "alert_key", "origin", "checked", "checks", "headline", "coverage", "dated", "incident_split")}
     if not e.get("alert"):
         out.pop("alert", None)
     if e.get("origin") and not e.get("origins"):

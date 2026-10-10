@@ -27,6 +27,7 @@ import config as config_mod  # noqa: E402
 import corrections  # noqa: E402
 import datecheck  # noqa: E402
 import dedupe  # noqa: E402
+import incidents  # noqa: E402
 import extract  # noqa: E402
 import fleet  # noqa: E402
 import flights  # noqa: E402
@@ -250,6 +251,8 @@ def main() -> int:
     # One-time repair of diplomacy events that merged unrelated talks (see merge.split_mixed_talks).
     if not args.no_llm:
         events = merge.split_mixed_talks(events, state, extract.ask_json, settings, t0)
+    if not args.no_llm:
+        events = incidents.repair(events, state, extract.ask_json, settings, t0, geocoder, cfg.theaters, hidden)
     known = {e["id"] for e in events}
     merge.mine_incidents(events)  # ground mine blasts are not missile/drone attack waves
     merge.drone_strikes(candidates)  # drone and missile attacks filed as airstrikes, before they join waves

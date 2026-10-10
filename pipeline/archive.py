@@ -68,6 +68,7 @@ def update(root: Path, published: list[dict], removed: dict[str, str | None], fl
     folder = Path(root) / "archive"
     current: dict[str, str] = {}
     by_day: dict[str, list[dict]] = {}
+    internal_events = {e["id"]: e for e in internal or []}
     evidence = {e["id"]: {r["url"]: r for r in e.get("reports") or []} for e in internal or []}
     for e in published:
         d = _day(e)
@@ -79,7 +80,9 @@ def update(root: Path, published: list[dict], removed: dict[str, str | None], fl
                                 for k in ("group", "weight")
                                 if evidence.get(e["id"], {}).get(r["url"], {}).get(k) is not None}}
                        for r in e.get("reports") or []]
-            by_day.setdefault(d, []).append({**e, "reports": reports})
+            partition = internal_events.get(e["id"], {}).get("incident_split")
+            by_day.setdefault(d, []).append({**e, "reports": reports,
+                                            **({"incident_split": partition} if partition else {})})
     days = set(by_day) | {d for d in removed.values() if d}
     written = 0
     for day in sorted(days):

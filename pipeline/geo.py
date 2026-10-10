@@ -403,6 +403,7 @@ def place_record(rec: dict, geocoder: Geocoder, theaters: list[dict]) -> dict | 
             "url": item["url"],
             "time": item["time"],
             "summary": rec["summary"],
+            "incident": {k: rec.get(k) for k in ("type", "happened", "place", "country", "lat", "lon", "attacker", "killed", "injured")},
             # a news item's own headline, for the old-story checks (datecheck, recency); internal,
             # never published (merge.public_event keeps only the listed report fields)
             **({"title": (item.get("text") or "").split("\n", 1)[0][:200]} if item["platform"] == "rss" else {}),

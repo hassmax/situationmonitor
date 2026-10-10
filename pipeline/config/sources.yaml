@@ -44,6 +44,7 @@ settings:
   # The run log's "[budget]" lines give each job's tokens per day, to tune these.
   provider_routes:
     analysis: {cerebras: 380000}
+    incident_repair: {cerebras: 40000}
     recency: {cerebras: 50000}
     frontline_review: {cerebras: 80000}
     frontline_isw: {cerebras: 100000}
