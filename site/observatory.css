@@ -168,3 +168,49 @@ kbd { font: inherit; padding: 1px 4px; border: 1px solid var(--line-strong); bor
 }
 @media (max-width: 360px) { .wordmark { font-size: 14px; }.brand-row { padding-inline: 9px; }.filters-toggle { padding-inline: 9px; } }
 @media (max-height: 540px) and (max-width: 1023px) { .brand { grid-template-rows: 38px 24px; gap: 4px; }.brand-row, .filters-toggle { height: 38px; min-height: 38px; }.brand-title > .eyebrow { display: none; } }
+
+/* One readable layer of markers, with explicit groups and generous separation. */
+.mk:not(.mk-cvn) .mk-in { min-width: 36px; min-height: 36px; border-radius: 9px; }
+.mk .mk-label { display: none; }
+.mk-cvn .mk-in { width: 36px; height: 36px; padding: 7px; border-radius: 9px; justify-content: center; }
+.mk.cluster-lead .mk-in { width: 68px; height: 40px; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 0 10px; border-radius: 12px; background: #0b1b27; border-style: solid; box-shadow: 0 3px 15px #0006, inset 0 1px #ffffff12; opacity: 1; }
+.mk.cluster-lead .mk-in svg { width: 20px; height: 20px; flex: none; }
+.mk.cluster-lead .mk-count { display: block; position: static; transform: none; padding: 0; min-width: 0; height: auto; line-height: 1; border: 0; background: none; box-shadow: none; color: #f1f8fa; font: 600 14px/1 var(--font); }
+.mk.spread::after { opacity: .42; }
+.mk.cluster-lead .mk-in::before, .mk.cluster-lead .mk-in::after { display: none; }
+.mk.cluster-lead .mk-in, .mk.cluster-lead .mk-in svg { animation: none; }
+.mk-fly.is-pinned { pointer-events: auto; }
+.mk-fly .tip-list { width: min(370px, calc(100vw - 24px)); max-width: min(370px, calc(100vw - 24px)); padding: 16px; border: 1px solid #83b8c64d; border-radius: 16px; background: #0c1923; box-shadow: 0 20px 65px #0009; }
+.tip-list .tip-meta { display: flex; align-items: center; color: var(--ink); font-size: 15px; }
+.cluster-close { margin-left: auto; min-width: 36px; min-height: 36px; border: 1px solid var(--line); border-radius: 9px; background: #ffffff06; color: var(--ink-2); font-size: 23px; cursor: pointer; }
+.cluster-context { margin: 2px 0 10px; color: var(--ink-3); font-size: 11px; }
+.tip-list .fly-rows { max-height: min(390px, 46dvh); gap: 5px; margin-bottom: 12px; }
+.tip-list .fly-rows button { align-items: flex-start; padding: 12px 8px; min-height: 64px; border: 1px solid var(--line); background: #ffffff03; border-radius: 9px; }
+.tip-list .fly-rows button:hover, .tip-list .fly-rows button:focus-visible { background: #a9f3cf0c; border-color: #a9f3cf40; }
+.tip-list .fly-rows button span { white-space: normal; overflow: visible; }
+.tip-list .fly-rows button b { display: block; font-size: 11px; line-height: 1.5; }
+.tip-list .cluster-summary { display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden !important; font-size: 12px; line-height: 1.55; margin-top: 4px; }
+.tip-list .cluster-evidence { display: block; margin-top: 5px; color: var(--ink-3); font-size: 10px; }
+.tip-list .fly-rows button time { font-size: 10px; padding-top: 3px; }
+.tip-list .fly-zoom { width: 100%; margin: 0; min-height: 40px; background: #a9f3cf0a; color: var(--signal); }
+.tip-list .fly-rows li { animation: none !important; }
+.sheet-prompt { display: none; }
+@media (max-width: 1023px) {
+  .mk:not(.mk-cvn) .mk-in, .mk-cvn .mk-in { min-width: 44px; min-height: 44px; }
+  .mk.cluster-lead .mk-in { width: 76px; height: 44px; }
+  .mk-fly:has(.tip-list) { left: 12px !important; right: 12px; top: auto !important; bottom: calc(110px + env(safe-area-inset-bottom)); }
+  .mk-fly .tip-list { width: 100%; max-width: none; }
+  .mk-fly:has(.tip-list) .fly-tail { display: none; }
+  .tip-list .fly-rows { max-height: min(38dvh, 320px); }
+  .sheet-handle { height: 32px; min-height: 32px; }
+  .sheet-handle::after { top: 8px; }
+  .sheet-collapsed .sheet-prompt { display: block; font: 500 10px/1 var(--font); color: var(--signal); position: absolute; top: 19px; left: 0; right: 0; }
+  .sheet-collapsed .feed-head { padding-top: 3px; }
+  .sheet-collapsed .feed-top .eyebrow { display: none; }
+  .sheet-collapsed .feed-head h2 { font-size: 18px; }
+  .focus-toast { display: none; }
+}
+@media (max-height: 540px) and (max-width: 1023px) {
+  .mk-fly:has(.tip-list) { top: 76px !important; bottom: 12px; left: auto !important; width: min(370px, 52vw); }
+  .tip-list .fly-rows { max-height: calc(100dvh - 225px); }
+}
