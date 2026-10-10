@@ -40,9 +40,13 @@ def _alias(text):
 
 
 def _airport_city_aliases(event):
-    return {_alias(m[1]) for r in event.get("reports") or []
-            for m in re.finditer(r"\b([A-Z][a-z]+) (?:airport|Airport)\b", r.get("summary", ""))
-            if m[1].lower() not in {"saudi", "arabia", "an", "new", "major", "international", "the"}}
+    aliases = {_alias(m[1]) for r in event.get("reports") or []
+               for m in re.finditer(r"\b([A-Z][a-z]+)(?:'s|’s)? (?:[Ii]nternational )?[Aa]irport\b", r.get("summary", ""))
+               if m[1].lower() not in {"saudi", "arabia", "an", "new", "major", "international", "the"}}
+    place = event.get("place") or ""
+    if "," in place and re.search(r"airport|airfield", place, re.I):
+        aliases.add(_alias(place.rsplit(",", 1)[1]))
+    return aliases
 
 
 def _facility_context(anchor, event):
@@ -58,12 +62,82 @@ def _facility_context(anchor, event):
                 re.search(r"\b(airport|airfield|terminal)\b", event.get("summary") or "", re.I))
 
 
+
+def protect_prior_casualties(events, state):
+    """Explicit relative chronology overrides undated repeats of a known earlier toll.
+
+    This does not merge incidents by a shared casualty count. It requires reviewed
+    episodes of the same facility and source evidence explicitly dating the fatal attack
+    before the renewed attack. Freshly stated fatalities remain with the newer episode.
+    """
+    registry = state.get("facility_episodes") or {}
+    by_id = {e["id"]: e for e in events}
+    words = {"one": 1, "two": 2, "three": 3, "four": 4, "five": 5, "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
+    for eid, episode in registry.items():
+        newer = by_id.get(eid)
+        if not newer or not episode.get("source_reviewed"):
+            continue
+        references = []
+        for r in newer["reports"]:
+            m = re.search(r"(\d+|two|three) days after.{0,100}?(?:killed (\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b|(\d+|one|two|three|four|five|six|seven|eight|nine|ten) (?:died|were killed)\b)", r["summary"], re.I)
+            if m:
+                days = int(m[1]) if m[1].isdigit() else words[m[1].lower()]
+                numeral = m[2] or m[3]
+                toll = int(numeral) if numeral.isdigit() else words[numeral.lower()]
+                references.append((iso(parse_time(r["time"]) - timedelta(days=days))[:10], toll))
+        for day, toll in set(references):
+            candidates = [by_id[old_id] for old_id, old in registry.items() if old_id != eid and old_id in by_id
+                          and old.get("source_reviewed") and old.get("country") == episode.get("country")
+                          and old.get("day", "") < episode.get("day", "") and old.get("killed") == toll
+                          and set(old.get("aliases", [])) & set(episode.get("aliases", []))]
+            if len(candidates) != 1:
+                continue
+            older = candidates[0]
+            moved, remaining = [], []
+            for r in newer["reports"]:
+                text = r["summary"]
+                count = (r.get("incident") or {}).get("killed")
+                stated = re.search(r"(?:killed|died|dead|deaths)[ :]*(\d+|one|two|three|four|five|six|seven|eight|nine|ten)\b", text, re.I)
+                if stated:
+                    count = int(stated[1]) if stated[1].isdigit() else words[stated[1].lower()]
+                fresh = bool(re.search(r"today|renewed|again|fresh|current|new fatalities|additional deaths", text, re.I))
+                background = bool(re.search(r"days after|previous|earlier.*(?:killed|died)", text, re.I))
+                resumed = bool(re.search(r"resum.*(?:earlier|previous)|(?:earlier|previous).*resum", text, re.I))
+                if resumed or (count == toll and not fresh and not background):
+                    moved.append(r)
+                else:
+                    remaining.append(r)
+            # A review can never delete the current episode or leave an empty record.
+            if not remaining:
+                continue
+            newer["reports"] = remaining
+            older["reports"] = list({(r["url"], r.get("summary"), r["time"]): r for r in older["reports"] + moved}.values())
+            older["time"] = day + "T00:00:00Z"
+            older["updated"] = max(r["time"] for r in older["reports"])
+            older["summary"] = f"Reported earlier attack on {older['place']} killed {toll} people."
+            older["headline"] = older["summary"]
+            registry[older["id"]]["day"] = day
+            if newer.get("killed") == toll and not any(
+                    (r.get("incident") or {}).get("killed") and re.search(r"today|renewed|again|fresh|current|new fatalities|additional deaths", r["summary"], re.I)
+                    and not re.search(r"days after|previous|earlier.*(?:killed|died)", r["summary"], re.I) for r in remaining):
+                newer["killed"] = None
+                episode["killed"] = None
+                newer["summary"] = f"Reported renewed attack on {newer['place']}"
+                if newer.get("injured"):
+                    newer["summary"] += f" injured {newer['injured']} people"
+                newer["summary"] += "; airport operations were disrupted."
+                newer["headline"] = newer["summary"]
+            if moved:
+                log(f"[episodes] chronology: {len(moved)} earlier-attack reports {eid} -> {older['id']}")
+    return events
+
 def route_facility_updates(events, state, hidden):
     """Reuse a reviewed episode for unambiguous same-facility/day coverage.
 
     Explicit new operations, actor conflicts, earlier-attack references, policy actions,
     and multiple reviewed episodes on the same day require another identity review.
     """
+    events = protect_prior_casualties(events, state)
     registry = state.setdefault("facility_episodes", {})
     by_id = {e["id"]: e for e in events}
     for eid in list(registry):

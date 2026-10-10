@@ -670,3 +670,30 @@ class FacilitySourceProtocolTests(unittest.TestCase):
         self.assertEqual(out[0]['time'], iso(NOW))
         self.assertEqual(out[0]['injured'], 80)
         self.assertEqual([e['id'] for e in folded], ['ambiguous'])
+
+    def test_repeated_prior_fatalities_cannot_contaminate_renewed_attack(self):
+        helper, mixed, follow, prototypes = self.fixture()
+        older = deepcopy(mixed)
+        older.update(id='older', reports=[mixed['reports'][0]], time=iso(NOW - timedelta(days=1)), injured=None)
+        newer = deepcopy(follow)
+        newer.update(id='newer', killed=3, injured=80,
+            reports=[mixed['reports'][1], {**mixed['reports'][0], 'time': iso(NOW),
+                'url': 'https://example.org/repeated-toll', 'incident': {'killed': 3}}])
+        registry = {e['id']: {'country': 'SA', 'day': e['time'][:10], 'killed': 3,
+            'aliases': ['king khalid', 'riyadh'], 'source_reviewed': True} for e in [older, newer]}
+        before = {r['url'] for e in [older, newer] for r in e['reports']}
+        out = helper.incidents.protect_prior_casualties([older, newer], {'facility_episodes': registry})
+        self.assertIsNone(newer['killed'])
+        self.assertEqual(newer['injured'], 80)
+        self.assertEqual(older['killed'], 3)
+        self.assertEqual(older['time'][:10], iso(NOW - timedelta(days=2))[:10])
+        self.assertEqual({r['url'] for e in out for r in e['reports']}, before)
+        self.assertEqual(len(newer['reports']), 1)
+        self.assertEqual(len(older['reports']), 2)
+        self.assertIn('renewed', newer['summary'])
+        # A new, explicitly dated fatality report is not assumed to repeat the earlier toll.
+        newer['reports'].append({**newer['reports'][0], 'url': 'https://example.org/new-deaths',
+            'summary': 'The renewed attack today killed three people.', 'incident': {'killed': 3}})
+        newer['killed'] = 3
+        helper.incidents.protect_prior_casualties(out, {'facility_episodes': registry})
+        self.assertEqual(newer['killed'], 3)
