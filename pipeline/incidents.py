@@ -38,9 +38,19 @@ def group_facility_episodes(events, state, ask, settings, now, hidden):
     originals survive malformed/partial answers. Review IDs rather than long report-index
     partitions so continuing coverage can join an existing identity each run.
     """
-    anchors = [e for e in events if e.get("incident_split") and not e.get("approx") and e["id"] not in hidden
+    anchors = [e for e in events if not e.get("wave") and not e.get("alert") and not e.get("approx") and e["id"] not in hidden
+               and all(isinstance(e.get(k), (int, float)) for k in ("lat", "lon"))
                and re.search(r"\b(airport|airfield|refinery|plant|terminal|base|station|port)\b", e.get("place") or "", re.I)]
-    anchors.sort(key=lambda e: e.get("updated", e["time"]), reverse=True)
+    def priority(anchor):
+        word = re.search(r"\b(airport|airfield|refinery|plant|terminal|base|station|port)\b", anchor["place"], re.I)[0]
+        count = sum(1 for e in events if e.get("country") == anchor.get("country")
+                    and e["id"] not in hidden and not e.get("wave") and not e.get("alert")
+                    and parse_time(e.get("updated", e["time"])) >= now - timedelta(days=3)
+                    and re.search(r"\b" + word + r"\b", (e.get("summary") or "") + " " + (e.get("place") or ""), re.I)
+                    and all(isinstance(x, (int, float)) for x in (e.get("lat"), e.get("lon")))
+                    and haversine_km(e["lat"], e["lon"], anchor["lat"], anchor["lon"]) <= 50)
+        return count, anchor.get("updated", anchor["time"])
+    anchors.sort(key=priority, reverse=True)
     reviews = state.setdefault("facility_episode_reviews", {})
     for anchor in anchors:
         facility_word = re.search(r"\b(airport|airfield|refinery|plant|terminal|base|station|port)\b", anchor["place"], re.I)[0]
@@ -320,7 +330,7 @@ def repair(events, state, ask, settings, now, geocoder, theaters, hidden):
     family_members = {parent["id"]: members for parent, members in family_inputs}
     waiting.sort(key=lambda e: (e["id"] in family_members, e.get("updated", e["time"]), len(e["reports"])), reverse=True)
     repaired = {}
-    for e in waiting[:int(settings.get("incident_repairs_per_run", 3))]:
+    for e in waiting[:int(settings.get("incident_repairs_per_run", 1))]:
         payload = {"theater": e["theater"], "country": e.get("country"),
                    "targets": [{k: t.get(k) for k in ("place", "lat", "lon")} for t in e.get("targets") or []],
                    "reports": [{"r": i, "time": r["time"], "summary": r["summary"],
