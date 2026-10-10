@@ -406,6 +406,15 @@ class CampaignRepairTests(unittest.TestCase):
         reply['groups'][1]['reports'] = [0]
         self.assertIsNone(self.parts(reply))
 
+    def test_repair_invalidates_old_campaign_duplicate_links_only(self):
+        state = {'dedupe': {'judged': {'alias|campaign': {'same': True},
+                                      'campaign|other': {'same': False},
+                                      'other|unrelated': {'same': True}}}}
+        out = self.incidents.repair([self.parent], state, lambda *a, **k: self.reply, {}, NOW,
+                                    self.geo, self.theaters, set())
+        self.assertEqual(len(out), 3)
+        self.assertEqual(state['dedupe']['judged'], {'other|unrelated': {'same': True}})
+
     def test_invalid_event_type_is_not_silently_retyped(self):
         reply = deepcopy(self.reply)
         reply['groups'][0]['event']['type'] = 'new_alert_category'

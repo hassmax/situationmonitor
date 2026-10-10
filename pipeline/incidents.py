@@ -94,8 +94,19 @@ def replacements(parent, reply, geocoder, theaters, existing_ids):
     return result
 
 
+def invalidate_campaign_links(state, roots):
+    checked = state.setdefault("incident_cache_checked", [])
+    todo = set(roots) - set(checked)
+    judged = (state.get("dedupe") or {}).get("judged", {})
+    for key in list(judged):
+        if todo.intersection(key.split("|")):
+            judged.pop(key)
+    checked.extend(sorted(todo))
+
+
 def repair(events, state, ask, settings, now, geocoder, theaters, hidden):
     """Bounded, resumable migration; legacy campaigns cannot take in fresh reports."""
+    invalidate_campaign_links(state, {e["incident_split"] for e in events if e.get("incident_split")})
     waiting = [e for e in events if e.get("wave") and e["id"] not in hidden and e.get("reports")
                and parse_time(e.get("updated") or e["time"]) >= now - timedelta(days=14)]
     waiting.sort(key=lambda e: (e.get("updated", e["time"]), len(e["reports"])), reverse=True)
@@ -120,6 +131,9 @@ def repair(events, state, ask, settings, now, geocoder, theaters, hidden):
             groups = reply.get("groups") if isinstance(reply, dict) else None
             log(f"[incidents] {e['id']}: invalid repair; reply keys {list(reply) if isinstance(reply, dict) else type(reply).__name__}; groups {len(groups) if isinstance(groups, list) else 'missing'}; original retained for retry")
             continue
+        # The retained ID now identifies one incident, not the old campaign. Cached links
+        # to archived aliases of other attacks must be judged again against its new evidence.
+        invalidate_campaign_links(state, {e["id"]})
         state.get("incident_repair_failures", {}).pop(e["id"], None)
         repaired[e["id"]] = parts
         log(f"[incidents] {e['id']}: {len(e['reports'])} reports -> {len(parts)} specific incidents")
