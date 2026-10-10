@@ -212,6 +212,7 @@
   const agoShort = (ms) => ago(ms).replace(" ago", "").replace(" min", "m").replace(" h", "h").replace(" d", "d");
   const fmtTime = (ms) => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   const fmtEvidenceTime = (ms) => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" });
+  const fmtOccurrenceDay = (day) => new Date(`${day}T12:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
   const fmtDay = (ms) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   const fmtMoney = (v) => (v >= 1e9 ? `$${(v / 1e9).toFixed(1)} billion` : v >= 1e6 ? `$${Math.round(v / 1e6)} million` : `$${Math.round(v).toLocaleString()}`);
   // Alerts (drones or missiles reported in flight, grouped per country per day) get a siren and never animate.
@@ -2716,7 +2717,7 @@
       <p><button class="linkish" type="button" id="copyEventLink">Copy event link</button>
         <a class="linkish" href="${esc(eventLink(e.id))}" id="eventShareLink" hidden>Open share link</a></p>
       ${e._archived ? '<p class="muted">Archived event. This published snapshot is separate from the current live feed.</p>' : ""}
-      <dl class="event-times"><div><dt>${e.alert ? "First warning" : "Event time"}</dt><dd><time datetime="${esc(e.time || e.updated)}" title="${esc(new Date(e._t).toUTCString())}">${esc(fmtEvidenceTime(e._t))}</time></dd></div>
+      <dl class="event-times"><div><dt>${e.occurrence_day ? "Event date" : e.alert ? "First warning" : "Event time"}</dt><dd><time datetime="${esc(e.occurrence_day || e.time || e.updated)}" title="${esc(e.occurrence_day ? "Occurrence date; precise time is unconfirmed" : new Date(e._t).toUTCString())}">${esc(e.occurrence_day ? fmtOccurrenceDay(e.occurrence_day) : fmtEvidenceTime(e._t))}</time></dd></div>
         <div><dt>Latest report</dt><dd><time datetime="${esc(e.updated || e.time)}" title="${esc(new Date(e._tu).toUTCString())}">${esc(fmtEvidenceTime(e._tu))}</time></dd></div></dl>
       ${hasFollowup(e) ? '<p class="muted">Later reports about this same event are grouped here. The time filter uses when the event happened, not when the latest report arrived.</p>' : ""}
       ${e.possibly_old ? `<div class="verdict verdict--doubt"><span class="conf-swatch conf-dashed" aria-hidden="true"></span><div><strong>Possibly an old story</strong><p>Only one outlet has this, and a news search found earlier coverage of the same topic but nothing current from other outlets. It may be an old article republished with a new date. It stays on the map, quieter, and is confirmed if another source reports it.</p></div></div>` : ""}

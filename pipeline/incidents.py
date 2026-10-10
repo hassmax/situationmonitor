@@ -128,7 +128,7 @@ def protect_prior_casualties(events, state):
             older["summary"] = f"Reported earlier attack on {older['place']} killed {toll} people."
             older["headline"] = older["summary"]
             registry[older["id"]]["day"] = original_day
-            if newer.get("killed") == toll and not any(
+            if (newer.get("killed") is None or newer.get("killed") == toll) and not any(
                     (r.get("incident") or {}).get("killed") and re.search(r"today|renewed|again|fresh|current|new fatalities|additional deaths", r["summary"], re.I)
                     and not re.search(r"days after|previous|earlier.*(?:killed|died)", r["summary"], re.I) for r in remaining):
                 newer["killed"] = None
@@ -154,6 +154,8 @@ def route_facility_updates(events, state, hidden):
     for eid in list(registry):
         if eid not in by_id:
             registry.pop(eid)
+        elif registry[eid].get("source_reviewed"):
+            by_id[eid]["occurrence_day"] = registry[eid]["day"]
     folded = []
     for e in events:
         if e["id"] in registry or e["id"] in hidden or e.get("wave") or e.get("alert") or e.get("approx"):
