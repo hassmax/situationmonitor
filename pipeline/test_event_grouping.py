@@ -510,6 +510,38 @@ class CampaignRepairTests(unittest.TestCase):
             self.assertEqual(self.incidents.complete_partition(self.parent, reply, lambda *a, **k: patch,
                                                                {}, {}, NOW), reply)
 
+    def test_facility_review_groups_followups_across_partition_roots(self):
+        parts = self.parts()
+        older, oil, current = parts
+        older['reports'][0]['time'] = iso(NOW - timedelta(days=2))
+        current['reports'][0].update(time=iso(NOW - timedelta(hours=2)),
+                                    incident={'injured': 80, 'killed': None})
+        current['time'] = iso(NOW - timedelta(days=1))  # an unsupported inherited occurrence date
+        follow = deepcopy(current)
+        follow.update(id='evacuation', incident_split='other-partition', reports=[{
+            **current['reports'][0], 'url': 'https://example.org/evacuation',
+            'summary': 'Terminal evacuated after today\'s airport attack.', 'incident': {}}])
+        reply = {'groups': [
+            {'ids': [older['id']], 'summary': 'Three killed in the earlier airport attack.', 'happened': older['reports'][0]['time'], 'killed': 3, 'injured': None},
+            {'ids': [current['id'], 'evacuation'], 'summary': 'Today\'s airport attack injured 80 people and prompted evacuation.', 'happened': current['time'], 'killed': None, 'injured': 80}]}
+        state = {}
+        out, folded = self.incidents.group_facility_episodes(parts + [follow], state, lambda *a, **k: reply, {}, NOW, set())
+        self.assertEqual(len(out), 3)  # oil field untouched, two airport episodes
+        self.assertEqual(len(folded), 1)
+        new = next(e for e in out if e.get('injured') == 80)
+        self.assertEqual(new['time'], current['reports'][0]['time'])
+        self.assertIsNone(new['killed'])
+        self.assertEqual(len(new['reports']), 2)
+        self.assertEqual(sorted((r['url'], r['summary']) for e in out for r in e['reports']),
+                         sorted((r['url'], r['summary']) for e in parts + [follow] for r in e['reports']))
+        def forbidden(*a, **k):
+            self.fail('unchanged identities should not need another review')
+        self.assertEqual(self.incidents.group_facility_episodes(out, state, forbidden, {}, NOW, set())[0], out)
+        bad = deepcopy(reply)
+        bad['groups'][1]['ids'].remove('evacuation')
+        self.assertEqual(self.incidents.group_facility_episodes(parts + [follow], {}, lambda *a, **k: bad, {}, NOW, set()),
+                         (parts + [follow], []))
+
 
 if __name__ == "__main__":
     unittest.main()

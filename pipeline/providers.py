@@ -45,6 +45,7 @@ DEFAULTS = [
 ROUTES = {
     "analysis": {"cerebras": 380_000},
     "incident_repair": {"cerebras": 150_000},  # bounded legacy campaign migration
+    "incident_grouping": {"cerebras": 60_000},  # continuing coverage of specific facilities
     "recency": {"cerebras": 50_000},
     "frontline_review": {"cerebras": 80_000},
     "frontline_isw": {"cerebras": 100_000},
