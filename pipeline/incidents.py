@@ -374,7 +374,14 @@ def group_facility_episodes(events, state, ask, settings, now, hidden, geocoder=
                     and re.search(r"\b" + word + r"\b", (e.get("summary") or "") + " " + (e.get("place") or ""), re.I)
                     and all(isinstance(x, (int, float)) for x in (e.get("lat"), e.get("lon")))
                     and _facility_context(anchor, e))
-        return count, anchor.get("updated", anchor["time"])
+        reviewed = [e for e in events if state.get("facility_episodes", {}).get(e["id"], {}).get("source_reviewed")
+                    and e["id"] not in hidden and _facility_context(anchor, e)]
+        pair = short_hash(*sorted(e["id"] for e in reviewed))
+        pending = (len(reviewed) == 2 and len({e["time"][:10] for e in reviewed}) == 2
+                   and state.get("facility_source_protocol", {}).get(pair) != 2)
+        # A known multi-episode history must be resolved before reviewing generic
+        # crowded facilities; otherwise one unrelated review starves this repair.
+        return pending, count, anchor.get("updated", anchor["time"])
     anchors.sort(key=priority, reverse=True)
     reviews = state.setdefault("facility_episode_reviews", {})
     for anchor in anchors:
