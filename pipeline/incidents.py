@@ -144,7 +144,9 @@ def repair_facility_sources(events, members, anchor, state, ask, settings, now, 
     chronological = [r for r in evidence if re.search(
         r"days after|days earlier|earlier|previous|renewed|again|resum|yesterday", r["summary"], re.I)]
     counts = [r for r in evidence if re.search(r"killed|injur|wound", r["summary"], re.I)]
-    selected = list({r["summary"]: r for r in chronological[:30] + counts[:12] + evidence[:4] + evidence[-4:]}.values())
+    numeric = [r for r in evidence if any(type((r.get("incident") or {}).get(k)) is int for k in ("killed", "injured"))]
+    maxima = [max(numeric, key=lambda r: (r.get("incident") or {}).get(k) or 0) for k in ("killed", "injured")] if numeric else []
+    selected = list({r["summary"]: r for r in chronological[:30] + maxima + counts[:12] + evidence[:4] + evidence[-4:]}.values())
     context = {"facility": anchor["place"], "country": anchor["country"], "theater": anchor["theater"],
                "lat": anchor["lat"], "lon": anchor["lon"],
                "reports": [{"published": r["time"], "summary": r["summary"], "facts": r.get("incident")} for r in selected]}
@@ -178,6 +180,15 @@ policy is separate. Choose the best supported episode for each report. Return JS
             return events, []
         for a in assignments:
             groups[a["episode"]]["reports"].append(a["r"])
+    for g in groups.values():
+        for field in ("killed", "injured"):
+            # Later casualty updates are evaluated only inside their assigned episode.
+            # Relative references to earlier casualties are background, not a new toll.
+            numbers = [(evidence[i].get("incident") or {}).get(field) for i in g["reports"]
+                       if not re.search(r"days after|previous|earlier.*(?:killed|died)", evidence[i]["summary"], re.I)]
+            numbers = [v for v in numbers if type(v) is int]
+            if numbers:
+                g[field] = max(numbers)
     parent = deepcopy(anchor)
     # Preserve the anchor's earliest evidence identity even when neighbouring records are older.
     earliest_anchor = min(anchor["reports"], key=lambda r: r["time"])
