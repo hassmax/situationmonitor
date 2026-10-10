@@ -646,7 +646,8 @@ class FacilitySourceProtocolTests(unittest.TestCase):
         out, folded = helper.incidents.repair_facility_sources(before, before, mixed, state, ask, {}, NOW,
             helper.geo, helper.theaters)
         self.assertEqual(out, before)
-        self.assertEqual(state, saved)
+        self.assertEqual(state["facility_episodes"], saved["facility_episodes"])
+        self.assertEqual(state["facility_source_error"]["stage"], "batch")
         self.assertEqual(folded, [])
 
     def test_confirmed_episode_keeps_identity_date_and_known_count(self):

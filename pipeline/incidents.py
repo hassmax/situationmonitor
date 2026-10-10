@@ -150,12 +150,24 @@ def repair_facility_sources(events, members, anchor, state, ask, settings, now, 
     context = {"facility": anchor["place"], "country": anchor["country"], "theater": anchor["theater"],
                "lat": anchor["lat"], "lon": anchor["lon"],
                "reports": [{"published": r["time"], "summary": r["summary"], "facts": r.get("incident")} for r in selected]}
-    plan = ask(SOURCE_PLAN_PROMPT + "\nIncident field specification:\n" + PROMPT, json.dumps(context), state, settings, now,
+    plan = ask(SOURCE_PLAN_PROMPT + """
+Required fields for each prototype: key (unique string), type, summary, place, country (ISO alpha-2),
+theater, attacker (ISO alpha-2 or null), severity (1 minor, 2 substantial, 3 major), happened
+(UTC timestamp supported by occurrence evidence or null), killed, injured (supported numbers or null),
+lat, lon. Type: missile_drone, airstrike, explosion, air_defense, artillery, ground, territory,
+naval, hybrid, incursion, deployment, diplomacy, legal, arms_transfer, production.
+Use supplied facility coordinates for airport episodes. Use diplomacy for an actual policy decision.
+Return only this exact structure, with key INCLUDED and WITHOUT reports arrays:
+{"groups":[{"key":"earlier","type":"missile_drone","summary":"Reported earlier airport attack.",
+"place":"Example Airport","country":"SA","theater":"mideast","attacker":null,"severity":2,
+"happened":null,"killed":null,"injured":null,"lat":24.9,"lon":46.7}]}.
+""", json.dumps(context), state, settings, now,
                max_tokens=5000, purpose="incident_grouping")
     prototypes = plan.get("groups") if isinstance(plan, dict) else None
     if (not isinstance(prototypes, list) or not prototypes or len(prototypes) > 12
             or any(not isinstance(g, dict) or not isinstance(g.get("key"), str) for g in prototypes)
             or len({g["key"] for g in prototypes}) != len(prototypes)):
+        state["facility_source_error"] = {"at": iso(now), "stage": "plan", "reply": str(plan)[:1200]}
         log("[episodes] source plan unavailable; original evidence retained")
         return events, []
     groups = {g["key"]: {**g, "reports": []} for g in prototypes}
@@ -176,6 +188,7 @@ policy is separate. Choose the best supported episode for each report. Return JS
         if (not isinstance(assignments, list) or any(not isinstance(a, dict) or type(a.get("r")) is not int
                 or a.get("episode") not in groups for a in assignments)
                 or sorted(a["r"] for a in assignments) != [r["r"] for r in batch]):
+            state["facility_source_error"] = {"at": iso(now), "stage": "batch", "start": start, "reply": str(reply)[:1200]}
             log(f"[episodes] incomplete source batch {start}; all original evidence retained")
             return events, []
         for a in assignments:
@@ -223,6 +236,7 @@ policy is separate. Choose the best supported episode for each report. Return JS
                 "first_report": min(r["time"] for r in e["reports"]), "source_reviewed": True}
     state.setdefault("incident_episode_repaired", {})[anchor["id"]] = 2
     state.setdefault("facility_source_repaired", {})[anchor["place"]] = short_hash(*sorted(e["id"] for e in output))
+    state.pop("facility_source_error", None)
     state["facility_source_review"] = {"at": iso(now), "facility": anchor["place"], "reports": len(evidence),
         "before": len(members), "after": len(output), "ids": [e["id"] for e in output]}
     judged = (state.get("dedupe") or {}).get("judged", {})
