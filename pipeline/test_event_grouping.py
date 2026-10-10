@@ -648,3 +648,24 @@ class FacilitySourceProtocolTests(unittest.TestCase):
         self.assertEqual(out, before)
         self.assertEqual(state, saved)
         self.assertEqual(folded, [])
+
+    def test_confirmed_episode_keeps_identity_date_and_known_count(self):
+        helper, mixed, follow, prototypes = self.fixture()
+        confirmed = deepcopy(follow)
+        confirmed.update(id='confirmed', time=iso(NOW), injured=80)
+        update = deepcopy(follow)
+        update.update(id='ambiguous', time=iso(NOW - timedelta(days=1)))
+        update['reports'][0]['url'] = 'https://example.org/ambiguous'
+        update['reports'][0]['time'] = iso(NOW - timedelta(days=1))
+        state = {'facility_episodes': {'confirmed': {'country': 'SA', 'day': iso(NOW)[:10],
+            'lat': confirmed['lat'], 'lon': confirmed['lon'], 'aliases': ['king khalid'],
+            'first_report': iso(NOW), 'source_reviewed': True}}}
+        def ask(*args, **kwargs):
+            return {'groups': [{'ids': ['ambiguous', 'confirmed'], 'summary': 'Reports of the continuing airport attack.',
+                'happened': iso(NOW - timedelta(days=1)), 'injured': None, 'killed': None}]}
+        out, folded = helper.incidents.group_facility_episodes([confirmed, update], state, ask, {}, NOW, set())
+        self.assertEqual(len(out), 1)
+        self.assertEqual(out[0]['id'], 'confirmed')
+        self.assertEqual(out[0]['time'], iso(NOW))
+        self.assertEqual(out[0]['injured'], 80)
+        self.assertEqual([e['id'] for e in folded], ['ambiguous'])

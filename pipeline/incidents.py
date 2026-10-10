@@ -306,7 +306,8 @@ def group_facility_episodes(events, state, ask, settings, now, hidden, geocoder=
                 log("[episodes] attempted merger of independently reviewed episodes; originals retained")
                 return events, routed
             originals.sort(key=lambda e: (min(r["time"] for r in e["reports"]), e["id"]))
-            keep = deepcopy(originals[0])
+            reviewed = [e for e in originals if state.get("facility_episodes", {}).get(e["id"], {}).get("source_reviewed")]
+            keep = deepcopy(reviewed[0] if reviewed else originals[0])
             evidence = {(r["url"], r.get("summary"), r["time"]): r for e in originals for r in e["reports"]}
             keep["reports"] = list(evidence.values())
             keep["updated"] = max(r["time"] for r in evidence.values())
@@ -327,7 +328,7 @@ def group_facility_episodes(events, state, ask, settings, now, hidden, geocoder=
                               if type((r.get("incident") or {}).get(k)) is int}
                 if value is not None and (type(value) is not int or value < 0 or value not in supported):
                     return events, routed
-                keep[k] = value
+                keep[k] = max(keep.get(k) or 0, value or 0) or None if reviewed else value
             happened = parse_time(group.get("happened"))
             supported_days = {r["time"][:10] for r in evidence.values()}
             # Explicit relative chronology can support a date before publication.
@@ -338,6 +339,8 @@ def group_facility_episodes(events, state, ask, settings, now, hidden, geocoder=
                     days = int(word) if word.isdigit() else {"two": 2, "three": 3}[word]
                     supported_days.add(iso(parse_time(r["time"]) - timedelta(days=days))[:10])
             keep["time"] = iso(happened) if happened and iso(happened)[:10] in supported_days and happened <= now else min(r["time"] for r in evidence.values())
+            if reviewed:
+                keep["time"] = reviewed[0]["time"]
             # Store aliases and the reviewed day so continuing coverage joins the
             # same identity without waiting for another external-model call.
             if re.search(r"\b(airport|airfield)\b", keep.get("place") or "", re.I) and merge.FAMILY.get(keep.get("type")) in ("strike", "ground", "hybrid", "incursion"):
@@ -351,7 +354,7 @@ def group_facility_episodes(events, state, ask, settings, now, hidden, geocoder=
                     "source_reviewed": any(state.get("facility_episodes", {}).get(e["id"], {}).get("source_reviewed") for e in originals),
                     "first_report": min(r["time"] for r in evidence.values())}
             output.append(keep)
-            folded.extend(originals[1:])
+            folded.extend(e for e in originals if e["id"] != keep["id"])
         # Apply only after the entire identity partition and its facts pass validation.
         reset = {e["id"] for e in members}
         judged = (state.get("dedupe") or {}).get("judged", {})
