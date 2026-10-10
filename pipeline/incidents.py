@@ -178,6 +178,13 @@ def route_facility_updates(events, state, hidden):
                         and _alias(e.get("place") or "") not in episode["aliases"])
                     or not any(set(alias.split()) <= words for alias in episode["aliases"] if alias)):
                 continue
+            # With more than one reviewed attack at this facility, publication
+            # today is not proof that undated footage describes today's attack.
+            if episode.get("source_reviewed") and not fresh and any(
+                    old_id != eid and old.get("source_reviewed") and old.get("country") == episode["country"]
+                    and old.get("day") != episode["day"] and set(old.get("aliases", [])) & set(episode["aliases"])
+                    for old_id, old in registry.items()):
+                continue  # the identity reviewer must resolve the source's episode
             if min(r["time"] for r in e["reports"]) < episode.get("first_report", min(r["time"] for r in keep["reports"])):
                 continue  # a warning published before this attack needs chronology review
             # An undated repeat of the previous fatality count needs review, not a

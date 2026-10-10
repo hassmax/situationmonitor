@@ -717,3 +717,19 @@ class FacilitySourceProtocolTests(unittest.TestCase):
             {}, ask, {}, NOW, helper.geo, helper.theaters, confirmed=confirmed)
         self.assertEqual({e['id']: e['time'] for e in out}, {'yesterday': yesterday['time'], 'today': today['time']})
         self.assertEqual(sum(len(e['reports']) for e in out), 2)
+
+    def test_publication_today_cannot_assign_undated_footage_to_todays_attack(self):
+        helper, mixed, follow, _ = self.fixture()
+        older = deepcopy(mixed)
+        older.update(id='older', time=iso(NOW - timedelta(days=1)), reports=[mixed['reports'][0]], injured=None)
+        newer = deepcopy(follow)
+        newer.update(id='newer')
+        footage = deepcopy(follow)
+        footage.update(id='undated', summary='Video shows the missile strike on Riyadh airport.')
+        footage['reports'][0]['summary'] = footage['summary']
+        state = {'facility_episodes': {e['id']: {'country': 'SA', 'day': e['time'][:10],
+            'lat': e['lat'], 'lon': e['lon'], 'aliases': ['riyadh', 'king khalid'], 'source_reviewed': True}
+            for e in [older, newer]}}
+        out, folded = helper.incidents.route_facility_updates([older, newer, footage], state, set())
+        self.assertEqual(len(out), 3)
+        self.assertEqual(folded, [], 'This source needs identity review, not a publication-day merge')
