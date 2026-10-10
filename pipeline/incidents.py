@@ -319,7 +319,7 @@ policy is separate. Choose the best supported episode for each report. Return JS
             judged.pop(pair)
     removed = [e for e in members if e["id"] not in {o["id"] for o in output}]
     log(f"[episodes] source repair {anchor['place']}: {len(evidence)} reports -> {len(output)} episodes")
-    return [e for e in events if e["id"] not in reset] + output, removed
+    return protect_prior_casualties([e for e in events if e["id"] not in reset] + output, state), removed
 
 
 def group_facility_episodes(events, state, ask, settings, now, hidden, geocoder=None, theaters=None):
