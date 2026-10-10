@@ -542,6 +542,35 @@ class CampaignRepairTests(unittest.TestCase):
         self.assertEqual(self.incidents.group_facility_episodes(parts + [follow], {}, lambda *a, **k: bad, {}, NOW, set()),
                          (parts + [follow], []))
 
+    def test_reviewed_episode_routes_continuing_updates_without_another_model_call(self):
+        old, oil, current = self.parts()
+        old.update(time=iso(NOW - timedelta(days=2)), killed=3)
+        current.update(time=iso(NOW - timedelta(hours=2)), injured=80)
+        registry = {e['id']: {'country': 'SA', 'day': e['time'][:10], 'lat': e['lat'], 'lon': e['lon'],
+                             'attacker': 'YE', 'killed': e['killed'], 'aliases': ['riyadh', 'king khalid']}
+                    for e in (old, current)}
+        def update(eid, text, **changes):
+            item = deepcopy(current)
+            item.update(id=eid, summary=text, time=iso(NOW), incident_split=None, killed=None, injured=None,
+                        reports=[{**current['reports'][0], 'url': 'https://example.org/' + eid, 'summary': text, 'time': iso(NOW)}], **changes)
+            return item
+        coverage = [update('footage', 'New video shows the attack on Riyadh airport.'),
+                    update('suspension', 'Riyadh airport suspended operations following the attack.', type='diplomacy'),
+                    update('warning', 'The UK warns citizens to avoid Riyadh airport after the attack.', type='diplomacy'),
+                    update('again', 'Riyadh airport is attacked again hours after earlier blasts.')]
+        prior = update('prior-count', 'Three killed in the Riyadh airport strike.')
+        prior['killed'] = 3
+        policy = update('airspace', 'EASA expanded its airspace warning following Riyadh airport attacks.', type='diplomacy')
+        other = update('other-actor', 'A US strike hit Riyadh airport.', attacker='US')
+        state = {'facility_episodes': registry}
+        out, folded = self.incidents.route_facility_updates([old, oil, current] + coverage + [prior, policy, other], state, set())
+        self.assertEqual({e['id'] for e in folded}, {e['id'] for e in coverage})
+        self.assertEqual(len(current['reports']), 5)
+        self.assertEqual(current['injured'], 80)
+        self.assertIsNone(current['killed'])
+        self.assertEqual(current['time'], iso(NOW - timedelta(hours=2)))
+        self.assertTrue({'prior-count', 'airspace', 'other-actor'} <= {e['id'] for e in out})
+
 
 if __name__ == "__main__":
     unittest.main()

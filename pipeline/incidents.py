@@ -21,6 +21,9 @@ terminal names, videos, injury updates, evacuations and warnings to avoid the fa
 "Attacked again two days after a strike killed three" refers to today's attack versus the earlier fatal attack:
 all coverage of today's renewed attack belongs together, and the earlier three deaths remain with the earlier attack.
 Separate a second attack today only if the evidence establishes a distinct episode, not merely the words again/fresh.
+Continuing strikes or subsequent blasts hours later during the same ongoing attack at the same facility are ONE
+episode. Separate them only for explicit evidence of a different operation, actor, or a completed attack followed
+by an independent new attack. Never make separate groups just for airport warnings or suspended operations.
 Substantive policy decisions, other facilities and uncertain unrelated incidents remain separate.
 Dates in report excerpts are publication dates unless an occurrence is explicitly stated. Do not invent an occurrence
 date. Infer an earlier date only from explicit evidence such as two days earlier; otherwise happened:null.
@@ -31,6 +34,72 @@ Return JSON only: {"groups":[{"ids":["id1","id2"],"summary":"Reported attack on 
 """
 
 
+def _alias(text):
+    return " ".join(w for w in re.findall(r"[a-z]+", text.lower())
+                    if w not in {"airport", "airfield", "international", "terminal", "the"})
+
+
+def route_facility_updates(events, state, hidden):
+    """Reuse a reviewed episode for unambiguous same-facility/day coverage.
+
+    Explicit new operations, actor conflicts, earlier-attack references, policy actions,
+    and multiple reviewed episodes on the same day require another identity review.
+    """
+    registry = state.setdefault("facility_episodes", {})
+    by_id = {e["id"]: e for e in events}
+    for eid in list(registry):
+        if eid not in by_id:
+            registry.pop(eid)
+    folded = []
+    for e in events:
+        if e["id"] in registry or e["id"] in hidden or e.get("wave") or e.get("alert") or e.get("approx"):
+            continue
+        text = e.get("summary") or ""
+        if (not re.search(r"\b(airport|airfield|terminal)\b", text, re.I)
+                or not re.search(r"attack|strike|blast|explosion|injur|wound|evacuat|suspend|operations|avoid", text, re.I)
+                or re.search(r"airspace|sanction|agreement|meeting|retaliat|separate (?:attack|incident)|unrelated|different operation", text, re.I)
+                or e.get("type") not in {"missile_drone", "airstrike", "explosion", "hybrid", "diplomacy", "air_defense", "ground"}
+                or not all(isinstance(e.get(k), (int, float)) for k in ("lat", "lon"))):
+            continue
+        fresh = bool(re.search(r"today|renewed|again|fresh|current", text, re.I))
+        if re.search(r"earlier|previous|original|yesterday|days (?:after|earlier)", text, re.I) and not fresh:
+            continue
+        words = set(re.findall(r"[a-z]+", text.lower()))
+        matches = []
+        for eid, episode in registry.items():
+            keep = by_id[eid]
+            if (eid in hidden or e.get("country") != episode["country"] or e["time"][:10] != episode["day"]
+                    or (e.get("attacker") and episode.get("attacker") and e["attacker"] != episode["attacker"])
+                    or haversine_km(e["lat"], e["lon"], episode["lat"], episode["lon"]) > 50
+                    or not any(set(alias.split()) <= words for alias in episode["aliases"] if alias)):
+                continue
+            # An undated repeat of the previous fatality count needs review, not a
+            # transfer of those deaths into today's attack.
+            if e.get("killed") and not fresh and any(old.get("day") < episode["day"]
+                    and old.get("country") == episode["country"] and old.get("killed") == e["killed"]
+                    and set(old.get("aliases", [])) & set(episode["aliases"]) for old in registry.values()):
+                continue
+            matches.append(keep)
+        if len(matches) != 1:
+            continue
+        keep = matches[0]
+        occurrence = keep["time"]
+        evidence = {(r["url"], r.get("summary"), r["time"]): r for r in keep["reports"] + e["reports"]}
+        keep["reports"] = list(evidence.values())
+        merge._absorb(keep, e)
+        keep["time"] = occurrence
+        folded.append(e)
+        log(f"[episodes] follow-up {e['id']} -> reviewed episode {keep['id']}")
+    if folded:
+        gone = {e["id"] for e in folded}
+        judged = (state.get("dedupe") or {}).get("judged", {})
+        for pair in list(judged):
+            if gone.intersection(pair.split("|")):
+                judged.pop(pair)
+        events = [e for e in events if e["id"] not in gone]
+    return events, folded
+
+
 def group_facility_episodes(events, state, ask, settings, now, hidden):
     """One bounded review of event identities, including updates outside repaired families.
 
@@ -38,6 +107,7 @@ def group_facility_episodes(events, state, ask, settings, now, hidden):
     originals survive malformed/partial answers. Review IDs rather than long report-index
     partitions so continuing coverage can join an existing identity each run.
     """
+    events, routed = route_facility_updates(events, state, hidden)
     anchors = [e for e in events if not e.get("wave") and not e.get("alert") and not e.get("approx") and e["id"] not in hidden
                and all(isinstance(e.get(k), (int, float)) for k in ("lat", "lon"))
                and re.search(r"\b(airport|airfield|refinery|plant|terminal|base|station|port)\b", e.get("place") or "", re.I)]
@@ -85,13 +155,13 @@ def group_facility_episodes(events, state, ask, settings, now, hidden):
         groups = reply.get("groups") if isinstance(reply, dict) else None
         if not isinstance(groups, list) or not groups or any(not isinstance(g, dict) or not isinstance(g.get("ids"), list)
                                                            or not g["ids"] for g in groups):
-            return events, []
+            return events, routed
         ids = [i for g in groups for i in g["ids"]]
         if any(not isinstance(i, str) for i in ids) or sorted(ids) != sorted(e["id"] for e in members):
             log("[episodes] incomplete identity review; originals retained")
-            return events, []
+            return events, routed
         by_id = {e["id"]: e for e in members}
-        output, folded = [], []
+        output, folded, episode_updates = [], [], {}
         for group in groups:
             originals = [by_id[i] for i in group["ids"]]
             originals.sort(key=lambda e: (min(r["time"] for r in e["reports"]), e["id"]))
@@ -107,7 +177,7 @@ def group_facility_episodes(events, state, ask, settings, now, hidden):
                         for k in ("killed", "injured") if (r.get("incident") or {}).get(k) is not None}
             numbers |= set(re.findall(r"\d+", known))
             if not isinstance(text, str) or not text.strip() or any(n not in numbers for n in re.findall(r"\d+", text)):
-                return events, []
+                return events, routed
             keep.update(summary=text.strip(), headline=text.strip())
             for k in ("killed", "injured"):
                 value = group.get(k)
@@ -115,7 +185,7 @@ def group_facility_episodes(events, state, ask, settings, now, hidden):
                 supported |= {(r.get("incident") or {}).get(k) for r in evidence.values()
                               if type((r.get("incident") or {}).get(k)) is int}
                 if value is not None and (type(value) is not int or value < 0 or value not in supported):
-                    return events, []
+                    return events, routed
                 keep[k] = value
             happened = parse_time(group.get("happened"))
             supported_days = {r["time"][:10] for r in evidence.values()}
@@ -127,6 +197,16 @@ def group_facility_episodes(events, state, ask, settings, now, hidden):
                     days = int(word) if word.isdigit() else {"two": 2, "three": 3}[word]
                     supported_days.add(iso(parse_time(r["time"]) - timedelta(days=days))[:10])
             keep["time"] = iso(happened) if happened and iso(happened)[:10] in supported_days and happened <= now else min(r["time"] for r in evidence.values())
+            # Store aliases and the reviewed day so continuing coverage joins the
+            # same identity without waiting for another external-model call.
+            if re.search(r"\b(airport|airfield)\b", keep.get("place") or "", re.I) and merge.FAMILY.get(keep.get("type")) in ("strike", "ground", "hybrid", "incursion"):
+                aliases = {_alias(e.get("place") or "") for e in originals if not e.get("approx")}
+                aliases.update(_alias(m[1]) for r in evidence.values()
+                               for m in re.finditer(r"\b([A-Z][a-z]+) (?:airport|Airport)\b", r["summary"])
+                               if m[1].lower() not in {"saudi", "arabia", "an", "new", "major"})
+                episode_updates[keep["id"]] = {
+                    "country": keep["country"], "day": keep["time"][:10], "lat": keep["lat"], "lon": keep["lon"],
+                    "attacker": keep.get("attacker"), "killed": keep.get("killed"), "aliases": sorted(a for a in aliases if a)}
             output.append(keep)
             folded.extend(originals[1:])
         # Apply only after the entire identity partition and its facts pass validation.
@@ -136,12 +216,15 @@ def group_facility_episodes(events, state, ask, settings, now, hidden):
             if reset.intersection(pair.split("|")):
                 judged.pop(pair)
         reviews[key] = short_hash(*sorted(e["id"] for e in output))
+        state.setdefault("facility_episodes", {}).update(episode_updates)
         state["facility_episode_review"] = {"at": iso(now), "facility": anchor["place"],
                                              "before": len(members), "after": len(output),
                                              "ids": [e["id"] for e in output]}
         log(f"[episodes] {anchor['place']}: {len(members)} records -> {len(output)} incident episodes")
-        return [e for e in events if e["id"] not in reset] + output, folded
-    return events, []
+        result, followups = route_facility_updates([e for e in events if e["id"] not in reset] + output, state, hidden)
+        reviews[key] = short_hash(*sorted(e["id"] for e in result if e["id"] in reset))
+        return result, routed + folded + followups
+    return events, routed
 
 PROMPT = """You repair a conflict map event whose reports were incorrectly combined by
 attacker and destination country over 18 hours. Partition ALL numbered report summaries

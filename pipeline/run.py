@@ -285,11 +285,6 @@ def main() -> int:
     # Old stories that arrived with a fresh date are dropped (see recency.py).
     if not args.no_llm:
         events = recency.check(events, {e["id"] for e in events} - known, session, extract.ask_json, state, settings, t0)
-        events, episodes = incidents.group_facility_episodes(events, state, extract.ask_json, settings, t0,
-                                                            hidden | cfg.removed)
-        folded += episodes
-        if episodes:
-            merge.apply_status(events, cells)
         # Same story reported in different words or places: at most one model call an hour.
         # New events are also compared with older ones, archived ones included (late follow-ups).
         events, same = dedupe.run(events, state, settings, t0, extract.ask_json,
@@ -303,6 +298,11 @@ def main() -> int:
             merge.apply_status(events, cells)
         # Group current coverage before spending remaining capacity on historical campaigns.
         events = incidents.repair(events, state, extract.ask_json, settings, t0, geocoder, cfg.theaters, hidden)
+        # The publication-boundary review includes archive restorations and every
+        # newly split historical record, so later stages cannot recreate duplicates.
+        events, episodes = incidents.group_facility_episodes(events, state, extract.ask_json, settings, t0,
+                                                            hidden | cfg.removed)
+        folded += episodes
         merge.apply_status(events, cells)
     # A follow-up may have restored an archived event. Apply the working-set cap to it too.
     events = merge.prune(events, t0, settings["event_retention_days"], settings["max_events"])
