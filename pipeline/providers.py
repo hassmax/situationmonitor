@@ -44,7 +44,7 @@ DEFAULTS = [
 # reading (the Map Room) stays on Gemini. Together the shares stay within Cerebras' daily cap.
 ROUTES = {
     "analysis": {"cerebras": 380_000},
-    "incident_repair": {"cerebras": 100_000},  # bounded legacy campaign migration
+    "incident_repair": {"cerebras": 150_000},  # bounded legacy campaign migration
     "recency": {"cerebras": 50_000},
     "frontline_review": {"cerebras": 80_000},
     "frontline_isw": {"cerebras": 100_000},
