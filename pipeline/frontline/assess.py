@@ -21,7 +21,9 @@ Nothing here is published directly: the reviewer agent checks every change first
 """
 from __future__ import annotations
 
+import re
 from datetime import timedelta
+from difflib import SequenceMatcher
 
 from common import haversine_km, iso, log, parse_time
 
@@ -33,6 +35,7 @@ HINT_KM = 60        # a lookup this close to the event's own pin is the place me
 REGION_KM = 200     # ... else it must lie this close to the region the report names
 SAME_KM = 60        # candidates this close together are one answer
 MERGE_KM = 3        # two spellings placed this close together are one settlement
+SAME_NAME = 0.6     # ...if their names are that alike (difflib ratio, Latin or local script)
 CONTESTED_FOR = timedelta(days=5)
 LOOKUP_TRIES = 3
 STRENGTH = ["footage", "on_scene", "both_sides", "admitted", "analyst", "corroborated", "conceded", "described"]
@@ -123,6 +126,16 @@ def locate(fl: dict, conflicts: list[dict], geocoder) -> int:
     return placed
 
 
+def same_name(a: dict, b: dict) -> bool:
+    """Two spellings of one name ("Nesterne", "Nesternoye"; "Kupiansk", "Kupyansk"), not two villages
+    a few km apart: until 2026-10-12 distance alone merged them, and Korchakivka took in Kyianytsia's
+    claims, Krasnyi Yar Lukashove's and Reznikovo's."""
+    def ratio(x, y):
+        x, y = (re.sub(r"[^\w]", "", str(v or "").lower()) for v in (x, y))
+        return SequenceMatcher(None, x, y).ratio() if x and y else 0.0
+    return max(ratio(a.get("name"), b.get("name")), ratio(a.get("local"), b.get("local"))) >= SAME_NAME
+
+
 def merge_spellings(fl: dict) -> int:
     """Settlements filed under two spellings ("Nesterne", "Nesternoye") that the lookup put at the
     same spot are one: the claims go to the record that has been on the map, else the older one."""
@@ -132,7 +145,8 @@ def merge_spellings(fl: dict) -> int:
         if k1 in gone:
             continue
         for k2, b in placed[i + 1:]:
-            if k2 in gone or a["conflict"] != b["conflict"] or haversine_km(a["lat"], a["lon"], b["lat"], b["lon"]) > MERGE_KM:
+            if (k2 in gone or a["conflict"] != b["conflict"] or haversine_km(a["lat"], a["lon"], b["lat"], b["lon"]) > MERGE_KM
+                    or not same_name(a, b)):
                 continue
             keep, drop = (a, b) if a.get("published") or not b.get("published") else (b, a)
             seen = {(c["url"], c["actor"], c["change"]) for c in keep["claims"]}

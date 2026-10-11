@@ -49,6 +49,19 @@ CONTROL_RE = re.compile(
     r"سيطر|تحرير|حرر|استعاد|اقتحم|انسحب|تقدم|تطهير|"
     r"pris le contr[oô]le|empar|repris|lib[ée]r[ée]|retir[ée]|encercl", re.I)
 GEOLOCATED_RE = re.compile(r"geolocat|geoconfirm|verified|геолок|геопозиц", re.I)
+# A side's own channel admits a loss only in so many words: a loss or withdrawal, or the enemy
+# advancing ("Противник занял Уланове", DeepState). Until 2026-10-12 a channel saying the other side
+# took a place was filed as its admission whatever the post said, so a misread "liberated" became
+# strong evidence of the opposite: Colonelcassad's post of Russian "liberations" was filed as
+# "Lobanivka liberated from Russian control", Russia admitting the loss. Without such words, no claim.
+LOSS_RE = re.compile(
+    r"withdr[ae]w|withdrawal|retreat|pulled (?:out|back)|pushed (?:out|back)|forced out|driven out|knocked out|"
+    r"\blost\b|\blose\b|abandon|fell to|has fallen|"
+    r"отош|отступ|оставил|покинул|выбит|вытесн|потерял|сдал|отвел|отход|"
+    r"відійш|відступ|залишил|покинул|вибит|витісн|втрат|відвел|відход|"
+    r"انسحب|انسحاب|تراجع|خسر|سقطت|"
+    r"retir|perdu|abandonn|repli|chass[ée]|"
+    r"\benemy\b|adversary|противник|враг|ворог|окупант|оккупант|العدو|ennemi", re.I)
 # The model's own note still says "near", "will" or "towards": fighting around a place, or a forecast,
 # is not a claim about the place (trial 2026-10-05: "repelled attacks near Sadky"; "the Houthis will
 # gain full control of Taiz")
@@ -140,6 +153,8 @@ def clean(c: dict, post: dict, conflicts: list[dict]) -> dict | None:
         aligned, claimed_by, basis = own, own, "party"               # the side's own statement, whatever it shows
         if change in ("took", "holds") and actor != own and ledger.other(conflict, own) == actor:
             change, actor = "lost", own                              # the side says the other took it: its own loss
+        if change == "lost" and actor == own and not LOSS_RE.search(text):
+            return None                                              # no words of a loss or the enemy: not an admission
     else:
         aligned, claimed_by = said_by, said_by
         if basis == "footage" and not (c.get("geolocated_by") or GEOLOCATED_RE.search(text)):
