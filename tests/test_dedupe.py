@@ -122,7 +122,7 @@ def test_events_at_sea_are_compared_by_distance_and_statements_by_party():
     assert frozenset(("n1", "n2")) in pairs and frozenset(("t1", "t2")) in pairs
 
 
-def test_an_attack_wave_takes_in_a_duplicate_and_two_waves_stay_apart():
+def test_legacy_campaigns_cannot_absorb_specific_incidents():
     wave = ev("w", "North Korea fired a hypersonic missile using AI into the East Sea.", "missile_drone", "KP",
               "East Sea", 6, 39.0, 129.0, wave=True, targets=[])
     test_ = ev("p", "North Korea tested a hypersonic missile using AI, launched into the East Sea.", "production", "KP",
@@ -131,8 +131,7 @@ def test_an_attack_wave_takes_in_a_duplicate_and_two_waves_stay_apart():
                "East Sea", 2, 39.0, 129.0, wave=True, targets=[])
     model = Model({"p": {"w", "w2"}})
     out, folded = dedupe.run([wave, test_, other], {}, SETTINGS, NOW, model, remaining=100, skip=set())
-    assert {e["id"] for e in out} == {"w", "w2"} and out[0]["type"] == "missile_drone"   # into the earlier wave
-    assert [e["id"] for e in folded] == ["p"]
+    assert {e["id"] for e in out} == {"w", "w2", "p"} and not folded
 
 
 def test_a_late_report_restores_the_archived_identity_date_and_reports():

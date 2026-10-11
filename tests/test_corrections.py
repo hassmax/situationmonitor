@@ -78,10 +78,10 @@ def test_hidden_event_is_not_recreated(tmp_path):
     assert blocked == {"u1", "u2", "u9"}
 
     def cand(url, lat=50.45):
-        return {"theater": "ukraine", "type": "missile_drone", "summary": "Drones hit Kyiv again.", "place": "Kyiv",
+        return {"theater": "ukraine", "type": "missile_drone", "summary": "Drones hit Kyiv.", "place": "Kyiv",
                 "country": "UA", "attacker": None, "lat": lat, "lon": 30.52, "approx": False, "origins": [],
-                "parties": [], "severity": 2, "killed": None, "injured": None, "time": "2026-09-27T11:00:00Z",
-                "transfer": None, "legal_basis": None, "alert": False, "report": report(url, "other")}
+                "parties": [], "severity": 2, "killed": None, "injured": None, "time": "2026-09-27T10:00:00Z",
+                "transfer": None, "legal_basis": None, "alert": False, "report": report(url, "other", t="2026-09-27T11:00:00Z")}
     # the same reports are filtered out before merging, so they can't create a new event
     candidates = [c for c in [cand("u1"), cand("u2"), cand("u9")] if c["report"]["url"] not in blocked]
     assert candidates == []
@@ -90,6 +90,11 @@ def test_hidden_event_is_not_recreated(tmp_path):
     assert len(events) == 1 and len(events[0]["reports"]) == 3
     pub = corrections.publish([merge.public_event(e) for e in events], fixes, extract.EVENT_TYPES)
     assert pub == []
+    # A genuinely later occurrence in the same place is a new alert, not the hidden event.
+    later = {**cand("u4"), "time": "2026-09-27T11:00:00Z", "summary": "Drones hit Kyiv again."}
+    separate = merge.merge(copy.deepcopy(events), [later])
+    pub = corrections.publish([merge.public_event(e) for e in separate], fixes, extract.EVENT_TYPES)
+    assert len(pub) == 1 and pub[0]["id"] != "e1"
 
 
 def test_example_file_parses():

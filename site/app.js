@@ -70,26 +70,26 @@
   const CAT_RGB = { strike: [255, 91, 58], ground: [245, 165, 36], naval: [76, 195, 255], deploy: [159, 184, 212],
     hybrid: [177, 140, 255], diplo: [233, 238, 245], supply: [63, 193, 201], aid: [96, 214, 122], fleet: [205, 228, 255] };
   const ICONS = {
-    missile: '<path d="M13.6 2.4 7 5.4 4.6 7.9l3.5 3.5 2.5-2.4z" fill="currentColor"/><path d="M4.6 7.9l-2.1.8M8.1 11.4l-.8 2.1M5.4 10.6l-2.6 2.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>',
-    air: '<path d="M8 1.3 9 5.9l5.5 2.5v1.5L9 8.8l-.4 3.1 1.6 1.3v1.2L8 13.7l-2.2.7v-1.2l1.6-1.3L7 8.8 1.5 9.9V8.4L7 5.9z" fill="currentColor"/>',
-    shield: '<path d="M8 1.5l5.5 2v4.4c0 3.3-2.4 5.4-5.5 6.6-3.1-1.2-5.5-3.3-5.5-6.6V3.5z" fill="currentColor"/>',
-    blast: '<circle cx="8" cy="8" r="3" fill="currentColor"/><path d="M8 1.5v2.2M8 12.3v2.2M1.5 8h2.2M12.3 8h2.2M3.4 3.4l1.5 1.5M11.1 11.1l1.5 1.5M3.4 12.6l1.5-1.5M11.1 4.9l1.5-1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
-    artillery: '<path d="M8 1.3l1.4 4.1 4.2-1.3-2.6 3.4 3.6 2.4-4.3.3.2 4.2L8 11l-2.5 3.4.2-4.2-4.3-.3 3.6-2.4-2.6-3.4 4.2 1.3z" fill="currentColor"/>',
-    ground: '<path d="M3 3l9.4 9.4M13 3 3.6 12.4M10 13.2 13.2 10M2.8 10 6 13.2" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" fill="none"/>',
-    territory: '<path d="M4 14.5V1.8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/><path d="M4.6 2.2h8.2l-2 3.1 2 3.1H4.6z" fill="currentColor"/>',
-    naval: '<circle cx="8" cy="3.3" r="1.6" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M8 4.9V14M4.6 7.2h6.8M2.4 9.4c.5 3 3 4.6 5.6 4.6s5.1-1.6 5.6-4.6" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" fill="none"/>',
-    deploy: '<path d="M3 9.6 8 5l5 4.6M3 13.6 8 9l5 4.6" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"/>',
-    hybrid: '<path d="M9.6 1.4 3.4 9h4l-1 5.6L12.6 7h-4z" fill="currentColor"/>',
-    incursion: '<path d="M1.8 8h8.8M7.6 4.6 11 8l-3.4 3.4" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" fill="none"/><path d="M13.6 2.2v11.6" stroke="currentColor" stroke-width="1.5" stroke-dasharray="1.6 1.6"/>',
-    diplo: '<circle cx="6" cy="8" r="3.4" stroke="currentColor" stroke-width="1.6" fill="none"/><circle cx="10" cy="8" r="3.4" stroke="currentColor" stroke-width="1.6" fill="none"/>',
-    legal: '<path d="M8 2v11.6M4 14.4h8M2.8 4.6h10.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M2.8 4.6 1 9h3.6zM13.2 4.6 11.4 9H15z" fill="currentColor"/>',
-    coin: '<circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.4" fill="none"/><path d="M10.1 5.9c-.4-.7-1.2-1.1-2.1-1.1-1.2 0-2.1.6-2.1 1.5 0 2.1 4.3 1.1 4.3 3.3 0 .9-1 1.6-2.2 1.6-1 0-1.9-.4-2.3-1.2M8 3.6v1.2M8 11.3v1.2" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" fill="none"/>',
-    crate: '<path d="M2 5.2 8 2.3l6 2.9v5.6L8 13.7l-6-2.9z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round" fill="none"/><path d="M2 5.2 8 8.1l6-2.9M8 8.1v5.6" stroke="currentColor" stroke-width="1.4" fill="none"/>',
-    factory: '<path d="M1.6 14.2V7.4l3.6 2.3V7.4l3.6 2.3V2.4h1.7v-.8h2.2v.8h1.7v11.8z" fill="currentColor"/>',
-    carrier: '<path d="M.8 9.6 2.9 6h10.3l2.2 1.6v1.8l-1.6 1.6H2.6z" fill="currentColor"/><rect x="10.4" y="3.8" width="2.2" height="2.4" rx=".3" fill="currentColor"/>',
-    alert: '<path d="M4.4 12.2V9a3.6 3.6 0 0 1 7.2 0v3.2z" fill="currentColor"/><rect x="2.6" y="12.7" width="10.8" height="1.9" rx=".6" fill="currentColor"/><path d="M8 1.4v2.1M2.8 3.6l1.5 1.5M13.2 3.6l-1.5 1.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>',
+    missile: '<path d="m12 2 2 2-5 7-4-4zM5 7l-3 1 2 2M9 11l-1 3-2-2M4 12l-2 2M10 4l2 2"/>',
+    air: '<path d="M8 1v12M8 4l6 5v2l-6-2-6 2V9zM5 14l3-2 3 2"/>',
+    shield: '<path d="m8 1 6 3v4c0 3-3 5-6 7-3-2-6-4-6-7V4zM5 8l2 2 4-4"/>',
+    blast: '<path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3M8 5v6M5 8h6"/><circle cx="8" cy="8" r="3"/>',
+    artillery: '<path d="M2 12h12M4 10l7-7 2 2-7 7M2 14l3-4M12 2l2 2"/><circle cx="5" cy="12" r="2"/>',
+    ground: '<path d="M2 3h12v10H2zM2 3l12 10M14 3 2 13"/>',
+    territory: '<path d="M3 14V2h10l-2 3 2 3H3M1 14h4"/>',
+    naval: '<path d="M3 7h10l-2 5H5zM6 7V4h4v3M8 4V1M1 14l3-1 4 1 4-1 3 1"/>',
+    deploy: '<path d="m3 7 5-4 5 4M3 12l5-4 5 4M3 15h10"/>',
+    hybrid: '<path d="M5 5h6v6H5zM2 2l3 3M11 5l3-3M2 14l3-3M11 11l3 3M8 1v2M8 13v2M1 8h2M13 8h2"/>',
+    incursion: '<path d="M2 8h9M8 5l3 3-3 3M13 2v4M13 10v4"/>',
+    diplo: '<path d="m2 6 3-3 6 10 3-3M2 10l3 3L11 3l3 3M1 8h4M11 8h4"/>',
+    legal: '<path d="M8 2v12M4 14h8M2 4h12M3 4l-2 6h4zM13 4l-2 6h4z"/>',
+    coin: '<path d="m8 1 6 3v8l-6 3-6-3V4zM10 5H6v3h4v3H6M8 3v2M8 11v2"/>',
+    crate: '<path d="m2 5 6-3 6 3v6l-6 3-6-3zM2 5l6 3 6-3M8 8v6M5 3.5l6 3v3"/>',
+    factory: '<path d="M2 14V8l4-3v3l4-3v3h4v6zM11 8V2h3v6M5 11v1M8 11v1M11 11v1"/>',
+    carrier: '<path d="m1 9 2-3h10l2 2-2 4H3zM5 8h6M9 6V3h3v3M5 14h6"/>',
+    alert: '<path d="m8 2 7 12H1zM8 6v4M8 12v.1"/>',
   };
-  const svgIcon = (name) => `<svg viewBox="0 0 16 16" aria-hidden="true">${ICONS[name] || ICONS.blast}</svg>`;
+  const svgIcon = (name) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">${ICONS[name] || ICONS.blast}</svg>`;
   // "On the map": each entry is also a filter. The key is the marker's icon (see legendKey).
   const LEGEND = [
     ["missile", "strike", "Drone or missile"], ["air", "strike", "Airstrike"],
@@ -212,6 +212,7 @@
   const agoShort = (ms) => ago(ms).replace(" ago", "").replace(" min", "m").replace(" h", "h").replace(" d", "d");
   const fmtTime = (ms) => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
   const fmtEvidenceTime = (ms) => new Date(ms).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short" });
+  const fmtOccurrenceDay = (day) => new Date(`${day}T12:00:00Z`).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
   const fmtDay = (ms) => new Date(ms).toLocaleDateString(undefined, { month: "short", day: "numeric" });
   const fmtMoney = (v) => (v >= 1e9 ? `$${(v / 1e9).toFixed(1)} billion` : v >= 1e6 ? `$${Math.round(v / 1e6)} million` : `$${Math.round(v).toLocaleString()}`);
   // Alerts (drones or missiles reported in flight, grouped per country per day) get a siren and never animate.
@@ -274,7 +275,7 @@
     data: null,
     theaters: FALLBACK_THEATERS,
     windowH: 24,
-    theaterOn: new Set(FALLBACK_THEATERS.map((t) => t.id)),
+    region: "world",  // worldwide, one theater id, or null (all regions hidden)
     statusOn: new Set(Object.keys(STATUS)),
     layers: { paths: true, supply: true, carriers: true },
     off: new Set(),  // "On the map" entries switched off
@@ -318,11 +319,11 @@
   controls.autoRotate = false;
   controls.minDistance = 106; // globe radius is 100: close to city scale (the painted land is coarse this close)
   controls.maxDistance = 650;
-  // Render sharpness: phones at most 1.5 times; other screens at their own. On a sharp screen the
-  // globe is drawn at normal sharpness while it is dragged or pinched (a 2x screen has four times
-  // the pixels to fill every frame), and at full sharpness again once it settles.
-  const fullRatio = () => (PHONE ? Math.min(1.5, window.devicePixelRatio || 1) : window.devicePixelRatio || 1);
+  // Bound WebGL pixel cost on high-density displays. Moving scenes use one device pixel
+  // per CSS pixel; static scenes restore detail. HTML text and symbols stay native resolution.
+  const fullRatio = () => Math.min(PHONE ? 1.25 : 1.5, window.devicePixelRatio || 1);
   const setRatio = (r) => { const rd = world.renderer(); if (Math.abs(rd.getPixelRatio() - r) > 0.01) rd.setPixelRatio(r); };
+  const updateRenderRatio = () => setRatio((moving || controls.autoRotate) ? Math.min(1, fullRatio()) : fullRatio());
   setRatio(fullRatio());
   // Hover testing: 20 times a second, even with the pointer still, the library tests the pointer
   // against every object on the globe (and toGlobeCoords does on every pointer move), hidden ones
@@ -390,18 +391,53 @@
     clearTimeout(settleTimer);
     moving = true;
     document.body.classList.add("moving");
-    if (fullRatio() > 1.2) setRatio(Math.max(1, fullRatio() * 0.6));
+    updateRenderRatio();
   });
   controls.addEventListener("end", () => {
     clearTimeout(settleTimer);
     settleTimer = setTimeout(() => {
       moving = false;
       document.body.classList.remove("moving");
-      setRatio(fullRatio());
+      updateRenderRatio();
       applyZoomScale();
       queueDeclutter();
     }, 350);
   });
+
+  // Idle rotation is driven by manual start/end events, never by camera change events.
+  function setupIdleRotation(orbit, button) {
+    let timer = null, interacting = false, enabled = !reduceMotion;
+    orbit.autoRotateSpeed = 0.18;
+    function stop() {
+      clearTimeout(timer);
+      const wasRotating = orbit.autoRotate;
+      orbit.autoRotate = false;
+      if (wasRotating) updateRenderRatio();
+      button.dataset.rotating = "false";
+    }
+    function arm() {
+      stop();
+      if (!enabled || interacting || document.hidden) return;
+      timer = setTimeout(() => {
+        orbit.autoRotate = true;
+        updateRenderRatio();
+        button.dataset.rotating = "true";
+      }, 30000);
+    }
+    function label() {
+      button.setAttribute("aria-pressed", String(enabled));
+      button.setAttribute("aria-label", enabled ? "Pause automatic rotation" : "Enable automatic rotation");
+      button.title = enabled ? "Automatic rotation after 30 seconds idle" : "Automatic rotation paused";
+    }
+    orbit.addEventListener("start", () => { interacting = true; stop(); });
+    orbit.addEventListener("end", () => { interacting = false; arm(); });
+    document.addEventListener("visibilitychange", arm);
+    document.addEventListener("pointerdown", arm);
+    document.addEventListener("keydown", arm);
+    button.addEventListener("click", () => { enabled = !enabled; label(); arm(); });
+    label();
+    arm();
+  }
 
   // ------------------------------------------------------------------ land, borders, country centers
   const centers = new Map();
@@ -526,7 +562,17 @@
   // apart, and the ocean showed through the land in dark streaks while moving.
   let landShapes = [], landUrl = null, borderPaths = [], controlOutlines = [], hatch = null;
   // always shown, not a filter: published control maps, then the site's own front-line areas
-  const controlLayers = () => [...((S.data && S.data.control) || []), ...((S.data && S.data.frontline && S.data.frontline.areas) || [])];
+  const CONTROL_THEATER = { ukraine: "ukraine", yemen: "mideast", israel: "mideast",
+    sudan: "horn", ethiopia: "horn", somalia: "horn", drc: "drc_sahel", sahel: "drc_sahel", myanmar: "indopac" };
+  function controlInRegion(layer) {
+    if (S.region === null) return false;
+    const listed = S.theaters.filter((t) => t.listed !== false);
+    const theaterId = CONTROL_THEATER[layer.conflict];
+    const countryId = ISO_NUM.get(layer.country) || layer.country;
+    return listed.some((t) => (S.region === "world" || S.region === t.id) &&
+      (theaterId ? t.id === theaterId : countryId && (t.highlight || []).includes(countryId)));
+  }
+  const controlLayers = () => [...((S.data && S.data.control) || []), ...((S.data && S.data.frontline && S.data.frontline.areas) || [])].filter(controlInRegion);
   // Infiltration (forces present, not in control) is hatched rather than filled.
   function hatchPattern(g) {
     if (hatch) return hatch;
@@ -669,7 +715,7 @@
     .pointLat("lat").pointLng("lon")
     .pointAltitude(0.005)
     .pointRadius((d) => (d.alert ? 0.09 : 0.13) * zoomK)
-    .pointColor((d) => rgba(CAT_RGB.strike, (d.alert ? 0.5 : STATUS[d.ref.status].alpha) * dimOf(d.ref.id === S.selectedId)))
+    .pointColor((d) => rgba(CAT_RGB.strike, (d.alert ? 0.5 : STATUS[d.ref.status].alpha) * dimOf(d.ref.id === S.selectedId, true)))
     .pointResolution(8)
     .pointLabel((d) => `<div class="tip"><div class="tip-meta"><b>${esc(d.place || "Location")}</b><span>${d.alert ? "named in an alert" : "part of an attack wave"}</span></div><div class="tip-sum">${esc(d.ref.summary)}</div></div>`)
     .onPointHover((d) => { globeEl.style.cursor = d ? "pointer" : ""; })
@@ -684,7 +730,7 @@
   const ARC = {
     strike: { dash: 0.5, gap: 0.18 }, strikeApprox: { dash: 0.34, gap: 0.28 },
     barrage: { dash: 0.035, gap: 0.05 },  // a massive barrage: a stream of small dashes from each usual launch area
-    flow: { dash: 1, gap: 0 }, flowDashed: { dash: 0.12, gap: 0.07 },
+    flow: { dash: 0.14, gap: 0.35 }, flowDashed: { dash: 0.09, gap: 0.4 },
     routeShot: { dash: 0.14, gap: 4 },  // one short pulse when a reported route is opened
     track: { dash: 0.06, gap: 0.04 }, plan: { dash: 0.2, gap: 0.14 }, hit: { dash: 1, gap: 0 },
     shot: { dash: 0.14, gap: 4 },  // one bright dash that runs a launch line once (playLaunches)
@@ -697,7 +743,7 @@
     .arcStartLat("sLat").arcStartLng("sLng").arcEndLat("eLat").arcEndLng("eLng")
     .arcColor((a) => a.color).arcStroke(arcStroke)
     .arcDashLength((a) => ARC[a.kind].dash).arcDashGap((a) => ARC[a.kind].gap)
-    .arcDashInitialGap((a) => (a.kind === "flow" ? 0 : (a.kind === "shot" || a.kind === "routeShot") ? 1 : a.seed))
+    .arcDashInitialGap((a) => ((a.kind === "shot" || a.kind === "routeShot") ? 1 : a.seed))
     .arcDashAnimateTime((a) => (reduceMotion ? 0 : a.ms || 0))
     .arcAltitude((a) => (a.alt === undefined ? null : a.alt))
     .arcAltitudeAutoScale(0.36)
@@ -1005,12 +1051,14 @@
 
   // ------------------------------------------------------------------ declutter
   // Markers that land within ~20 px of each other fan out in a ring around the spot.
-  // During a gesture the layout runs at most every 60 ms (180 ms on phones) instead of every frame.
+  // Rotation emits the same camera events as dragging. Bound layout work for both,
+  // including programmatic flights; CSS marker positions still follow every rendered frame.
   let declutterQueued = false, lastDeclutter = 0;
+  const declutterInterval = () => controls.autoRotate ? (PHONE ? 250 : 200) : moving ? (PHONE ? 180 : 60) : 100;
   function queueDeclutter() {
     if (declutterQueued) return;
     declutterQueued = true;
-    const wait = moving ? Math.max(0, lastDeclutter + (PHONE ? 180 : 60) - performance.now()) : 0;
+    const wait = Math.max(0, lastDeclutter + declutterInterval() - performance.now());
     const run = () => requestAnimationFrame(() => { declutterQueued = false; lastDeclutter = performance.now(); declutter(); });
     if (wait) setTimeout(run, wait); else run();
   }
@@ -1032,7 +1080,8 @@
     if (lead) {
       const c = el.querySelector(".mk-count");
       if (c && c.textContent !== String(count)) c.textContent = String(count);
-      el.firstChild.title = `${count} events here. Click to zoom in.`;
+      const title = `${count} events here. Click to zoom in.`;
+      if (el.firstChild.title !== title) el.firstChild.title = title;
     } else if (el.firstChild.title) el.firstChild.title = "";
   }
   function setHidden(d, hidden) { if (d.el.classList.contains("clustered") !== hidden) d.el.classList.toggle("clustered", hidden); }
@@ -1066,16 +1115,15 @@
       return groups;
     };
     // Pass 1 (zoomed out only): 3+ events on one spot collapse into a count bubble.
-    const hidden = new Set();
-    vis.forEach((v) => { if (v.d.isEvent) setCluster(v.d, 0); });
+    const hidden = new Set(), counts = new Map();
     if (clusterMode) {
       // the selected event always stays visible
       for (const g of group(vis.filter((v) => v.d.isEvent && v.d.key !== `ev:${S.selectedId}`), R * 1.6)) {
         if (g.m.length < 3) continue;
-        g.m.forEach((v, i) => { if (i === 0) { setCluster(v.d, g.m.length); v.d.el._members = g.m.map((x) => x.d.ev); } else hidden.add(v); });
+        g.m.forEach((v, i) => { if (i === 0) { counts.set(v.d, g.m.length); v.d.el._members = g.m.map((x) => x.d.ev); } else hidden.add(v); });
       }
     }
-    vis.forEach((v) => { if (v.d.isEvent) setHidden(v.d, hidden.has(v)); });
+    vis.forEach((v) => { if (v.d.isEvent) { setCluster(v.d, counts.get(v.d) || 0); setHidden(v.d, hidden.has(v)); } });
     // Pass 2: everything still showing (events, count bubbles, carriers) fans out where it overlaps.
     for (const g of group(vis.filter((v) => !hidden.has(v)))) {
       const n = g.m.length;
@@ -1445,7 +1493,7 @@
     data.events = (data.events || []).filter((e) => STATUS[e.status] && isFinite(e.lat) && isFinite(e.lon));
     for (const e of data.events) {
       e._t = Date.parse(e.time || e.updated);   // original occurrence: sorting, animation, and "new"
-      e._tu = Date.parse(e.updated || e.time);  // reporting activity keeps an incident on the map
+      e._tu = Date.parse(e.updated || e.time);  // latest report, shown separately from the event date
       e.targets = Array.isArray(e.targets) ? e.targets.filter((t) => isFinite(t.lat) && isFinite(t.lon)) : [];
       const t = e.transfer || {};
       e._search = [e.summary, e.place, e.targets.map((x) => x.place).join(" "), typeLabel(e), countryName(e.attacker),
@@ -1469,10 +1517,9 @@
     }).sort((a, b) => (a.at_home === b.at_home ? a.hull.localeCompare(b.hull) : a.at_home ? 1 : -1));
     S.fleetMeta = data.fleet_meta || {};
     const theaters = Array.isArray(data.theaters) && data.theaters.length ? data.theaters : FALLBACK_THEATERS;
-    if (S.firstLoad) S.theaterOn = new Set(theaters.map((t) => t.id));
-    else theaters.forEach((t) => { if (!S.theaters.some((x) => x.id === t.id)) S.theaterOn.add(t.id); });
     S.theaters = theaters;
-    S.hot = new Set(theaters.flatMap((t) => t.highlight || []));
+    if (S.region !== "world" && S.region !== null && !selectedRegion()) S.region = "world";
+    syncRegionControls();
     checkBuild(data);
     const before = S.data ? new Set(S.data.events.map((e) => e.id)) : null;
     S.data = data;
@@ -1484,7 +1531,7 @@
         S.arrived = new Set(fresh.map((e) => e.id));
         setTimeout(() => { S.arrived = null; }, 1500);
         // a serious new event marks its arrival with one ring spreading from its spot on the globe
-        fresh.filter((e) => e.severity >= 2).slice(0, 8).forEach((e, i) => setTimeout(() => landRing(e), i * 250));
+        fresh.filter((e) => passes(e) && e.severity >= 2).slice(0, 8).forEach((e, i) => setTimeout(() => { if (passes(e)) landRing(e); }, i * 250));
       }
     }
 
@@ -1497,7 +1544,7 @@
     if (S.firstLoad) {
       S.firstLoad = false;
       // Opens on the last 24 hours; if that's empty, widen to 3 days so the first view isn't blank.
-      if (!data.events.some((e) => onMap(e) && activityTime(e) >= Date.now() - 24 * HOUR)) { setWindow(72); render(); }
+      if (!data.events.some((e) => onMap(e) && e._t >= Date.now() - 24 * HOUR)) { setWindow(72); render(); }
       const hash = INITIAL_EVENT_ID;
       if (hash && data.events.some((e) => e.id === hash)) select(hash, true);
       else if (/^CVN-\d{2}$/.test(hash) && S.fleet.some((c) => c.hull === hash)) selectCarrier(hash, true);
@@ -1547,11 +1594,11 @@
   }
   function focusHotspot() {
     const h = hotspot();
-    if (!h) { world.pointOfView({ lat: 30, lng: 38, altitude: isMobile() ? 3.0 : 2.2 }, reduceMotion ? 0 : 2600); return; }
-    world.pointOfView({ lat: h.lat, lng: h.lon, altitude: isMobile() ? h.altitude + 0.5 : h.altitude }, reduceMotion ? 0 : 2800);
+    if (!h) { world.pointOfView({ lat: 30, lng: 38, altitude: isMobile() ? 4.2 : 2.2 }, reduceMotion ? 0 : 2600); return; }
+    world.pointOfView({ lat: h.lat, lng: h.lon, altitude: isMobile() ? 4.2 : 2.2 }, reduceMotion ? 0 : 1800);
     const span = { 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[S.windowH];
     const toast = $("#focusToast");
-    toast.innerHTML = `<span class="focus-k">Most active now</span> <strong>${esc(h.theater)}</strong> <span>${h.n} ${h.n === 1 ? "event" : "events"} with reports in the last ${span}, led by ${esc(typeLabel(h.top).toLowerCase())}${h.top.place ? ` near ${esc(h.top.place)}` : ""}</span>`;
+    toast.innerHTML = `<span class="focus-k">Most active now</span> <strong>${esc(h.theater)}</strong> <span>${h.n} ${h.n === 1 ? "event" : "events"} in the last ${span}, led by ${esc(typeLabel(h.top).toLowerCase())}${h.top.place ? ` near ${esc(h.top.place)}` : ""}</span>`;
     toast.hidden = false;
     toast.classList.remove("is-out");
     setTimeout(() => toast.classList.add("is-out"), 7000);
@@ -1567,14 +1614,13 @@
     return wordsList;
   };
   const matches = (e) => words().every((w) => e._search.includes(w));
-  const unlisted = () => new Set(S.theaters.filter((t) => t.listed === false).map((t) => t.id));
-  const theaterShown = (id) => S.theaterOn.has(id) || unlisted().has(id);
-  // Follow-up coverage keeps the same incident visible. It never resets its occurrence or "new".
-  const activityTime = (e) => e.alert || e.possibly_old || !onMap(e) ? e._t : Math.max(e._t, e._tu || e._t);
+  const selectedRegion = () => S.theaters.find((t) => t.id === S.region && t.listed !== false);
+  const theaterShown = (id) => S.region === "world" || (S.region !== null && S.region === id);
+  // Every time window follows when the event happened, even when new coverage arrives later.
   const hasFollowup = (e) => !e.alert && !e.possibly_old && onMap(e) && e._tu >= e._t + DAY;
   function passes(e, ignoreTheater = false) {
     if (e._archived) return false; // shared history never enters live counts or the latest list
-    if (activityTime(e) < Date.now() - S.windowH * HOUR) return false;
+    if (e._t < Date.now() - S.windowH * HOUR) return false;
     if (!ignoreTheater && !theaterShown(e.theater)) return false;
     if (!S.statusOn.has(e.status)) return false;
     if (S.off.has(legendKey(e))) return false;
@@ -1640,7 +1686,7 @@
   // styles.css, under body.focus; lines, dots and rings here), so what you opened stands out.
   const focused = () => !!(S.selectedId || S.selectedHull || S.selectedFlow);
   const FOCUS_DIM = 0.28;
-  const dimOf = (isSelected) => (focused() && !isSelected ? FOCUS_DIM : 1);
+  const dimOf = (isSelected, inRegion = false) => ((!isSelected && (focused() || (selectedRegion() && !inRegion))) ? FOCUS_DIM : 1);
 
   // ------------------------------------------------------------------ supply routes (the time window)
   // Routes follow the time filter like everything else: a route shows, and is active, when a
@@ -1743,7 +1789,7 @@
     }
   }
   // On the globe: carriers at sea, carriers that moved this week (so a return home is visible), and the one you selected.
-  const carrierOnMap = (c) => S.layers.carriers && (!c.at_home || (c._moved && Date.now() - c._moved < 7 * DAY) || c.hull === S.selectedHull);
+  const carrierOnMap = (c) => S.region !== null && S.layers.carriers && (!c.at_home || (c._moved && Date.now() - c._moved < 7 * DAY) || c.hull === S.selectedHull);
   const sailed = new Set();
   let sailing = false;
   function sailRecentMoves() {
@@ -1781,7 +1827,7 @@
       if (arcs.length >= MAX_LAUNCH_PATHS) return;
       const dist = km(o.lat, o.lon, d.lat, d.lon);
       if (dist < 25 || (approx && dist > 1800)) return;
-      const dim = dimOf(e.id === S.selectedId);
+      const dim = dimOf(e.id === S.selectedId, true);
       const a = Math.min(1, STATUS[e.status].alpha * fade(e) * (approx ? 0.65 : 1.15)) * dim;
       const pathKey = `atk|${e.id}|${o.lat},${o.lon}>${d.lat},${d.lon}`;
       arcs.push(keyed({ ref: e, sLat: o.lat, sLng: o.lon, eLat: d.lat, eLng: d.lon, kind: barrage ? "barrage" : approx ? "strikeApprox" : "strike",
@@ -1844,6 +1890,7 @@
     return out;
   }
 
+  const flowRgb = (f) => f.money ? CAT_RGB.aid : [76, 159, 255];
   function supplyArcs(flows) {
     const arcs = [];
     for (const f of flows) {
@@ -1852,20 +1899,20 @@
       if (!start || !end) continue;
       const pts = [start, ...(named ? f.via : []), end];
       const stroke = clamp(0.22 + 0.2 * Math.log2(1 + f.deliveries), 0.22, 1.1);
-      const alpha = (named ? 0.75 : 0.4) * (S.selectedFlow === f.key ? 1.3 : 1) * dimOf(S.selectedFlow === f.key);
+      const alpha = (named ? 0.75 : 0.4) * (S.selectedFlow === f.key ? 1.3 : 1) * dimOf(S.selectedFlow === f.key, true);
       const sea = f.modes.length === 1 && f.modes[0] === "sea";
       for (let i = 0; i < pts.length - 1; i++) {
         const a = pts[i], b = pts[i + 1];
         if (km(a.lat, a.lon, b.lat, b.lon) < 25) continue;
         const lift = sea ? 0.002 : 0.012;
-        arcs.push(...surfaceArcs(a, b, { _k: `sup|${f.key}|${i}`, flow: f, kind: f.status === "corroborated" ? "flow" : "flowDashed", color: rgba(f.money ? CAT_RGB.aid : CAT_RGB.supply, Math.min(1, alpha)), stroke, ms: 0, seed: 0 }, lift));
+        arcs.push(...surfaceArcs(a, b, { _k: `sup|${f.key}|${i}`, flow: f, kind: f.status === "corroborated" ? "flow" : "flowDashed", color: rgba(flowRgb(f), Math.min(1, alpha)), stroke, ms: PHONE ? 1600 : 2200, seed: 0 }, lift));
       }
     }
     return arcs;
   }
 
-  // A route stays visible; opening it sends one short pulse along its existing surface segments.
-  // No continuously moving particles, and no pulse for aid that is only pledged.
+  // Routes use short moving dashes; opening one adds a single brighter pass along its segments.
+  // No separate solid route or particle layer, and no pulse for aid that is only pledged.
   let routeTimers = [], routeBurst = null;
   const routeShots = new Set();
   function stopRouteBurst() {
@@ -1888,7 +1935,7 @@
     routeBurst = f;
     const duration = PHONE ? 1600 : 2200;
     const lead = Math.max(150, flight - 100);
-    const rgb = f.money ? CAT_RGB.aid : CAT_RGB.supply;
+    const rgb = flowRgb(f);
     const named = f.from && f.to && !f.from.region && !f.to.region;
     const alpha = STATUS[f.status].alpha * (named ? 1 : 0.6);
     let offset = 0;
@@ -2063,9 +2110,7 @@
   // the globe takes a moment on a phone. A newer click or a full render supersedes a pending one.
   function frameData() {
     const events = visibleEvents();
-    const selected = S.data?.events.find((e) => e.id === S.selectedId);
     const onGlobe = events.filter(onMap);
-    if (selected && onMap(selected) && !onGlobe.includes(selected)) onGlobe.push(selected);
     const mapEvents = markerPick(onGlobe);
     S.supply = buildSupply();
     return { events, mapEvents };
@@ -2095,9 +2140,11 @@
     renderLists(d);
   }
   function renderGlobe({ events, mapEvents }) {
+    if (S.selectedId && !events.some((e) => e.id === S.selectedId)) stopLaunches();
     if (routeBurst && !S.supply.flows.some((f) => f.key === routeBurst.key)) stopRouteBurst();
     newFrame();
     document.body.classList.toggle("focus", focused());
+    document.body.classList.toggle("region-focused", !!selectedRegion());
 
     // HTML markers: events (labels on the most important, and on alert groups), carriers
     const labelled = new Set(mapEvents.filter((e) => e.severity >= 3 || e.wave).sort((a, b) => b.severity - a.severity || b._t - a._t).slice(0, 5).map((e) => e.id));
@@ -2127,7 +2174,7 @@
         if (!e.wave || !isLive(e)) continue;
         e.targets.slice(0, 12).forEach((t, i) => {
           if (rings.length >= 30) return;
-          rings.push(stable("rings", `wave|${e.id}|${i}`, { lat: t.lat, lon: t.lon, rgb: CAT_RGB.strike, alpha: 0.55 * dimOf(e.id === S.selectedId), max: 1.6, speed: 1.2, period: 1500 + Math.random() * 1500 }));
+          rings.push(stable("rings", `wave|${e.id}|${i}`, { lat: t.lat, lon: t.lon, rgb: CAT_RGB.strike, alpha: 0.55 * dimOf(e.id === S.selectedId, true), max: 1.6, speed: 1.2, period: 1500 + Math.random() * 1500 }));
         });
       }
     }
@@ -2207,7 +2254,7 @@
     const span = { 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[S.windowH];
     const fighting = events.filter(onMap);
     const now = [fighting.length, fighting.filter((e) => e.status === "corroborated").length];
-    $("#tally").innerHTML = `<strong>${now[0]}</strong> events with reports in the last ${span}, <strong>${now[1]}</strong> corroborated`;
+    $("#tally").innerHTML = `<span class="stat"><strong>${now[0]}</strong><span>Mapped events <small>${span}</small></span></span><span class="stat"><strong>${now[1]}</strong><span>Corroborated <small>Independent evidence</small></span></span>`;
     // counts tick up or down to their new values
     if (tallyWas && !reduceMotion && (tallyWas[0] !== now[0] || tallyWas[1] !== now[1])) {
       const els = [...$("#tally").querySelectorAll("strong")], from = tallyWas.slice(), t0 = performance.now();
@@ -2257,7 +2304,7 @@
   }
   function briefHtml() {
     const a = S.data && S.data.analysis;
-    if (!a || !a.generated_at) return "";
+    if (!a || !a.generated_at || S.region === null) return "";
     const byId = new Map(S.data.events.map((e) => [e.id, e]));
     const cites = (ids) => {
       const found = (ids || []).filter((i) => byId.has(i));
@@ -2273,7 +2320,9 @@
     // flights the judgment cites: what each aircraft's transponder showed, linked to it on adsb.lol
     const flown = (list) => (list || []).length ? `<span class="cites">${list.map((f) =>
       `<a class="cite cite-flight" href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener noreferrer" title="${esc(f.what)}">${esc(f.label)}</a>`).join("")}</span>` : "";
-    const regions = (a.regions || []).filter((r) => (r.judgments || []).length);
+    const regions = (a.regions || []).filter((r) => theaterShown(r.theater) && (r.judgments || []).length);
+    if (!regions.length && S.region !== "world") return "";
+    const scope = selectedRegion()?.name || "All regions";
     const judgmentHtml = (j, compact = false) => {
       const [mark, word] = TREND[j.trend] || TREND.steady;
       return `<div class="an-item trend-${esc(j.trend)}">
@@ -2286,7 +2335,7 @@
     const lead = highlights.length ? `<ol class="brief-highlights">${highlights.map(({ region, judgment }) => `<li>
       <button class="an-name" type="button" data-fly="${esc(region.theater)}" title="Fly to ${esc(region.name)}">${esc(region.name)}</button>
       ${judgmentHtml(judgment, true)}</li>`).join("")}</ol>`
-      : `<p class="an-empty">No clear change in any region in the last ${esc(a.window_hours || 6)} hours.</p>`;
+      : `<p class="an-empty">No clear change in ${esc(scope.toLowerCase())} in the last ${esc(a.window_hours || 6)} hours.</p>`;
     const body = regions.map((r) => `
       <div class="an-region">
         <button class="an-name" type="button" data-fly="${esc(r.theater)}" title="Fly to ${esc(r.name)}">${esc(r.name)}</button>
@@ -2297,15 +2346,15 @@
     return `<li class="brief analysis"><section aria-labelledby="briefTitle">
       <div class="brief-head"><h3 id="briefTitle">Situation brief</h3>
         <time datetime="${esc(a.generated_at)}">Written ${esc(ago(Date.parse(a.generated_at)))}</time></div>
-      <p class="an-sub">${highlights.length ? `${highlights.length} selected ${highlights.length === 1 ? "development" : "developments"} · ` : ""}All regions · last ${esc(a.window_hours || 6)} hours</p>
+      <p class="an-sub">${highlights.length ? `${highlights.length} selected ${highlights.length === 1 ? "development" : "developments"} · ` : ""}${esc(scope)} · last ${esc(a.window_hours || 6)} hours</p>
       <p class="brief-note">Machine-written. Expand the regional analysis for the reasoning.</p>
       ${stale ? '<p class="brief-stale" role="status">This analysis is over 3 hours old. Check the latest events below for newer reporting.</p>' : ""}
       ${lead}
       ${regions.length ? `<details class="brief-disclosure" data-brief-section="regions"${S.briefOpen.has("regions") ? " open" : ""}>
-        <summary>All regional analysis (${regions.reduce((n, r) => n + r.judgments.length, 0)})</summary>${body}</details>` : ""}
+        <summary>${S.region === "world" ? "All regional analysis" : "Regional analysis"} (${regions.reduce((n, r) => n + r.judgments.length, 0)})</summary>${body}</details>` : ""}
       <details class="brief-disclosure brief-method" data-brief-section="method"${S.briefOpen.has("method") ? " open" : ""}>
         <summary>How to read this brief</summary>
-        <p class="brief-note">Highlights prioritize changes, then confidence, then the latest cited event, with one development per region. The full regional analysis includes every judgment. This global brief uses its own ${esc(a.window_hours || 6)}-hour window against the ${esc(a.context_days || 3)} days before; map filters do not change it.</p>
+        <p class="brief-note">Highlights prioritize changes, then confidence, then the latest cited event, with one development per region. The full regional analysis includes every judgment. The region selection applies to this brief. Its analysis uses its own ${esc(a.window_hours || 6)}-hour window against the ${esc(a.context_days || 3)} days before; time, confidence, type and search filters do not change it.</p>
         <p class="brief-note">Machine-written analysis of this map's own events${a.by ? ` by ${esc(a.by)}` : ""}. Confidence comes from the cited events and tracked flights. Transponders show where aircraft went, not why. Open the evidence before relying on a judgment.</p>
       </details>
       ${a.flight_credit ? `<p class="brief-note"><a href="${esc(safeUrl(a.flight_credit.url || "https://opendatacommons.org/licenses/odbl/1-0/"))}" target="_blank" rel="noopener noreferrer">${esc(a.flight_credit.text || "Flight data: adsb.lol contributors")}</a>.</p>` : ""}
@@ -2319,8 +2368,12 @@
     const top = briefHtml();
     $("#feedCount").textContent = `${events.length}`;
     if (!events.length) {
+      if (S.region === null) {
+        list.innerHTML = '<li class="empty"><strong>All regions are hidden.</strong>Choose a theater or Worldwide to show events.</li>';
+        return;
+      }
       list.innerHTML = top + (S.data.events.length
-        ? `<li class="empty"><strong>Nothing matches these filters.</strong>Widen the time window, or turn more kinds of events, theaters, or confidence levels back on.</li>`
+        ? `<li class="empty"><strong>Nothing matches these filters.</strong>Widen the time window, choose Worldwide, or show more event types or confidence levels.</li>`
         : `<li class="empty"><strong>No events in the last 7 days yet.</strong>The pipeline is running. New events appear here as sources report them.</li>`);
       return;
     }
@@ -2343,16 +2396,18 @@
   }
 
   function renderSideLists() {
-    // carriers: all 11, at sea first
-    const at = S.fleet.filter((c) => !c.at_home).length;
-    $("#fleetNote").textContent = S.fleet.length ? `${at} of ${S.fleet.length} at sea` : "";
-    $("#fleetList").innerHTML = S.fleet.length ? S.fleet.map((c) => `
+    // Carrier positions are global context, dimmed in regional focus.
+    const fleet = S.region === null ? [] : S.fleet;
+    const at = fleet.filter((c) => !c.at_home).length;
+    $("#fleetNote").textContent = fleet.length ? `${at} of ${fleet.length} at sea` : "";
+    $("#fleetList").innerHTML = fleet.length ? fleet.map((c) => `
       <li><button class="side-row${c.hull === S.selectedHull ? " is-selected" : ""}${c.at_home ? " is-home" : ""}" type="button" data-hull="${esc(c.hull)}">
         ${iconBadge("carrier", "fleet", c.at_home ? "outline" : "solid", "ico-sm")}
         <span class="side-name">${esc(c.short || c.name)}</span>
         <span class="side-meta">${esc(c.heading_to ? `→ ${c.heading_to.place || "en route"}` : c.at_home ? (c.place || "").split(/[,(]/)[0].trim() : c.place || "")}</span>
       </button></li>`).join("")
-      : '<li class="muted small">No positions yet. They come from USNI News\u2019 daily Fleet and Marine Tracker.</li>';
+      : S.region === null ? '<li class="muted small">Regions are hidden. Choose a theater or Worldwide to show positions.</li>'
+        : '<li class="muted small">No positions yet. They come from USNI News\u2019 daily Fleet and Marine Tracker.</li>';
     // supply routes
     const rows = [];
     S.supply.flows.forEach((f) => rows.push(`
@@ -2372,18 +2427,45 @@
     if (note) note.textContent = windowText();
   }
 
-  const CROSSHAIR = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><circle cx="8" cy="8" r="4.5"/><path d="M8 1v3M8 12v3M1 8h3M12 8h3"/></svg>`;
+  function syncRegionControls() {
+    const region = selectedRegion();
+    S.hot = new Set((S.region === "world" ? S.theaters : region ? [region] : []).flatMap((t) => t.highlight || []));
+    document.querySelectorAll("[data-region]").forEach((b) => {
+      const active = b.dataset.region === (S.region === null ? "none" : S.region);
+      b.setAttribute("aria-pressed", String(active));
+    });
+    $("#regionFocus").hidden = !region;
+    $("#regionName").textContent = region ? region.name : "";
+  }
+
   function renderTheaters() {
-    // A theater with listed: false (worldwide treaty and sanctions steps) has no row of its own: its
-    // events are diplomacy, shown and hidden with "Diplomacy, legal" in the map key.
+    // Unlisted worldwide commitments appear only in Worldwide, not in a regional focus.
     $("#theaterList").innerHTML = S.theaters.filter((t) => t.listed !== false).map((t) => `
-      <li><label class="check check--theater">
-          <input type="checkbox" data-theater="${esc(t.id)}" ${S.theaterOn.has(t.id) ? "checked" : ""}>
-          <span class="box" aria-hidden="true"></span><span class="label">${esc(t.name)}</span>
-          <span class="spark" data-spark="${esc(t.id)}" aria-hidden="true"></span><span class="count" data-count="${esc(t.id)}"></span>
-        </label>
-        ${t.camera ? `<button class="fly" type="button" data-fly="${esc(t.id)}" aria-label="Fly to ${esc(t.name)}" title="Fly to ${esc(t.name)}">${CROSSHAIR}</button>` : '<span class="fly" aria-hidden="true"></span>'}
-      </li>`).join("");
+      <li><button class="region-btn" type="button" data-region="${esc(t.id)}" aria-pressed="${S.region === t.id}" aria-label="Focus on ${esc(t.name)}">
+        <span class="region-mark" aria-hidden="true"></span><span class="region-label">${esc(t.name)}</span>
+        <span class="spark" data-spark="${esc(t.id)}" aria-hidden="true"></span><span class="count" data-count="${esc(t.id)}" aria-hidden="true"></span>
+      </button></li>`).join("");
+    syncRegionControls();
+  }
+
+  function selectRegion(id) {
+    const region = id === "none" ? null : id;
+    const theater = S.theaters.find((t) => t.id === region && t.listed !== false);
+    if (region !== null && region !== "world" && !theater) return;
+    S.region = region;
+    S.lastFocus = null;
+    closeFly();
+    hotEvent(null);
+    syncRegionControls();
+    closeDetail();  // stops event/route playback, clears the share hash, and returns to the list
+    $("#feedList").scrollTop = 0;
+    $("#focusToast").hidden = true;
+    const camera = theater ? theater.camera : region === "world" ? { lat: 25, lng: 10, altitude: 2.6 } : null;
+    if (camera) {
+      const altitude = isMobile() ? camera.altitude + 0.5 : camera.altitude;
+      world.pointOfView({ ...camera, altitude }, reduceMotion ? 0 : flyMs(camera.lat, camera.lng, altitude));
+    }
+    if (isMobile()) toggleFilters(false);
   }
 
   function renderCounts() {
@@ -2405,7 +2487,7 @@
     });
     const byStatus = {};
     for (const e of S.data.events) {
-      if (e._archived || !onMap(e) || activityTime(e) < now - S.windowH * HOUR || !theaterShown(e.theater)) continue;
+      if (e._archived || !onMap(e) || e._t < now - S.windowH * HOUR || !theaterShown(e.theater)) continue;
       byStatus[e.status] = (byStatus[e.status] || 0) + 1;
     }
     document.querySelectorAll("[data-status-count]").forEach((el) => { el.textContent = byStatus[el.dataset.statusCount] || 0; });
@@ -2585,7 +2667,7 @@
       flight = reduceMotion ? 0 : flyMs(e.lat, e.lon, alt);
       world.pointOfView({ lat: e.lat, lng: e.lon, altitude: alt }, flight);
     }
-    if (fresh && !e._archived) playLaunches(e, flight);
+    if (fresh && passes(e)) playLaunches(e, flight);
     else if (fresh) stopLaunches();
     renderEventDetail(e);
     renderSoon();  // the details show at once; the globe follows a frame later
@@ -2635,9 +2717,9 @@
       <p><button class="linkish" type="button" id="copyEventLink">Copy event link</button>
         <a class="linkish" href="${esc(eventLink(e.id))}" id="eventShareLink" hidden>Open share link</a></p>
       ${e._archived ? '<p class="muted">Archived event. This published snapshot is separate from the current live feed.</p>' : ""}
-      <dl class="event-times"><div><dt>${e.alert ? "First warning" : "Event time"}</dt><dd><time datetime="${esc(e.time || e.updated)}" title="${esc(new Date(e._t).toUTCString())}">${esc(fmtEvidenceTime(e._t))}</time></dd></div>
+      <dl class="event-times"><div><dt>${e.occurrence_day ? "Event date" : e.alert ? "First warning" : "Event time"}</dt><dd><time datetime="${esc(e.occurrence_day || e.time || e.updated)}" title="${esc(e.occurrence_day ? "Occurrence date; precise time is unconfirmed" : new Date(e._t).toUTCString())}">${esc(e.occurrence_day ? fmtOccurrenceDay(e.occurrence_day) : fmtEvidenceTime(e._t))}</time></dd></div>
         <div><dt>Latest report</dt><dd><time datetime="${esc(e.updated || e.time)}" title="${esc(new Date(e._tu).toUTCString())}">${esc(fmtEvidenceTime(e._tu))}</time></dd></div></dl>
-      ${hasFollowup(e) ? '<p class="muted">Ongoing coverage of this event is grouped here. Recent reports keep it on the map; the event time stays at its original date.</p>' : ""}
+      ${hasFollowup(e) ? '<p class="muted">Later reports about this same event are grouped here. The time filter uses when the event happened, not when the latest report arrived.</p>' : ""}
       ${e.possibly_old ? `<div class="verdict verdict--doubt"><span class="conf-swatch conf-dashed" aria-hidden="true"></span><div><strong>Possibly an old story</strong><p>Only one outlet has this, and a news search found earlier coverage of the same topic but nothing current from other outlets. It may be an old article republished with a new date. It stays on the map, quieter, and is confirmed if another source reports it.</p></div></div>` : ""}
       <div class="verdict"><span class="conf-swatch conf-${STATUS[e.status].conf}" aria-hidden="true"></span><div><strong>${esc(STATUS[e.status].label)}</strong><p>${esc(STATUS[e.status].note(e.sources_count, e.news_nearby))}</p></div></div>
       ${facts.length ? `<div class="facts">${facts.join("")}</div>` : ""}
@@ -2685,7 +2767,7 @@
       <div class="detail-type">${flowBadge(f)}${f.money ? (isPledge ? "Financial aid pledged" : `Financial aid, ${windowText()}`) : isPledge ? "Pledged aid" : `Supply route, ${windowText()}`}</div>
       <h3>${esc(flowFrom(f))} → ${esc(flowTo(f))}</h3>
       <p class="detail-where">${isPledge ? `${f.events.length} ${f.events.length === 1 ? "announcement" : "announcements"}` : `${f.deliveries} ${f.deliveries === 1 ? "delivery" : "deliveries"} reported`}, last ${esc(ago(f.last))}</p>
-      <div class="verdict"><span class="conf-swatch conf-${STATUS[f.status].conf}" aria-hidden="true"></span><div><strong>${esc(STATUS[f.status].label)}</strong><p>Best confidence among the reports below. On the map, solid lines are corroborated and dashed lines rest on single sources.</p></div></div>
+      <div class="verdict"><span class="conf-swatch conf-${STATUS[f.status].conf}" aria-hidden="true"></span><div><strong>${esc(STATUS[f.status].label)}</strong><p>Best confidence among the reports below. On the map, broader moving dashes are corroborated; finer dashes show uncorroborated reports. Blue is supply, green is financial aid.</p></div></div>
       <div class="facts">
         ${f.modes.length ? `<span>Mode <b>${esc(f.modes.map((m) => MODE[m]).join(", "))}</b></span>` : ""}
         ${f.value ? `<span>Value <b>${esc(fmtMoney(f.value))}</b> (reported)</span>` : ""}
@@ -2738,7 +2820,7 @@
   const sheetHeights = () => {
     const height = viewportHeight();
     const short = height < 500;
-    return [short ? 64 : 78, Math.round(height * (short ? 0.48 : 0.42)), Math.round(height * (short ? 0.9 : 0.8))];
+    return [short ? 86 : 94, Math.round(height * (short ? 0.48 : 0.42)), Math.round(height * (short ? 0.9 : 0.8))];
   };
   function setSheet(n, instant) {
     if (!isMobile()) return;
@@ -2835,13 +2917,23 @@
   }
 
   function wire() {
+    setupIdleRotation(controls, $("#rotationBtn"));
+    $("#overviewBtn").addEventListener("click", () => {
+      selectRegion("world");
+      world.pointOfView({ lat: 22, lng: 28, altitude: isMobile() ? 4.2 : 2.4 }, reduceMotion ? 0 : 900);
+    });
+    [ ["#zoomInBtn", 0.72], ["#zoomOutBtn", 1.4] ].forEach(([id, scale]) => {
+      $(id).addEventListener("click", () => {
+        const pov = world.pointOfView();
+        world.pointOfView({ ...pov, altitude: clamp(pov.altitude * scale, 0.12, 5.4) }, reduceMotion ? 0 : 300);
+      });
+    });
     $("#windowSeg").addEventListener("click", (ev) => {
       const b = ev.target.closest("[data-window]");
       if (b) { setWindow(Number(b.dataset.window)); renderSoon(); }
     });
     $("#filters").addEventListener("change", (ev) => {
       const t = ev.target;
-      if (t.dataset.theater) t.checked ? S.theaterOn.add(t.dataset.theater) : S.theaterOn.delete(t.dataset.theater);
       if (t.dataset.status) t.checked ? S.statusOn.add(t.dataset.status) : S.statusOn.delete(t.dataset.status);
       renderSoon();
     });
@@ -2858,7 +2950,12 @@
       document.querySelectorAll("[data-legend]").forEach((b) => S.off.add(b.dataset.legend));
       legendChanged();
     });
+    $("#regionFocus").addEventListener("click", (ev) => {
+      if (ev.target.closest("[data-region]")) selectRegion("world");
+    });
     $("#filters").addEventListener("click", (ev) => {
+      const region = ev.target.closest("[data-region]");
+      if (region) { selectRegion(region.dataset.region); return; }
       const hull = ev.target.closest("[data-hull]");
       if (hull) { selectCarrier(hull.dataset.hull, true); return; }
       const flow = ev.target.closest("[data-flow]");
@@ -2866,7 +2963,7 @@
       const fly = ev.target.closest("[data-fly]");
       if (!fly) return;
       const t = S.theaters.find((x) => x.id === fly.dataset.fly);
-      if (t && t.camera) { world.pointOfView(t.camera, reduceMotion ? 0 : flyMs(t.camera.lat, t.camera.lng, t.camera.altitude)); if (isMobile()) toggleFilters(false); }
+      if (t) selectRegion(t.id);
     });
     $("#sourcesToggle").addEventListener("click", () => {
       const list = $("#sourcesList");
@@ -2892,7 +2989,7 @@
       if (b) { S.lastFocus = b.dataset.id; select(b.dataset.id, true); return; }
       const fly = ev.target.closest("[data-fly]");
       const t = fly && S.theaters.find((x) => x.id === fly.dataset.fly);
-      if (t && t.camera) world.pointOfView(t.camera, reduceMotion ? 0 : flyMs(t.camera.lat, t.camera.lng, t.camera.altitude));
+      if (t) selectRegion(t.id);
     });
     let searchTimer;
     $("#search").addEventListener("focus", () => { if (isMobile()) setSheet(2); });
@@ -2913,6 +3010,7 @@
         closeFly();
         if (!$("#detail").hidden) closeDetail();
         else if ($("#filters").classList.contains("open")) toggleFilters(false);
+        else if (selectedRegion()) selectRegion("world");
       }
       if (typing) return;
       if (ev.key === "/") { ev.preventDefault(); if (!$("#detail").hidden) closeDetail(); $("#search").focus(); }
@@ -2935,6 +3033,12 @@
   } catch (err) {
     fatal(err);
   }
+  const syncAnimationVisibility = () => {
+    if (document.hidden) world.pauseAnimation();
+    else world.resumeAnimation();
+  };
+  document.addEventListener("visibilitychange", syncAnimationVisibility);
+  if (document.hidden) world.pauseAnimation();
   if (!DEMO) {
     setInterval(checkForUpdate, 60e3);
     document.addEventListener("visibilitychange", () => { if (document.hidden) reloadIfIdle(); else checkForUpdate(); });

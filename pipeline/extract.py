@@ -56,7 +56,7 @@ Theater ids:
 Event types:
 {types}
 
-Output: {{"events": [one object per input item, in any order]}}
+Output: {{"events": [one object per specific incident in each input item, in any order; repeat i for multiple incidents]}}
 Irrelevant item: {{"i": <n>, "relevant": false}}
 Relevant item:
 {{"i": <n>, "relevant": true, "type": "<event type id>", "happened": "<when the event itself happened: YYYY-MM-DD or YYYY-MM-DDTHH:MM in UTC>" or null, "summary": "<max 25 words>", "place": "<most specific place named, English spelling>" or null, "admin1": "<province, oblast, or state>" or null, "country": "<ISO 3166-1 alpha-2>" or null, "lat": <number> or null, "lon": <number> or null, "attacker": "<ISO alpha-2 of the country whose forces carried it out>" or null, "parties": ["<ISO alpha-2 of each country, or UN, EU, NATO, AU, ICC, ICJ, or another body's short name, whose officials take part>"], "origins": [{{"place": "<launch or firing area named in the item>", "lat": <number>, "lon": <number>}}], "launched": <int> or null, "intercepted": <int> or null, "alert": true or false, "transfer": <transfer object, arms_transfer only>, "legal_basis": "<max 12 words>" or null, "theater": "<theater id>", "severity": <1, 2, or 3>, "claim": "report" or "official_claim", "claim_source": "idf" or null, "killed": <int> or null, "injured": <int> or null}}
@@ -68,6 +68,7 @@ Include it even when the item is otherwise not relevant (then keep "relevant": f
 Transfer object: {{"kind": "delivery" | "pledge" | "interdiction", "supplier": "<ISO alpha-2>", "recipient": "<ISO alpha-2>", "mode": "air" | "sea" | "land" | "unspecified", "from": {{"place": "...", "lat": <number>, "lon": <number>}} or null, "to": {{"place": "...", "lat": <number>, "lon": <number>}} or null, "via": [{{"place": "<named transit hub>", "lat": <number>, "lon": <number>}}], "what": "<max 8 words>", "flights": <int> or null, "value_usd": <number> or null, "money": true or false}}
 
 Rules:
+- Separate incidents: different targets (an airport and an oil field), renewed attacks on the same site, and separate interception episodes are distinct events even with the same attacker, country, and day. Emit one object for each distinct current incident in an item, repeating its i. Do not turn background references to earlier attacks into new events. Never pool casualties or confidence across incidents.
 - Freshness: a newly published report of a concrete incident within the past 14 days is relevant, including follow-up coverage, investigation findings, updated casualties, attribution, denials, and officials' reactions about that incident. These are reports under the original incident, not new occurrences: keep the incident's type and location, name it clearly in the summary, and use its original date for "happened" when the item gives it. Never invent that date. A distinct new action (sanctions imposed, a deployment, mine-clearing operation, formal meeting or retaliatory strike) is its own event with its own date. Pure background, commentary with no specific incident, and an old article merely republished with a fresh feed date are not relevant. Always fill "happened" when the item states or clearly implies when it happened ("on Tuesday", "overnight", "yesterday"), working from the posted date. When the incident is older than 14 days, keep its date; it will be treated as old.
 - Photos and photo captions (a military website's photo gallery, "U.S. Navy photo by …", DVIDS): the event is what the photo shows, when it was taken. Use the date the caption gives for "happened"; if it gives none, the item is not relevant (a photo posted today may be months old).
 - Write the summary yourself in plain, neutral English. Translate non-English items. Do not copy sentences from the item.
@@ -248,13 +249,27 @@ def skip_rejected(items: list[dict], state: dict, now: datetime) -> list[dict]:
     return keep
 
 
+# Prioritize reporting of a new state conducting combat operations in another
+# country. This changes queue order only; the extractor still verifies the claim,
+# event type, date, and confidence using its normal rules.
+_CROSS_BORDER_ACTOR = re.compile(r"\\b(?:Pakistan(?:i)?|Saudi|Turkish|Turkey|Egyptian|Emirati|UAE|Iranian|American|US|British|French)\\b", re.I)
+_CROSS_BORDER_ACTION = re.compile(r"\\b(?:air\\s*strikes?|bomb(?:ed|ing|s)?|fighter\\s*jets?|warplanes?|struck|strikes?|interven(?:e|ed|tion)|joins?\\s+(?:the\\s+)?war)\\b", re.I)
+_CROSS_BORDER_TARGET = re.compile(r"\\b(?:Houthis?|Yemen|Sudan|Syria|Lebanon|Somalia|Iraq)\\b", re.I)
+
+
+def strategic_priority(item: dict) -> int:
+    text = item.get("text") or ""
+    return 4 if (_CROSS_BORDER_ACTOR.search(text) and _CROSS_BORDER_ACTION.search(text)
+                 and _CROSS_BORDER_TARGET.search(text)) else int(item.get("weight", 1))
+
+
 def build_queue(pending: list[dict], fresh: list[dict], now: datetime, settings: dict) -> list[dict]:
     by_id: dict[str, dict] = {}
     for it in pending + fresh:
         # backfilled items carry their own, longer age limit
         if hours_since(it.get("time"), now) <= it.get("max_age_h", settings["max_item_age_hours"]):
             by_id[it["id"]] = it
-    queue = sorted(by_id.values(), key=lambda it: (-int(it.get("weight", 1)), -_ts(it)))
+    queue = sorted(by_id.values(), key=lambda it: (-strategic_priority(it), -_ts(it)))
     return queue[: settings["pending_max"]]
 
 
@@ -929,6 +944,8 @@ def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, no
         _tally_tokens(state, purpose, usage_tokens(r) or _estimate_tokens(system_prompt + user_text + content))
         parsed = _parse_json_object(content)
         if parsed is None:
+            if purpose == "incident_repair":
+                state["incident_repair_raw"] = {"at": iso(now), "content": content[:20000]}
             log(f"[extract] one-off call ({purpose}): the reply was not JSON ({len(content)} characters): {json_error(content)}")
         return parsed
     except requests.RequestException as exc:

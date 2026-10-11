@@ -44,6 +44,8 @@ DEFAULTS = [
 # reading (the Map Room) stays on Gemini. Together the shares stay within Cerebras' daily cap.
 ROUTES = {
     "analysis": {"cerebras": 380_000},
+    "incident_repair": {"cerebras": 150_000},  # bounded legacy campaign migration
+    "incident_grouping": {"cerebras": 150_000},  # continuing coverage of specific facilities
     "recency": {"cerebras": 50_000},
     "frontline_review": {"cerebras": 80_000},
     "frontline_isw": {"cerebras": 100_000},
@@ -246,6 +248,10 @@ def ask_routed(system_prompt: str, user_text: str, state: dict, settings: dict, 
     """Ask the providers routed for `purpose`, in order, within their token caps. None if none answered."""
     import extract
 
+    if purpose == "incident_grouping" and effort is None:
+        effort = "low"  # reserve the bounded answer for complete source assignments
+    if purpose == "incident_grouping":
+        max_wait = max(max_wait, 60)  # finish a partition across minute boundaries
     need = extract._estimate_tokens(system_prompt) + extract._estimate_tokens(user_text) + max_tokens // 4
     for p, cap in routes(settings, purpose):
         if not has_room(p, cap, state, now, purpose, need, env):
