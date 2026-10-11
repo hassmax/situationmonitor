@@ -17,9 +17,14 @@ Checks (the mistake that led to each, and the fix):
   country (Morocco's F-16 "to Greenville", 2026-10-07)
 - carriers_together: two carriers placed together away from a home port (Ford and Eisenhower filed
   in Thailand where only the Bush was, 2026-10-06; fleet._other_there)
+- carrier_vague_place: a carrier placed at a region's name ("West Asia", which landed on the Dubai coast,
+  2026-10-07; fleet.VAGUE)
 - carrier_too_fast: a carrier's move faster than it can sail (fleet._too_fast)
 - future_time: an event timed after the moment it was read (common.make_item clamps it)
-- duplicate_summary: two events with the same words within two days (dedupe.py)
+- (a delivery's pin may lie in its supplier or recipient too: Algeria's equipment for Moscow was filed under
+  Poland, the country it passed through, 2026-10-07; not a mistake)
+- duplicate_summary: two events with the same words at the same spot within five minutes (dedupe.py; the same outlet's
+  Toulousa strike twice, a second apart, 2026-10-11)
 """
 from __future__ import annotations
 
@@ -33,6 +38,8 @@ PIN_KM = 100            # an event this far outside its country, inside another 
 SEA_KM = 1500           # ... or this far out at sea is misplaced (small islands aren't on the globe's map)
 TERRITORIES = {"US": ["US", "PR", "GU", "VI", "AS", "MP"], "GB": ["GB", "FK"], "FR": ["FR", "NC", "PF"], "DK": ["DK", "GL"]}
 TOGETHER_KM = 300
+CRIMEA = (44.3, 46.3, 32.4, 36.7)     # lat min/max, lon min/max
+DUP_MINUTES = 5       # the same words at the same spot this close in time are one report twice
 HOME_KM = 80
 # ISO alpha-2 -> numeric, for the globe's country shapes (the same table as ISO_NUM in site/app.js)
 _ISO_NUM = dict((s[:2], s[2:]) for s in (
@@ -110,15 +117,23 @@ def run(events: list[dict], fleet_rows: list[dict], state: dict, now) -> dict:
             flag("strike_mistyped", e, f"{e['type']}: {summary}")
         if e.get("lat") is not None and e.get("country") and not e.get("approx") and e.get("type") != "naval" \
                 and not e.get("wave") and not e.get("alert"):
-            d = _country_km(e["country"], e["lat"], e["lon"])
+            # a route's pin is its far end: it may lie in the supplier, the recipient or a country passed through
+            ends = {e["country"], tr.get("supplier"), tr.get("recipient")} if e.get("type") == "arms_transfer" and tr else {e["country"]}
+            ds = [_country_km(c, e["lat"], e["lon"]) for c in ends if c]
+            d = min((x for x in ds if x is not None), default=None)
+            if d is not None and e["country"] == "UA" and CRIMEA[0] <= e["lat"] <= CRIMEA[1] and CRIMEA[2] <= e["lon"] <= CRIMEA[3]:
+                d = 0.0          # Crimea is Ukraine's (internationally); the globe's 110m shapes draw it inside Russia
             if d is not None and d > PIN_KM:
                 other = _country_of(e["lat"], e["lon"])
                 if other or d > SEA_KM:
                     flag("pin_outside_country", e, f"{d:.0f} km outside {e['country']}, {'in ' + other if other else 'at sea'}, "
                                                    f"at {e.get('place')!r}: {summary}")
         key = re.sub(r"\W+", " ", summary.lower()).strip()
-        if key and key in seen and abs((parse_time(seen[key]["time"]) - t).total_seconds()) < 48 * 3600:
-            flag("duplicate_summary", e, f"same words as {seen[key]['id']}: {summary}")
+        o = seen.get(key)
+        if key and o and abs((parse_time(o["time"]) - t).total_seconds()) < DUP_MINUTES * 60 \
+                and o.get("lat") is not None and e.get("lat") is not None and haversine_km(o["lat"], o["lon"], e["lat"], e["lon"]) < 25:
+            # recurring reports (an interceptor launched at the same spot every few minutes) are separate events
+            flag("duplicate_summary", e, f"same words as {o['id']}: {summary}")
         seen.setdefault(key, e)
 
     from fleet import HOME
@@ -129,7 +144,10 @@ def run(events: list[dict], fleet_rows: list[dict], state: dict, now) -> dict:
         for b in away[i + 1:]:
             if haversine_km(a["lat"], a["lon"], b["lat"], b["lon"]) < TOGETHER_KM:
                 flag("carriers_together", a, f"{a['name']} and {b['name']} both at {a.get('place')!r} / {b.get('place')!r}")
+    from fleet import _vague
     for c in fleet_rows:
+        if c.get("lat") is not None and not c.get("at_home") and _vague(c.get("place")):
+            flag("carrier_vague_place", c, f"{c['name']} placed at {c.get('place')!r}, a region, not a place")
         p = c.get("prev")
         if p and c.get("as_of") and p.get("as_of") and _too_fast(p, c):
             flag("carrier_too_fast", c, f"{c['name']}: {p.get('place')!r} to {c.get('place')!r} by {c['as_of'][:16]}")
