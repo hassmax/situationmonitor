@@ -58,7 +58,7 @@ FLEET_TRACKER_FEED = "https://news.usni.org/category/fleet-tracker/feed"
 USNI_FEED = "https://news.usni.org/feed"
 MOVE_KM = 150          # smaller changes are treated as the same position
 TRACK_LEN = 12
-FLEET_VERSION = 4      # bump to re-check stored positions against the rules below
+FLEET_VERSION = 5      # bump to re-check stored positions against the rules below
 MAX_KM_PER_DAY = 900   # about 20 knots, a fast sustained transit
 SLACK_KM = 400         # rough coordinates for sea areas and ports
 HOME_KM = 60           # "at" a home port
@@ -70,7 +70,10 @@ TRACKER_MAX_AGE = timedelta(days=3)  # the tracker is daily; an older edition ca
 VAGUE = {"middle east", "the middle east", "indo-pacific", "the indo-pacific", "pacific", "the pacific",
          "pacific ocean", "atlantic", "the atlantic", "atlantic ocean", "europe", "asia", "africa", "at sea",
          "overseas", "the region", "region", "gulf region", "west asia", "western asia", "south asia", "southeast asia",
-         "south-east asia", "east asia", "central asia", "north africa", "arabian peninsula", "gulf states", "central command", "centcom", "5th fleet",
+         "south-east asia", "east asia", "central asia", "north africa", "arabian peninsula", "gulf states",
+         # a whole country is no place at sea (2026-10-11: the Stennis, in a shipyard, and the Roosevelt "arrived
+         # in the United States", which the map put in Kansas)
+         "united states", "the united states", "united states of america", "usa", "us", "u.s.", "america", "central command", "centcom", "5th fleet",
          "6th fleet", "7th fleet", "2nd fleet", "3rd fleet", "unknown", "undisclosed", "deployment"}
 
 TRACKER_PROMPT = """You read a USNI News Fleet and Marine Tracker article and list every US Navy aircraft carrier (hull CVN-##) it mentions, with its current location. Reply with one JSON object and nothing else:
@@ -84,9 +87,13 @@ def _hull(v) -> str | None:
     return hull if hull in CARRIERS else None
 
 
+# An air base is not where a ship is (2026-10-11: a Bluesky post put the Bush at Al Udeid Air Base, Qatar).
+_FACILITY_RE = re.compile(r"\b(?:air base|airbase|air force base|afb|airport|airfield)\b", re.I)
+
+
 def _vague(place) -> bool:
     p = re.sub(r"\s*\(.*?\)", "", str(place or "")).strip().lower()
-    return not p or p in VAGUE
+    return not p or p in VAGUE or bool(_FACILITY_RE.search(p))
 
 
 def _known(c: dict) -> bool:

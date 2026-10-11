@@ -23,7 +23,8 @@ Checks (the mistake that led to each, and the fix):
 - future_time: an event timed after the moment it was read (common.make_item clamps it)
 - (a delivery's pin may lie in its supplier or recipient too: Algeria's equipment for Moscow was filed under
   Poland, the country it passed through, 2026-10-07; not a mistake)
-- duplicate_summary: two events with the same words within two days (dedupe.py)
+- duplicate_summary: two events with the same words at the same spot within five minutes (dedupe.py; the same outlet's
+  Toulousa strike twice, a second apart, 2026-10-11)
 """
 from __future__ import annotations
 
@@ -37,6 +38,8 @@ PIN_KM = 100            # an event this far outside its country, inside another 
 SEA_KM = 1500           # ... or this far out at sea is misplaced (small islands aren't on the globe's map)
 TERRITORIES = {"US": ["US", "PR", "GU", "VI", "AS", "MP"], "GB": ["GB", "FK"], "FR": ["FR", "NC", "PF"], "DK": ["DK", "GL"]}
 TOGETHER_KM = 300
+CRIMEA = (44.3, 46.3, 32.4, 36.7)     # lat min/max, lon min/max
+DUP_MINUTES = 5       # the same words at the same spot this close in time are one report twice
 HOME_KM = 80
 # ISO alpha-2 -> numeric, for the globe's country shapes (the same table as ISO_NUM in site/app.js)
 _ISO_NUM = dict((s[:2], s[2:]) for s in (
@@ -118,14 +121,19 @@ def run(events: list[dict], fleet_rows: list[dict], state: dict, now) -> dict:
             ends = {e["country"], tr.get("supplier"), tr.get("recipient")} if e.get("type") == "arms_transfer" and tr else {e["country"]}
             ds = [_country_km(c, e["lat"], e["lon"]) for c in ends if c]
             d = min((x for x in ds if x is not None), default=None)
+            if d is not None and e["country"] == "UA" and CRIMEA[0] <= e["lat"] <= CRIMEA[1] and CRIMEA[2] <= e["lon"] <= CRIMEA[3]:
+                d = 0.0          # Crimea is Ukraine's (internationally); the globe's 110m shapes draw it inside Russia
             if d is not None and d > PIN_KM:
                 other = _country_of(e["lat"], e["lon"])
                 if other or d > SEA_KM:
                     flag("pin_outside_country", e, f"{d:.0f} km outside {e['country']}, {'in ' + other if other else 'at sea'}, "
                                                    f"at {e.get('place')!r}: {summary}")
         key = re.sub(r"\W+", " ", summary.lower()).strip()
-        if key and key in seen and abs((parse_time(seen[key]["time"]) - t).total_seconds()) < 48 * 3600:
-            flag("duplicate_summary", e, f"same words as {seen[key]['id']}: {summary}")
+        o = seen.get(key)
+        if key and o and abs((parse_time(o["time"]) - t).total_seconds()) < DUP_MINUTES * 60 \
+                and o.get("lat") is not None and e.get("lat") is not None and haversine_km(o["lat"], o["lon"], e["lat"], e["lon"]) < 25:
+            # recurring reports (an interceptor launched at the same spot every few minutes) are separate events
+            flag("duplicate_summary", e, f"same words as {o['id']}: {summary}")
         seen.setdefault(key, e)
 
     from fleet import HOME

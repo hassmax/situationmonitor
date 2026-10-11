@@ -104,3 +104,15 @@ def test_a_region_name_is_no_carrier_position():
     fleet.repair(state)
     c = state["fleet"]["CVN-73"]
     assert (c["place"], c["lat"], c["lon"]) == ("Arabian Sea", 16.0, 63.0) and "prev" not in c
+
+
+def test_a_country_or_an_air_base_is_no_carrier_position_and_crimea_is_ukraine():
+    rows = [{"hull": "CVN-71", "name": "U.S.S. Theodore Roosevelt", "lat": 37.09, "lon": -95.7, "place": "United States", "at_home": False},
+            {"hull": "CVN-77", "name": "U.S.S. George H.W. Bush", "lat": 25.1, "lon": 51.3, "place": "Al Udeid Air Base", "at_home": False}]
+    assert audit.run([], rows, {}, NOW)["counts"] == {"carrier_vague_place": 2}
+    crimea = ev("c", "Eight people receive prison sentences in connection with attacks in Crimea.", "legal", country="UA", lat=45.0, lon=34.0, place="Crimea")
+    x = ev("x", "The IDF launched an interceptor at a suspicious aerial target.", "air_defense", lat=33.2, lon=35.5)
+    y = dict(x, id="y", time="2026-10-07T10:20:00Z")                       # twenty minutes later: a new launch
+    z = dict(x, id="z", time="2026-10-07T10:00:01Z")                       # a second later: the same report twice
+    out = audit.run([crimea, x, y, z], [], {}, NOW)
+    assert "pin_outside_country" not in out["counts"] and out["counts"] == {"duplicate_summary": 1}
