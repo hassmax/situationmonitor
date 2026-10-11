@@ -69,27 +69,29 @@
   };
   const CAT_RGB = { strike: [255, 91, 58], ground: [245, 165, 36], naval: [76, 195, 255], deploy: [159, 184, 212],
     hybrid: [177, 140, 255], diplo: [233, 238, 245], supply: [63, 193, 201], aid: [96, 214, 122], fleet: [205, 228, 255] };
+  // Precise, symbol-style glyphs on a 16-unit grid (the owner, 2026-10-11: "more serious/professional ...
+  // like a futuristic military command and less like a game"). Infantry is the NATO crossed box.
   const ICONS = {
-    missile: '<path d="m12 2 2 2-5 7-4-4zM5 7l-3 1 2 2M9 11l-1 3-2-2M4 12l-2 2M10 4l2 2"/>',
-    air: '<path d="M8 1v12M8 4l6 5v2l-6-2-6 2V9zM5 14l3-2 3 2"/>',
-    shield: '<path d="m8 1 6 3v4c0 3-3 5-6 7-3-2-6-4-6-7V4zM5 8l2 2 4-4"/>',
-    blast: '<path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3M8 5v6M5 8h6"/><circle cx="8" cy="8" r="3"/>',
-    artillery: '<path d="M2 12h12M4 10l7-7 2 2-7 7M2 14l3-4M12 2l2 2"/><circle cx="5" cy="12" r="2"/>',
-    ground: '<path d="M2 3h12v10H2zM2 3l12 10M14 3 2 13"/>',
-    territory: '<path d="M3 14V2h10l-2 3 2 3H3M1 14h4"/>',
-    naval: '<path d="M3 7h10l-2 5H5zM6 7V4h4v3M8 4V1M1 14l3-1 4 1 4-1 3 1"/>',
-    deploy: '<path d="m3 7 5-4 5 4M3 12l5-4 5 4M3 15h10"/>',
-    hybrid: '<path d="M5 5h6v6H5zM2 2l3 3M11 5l3-3M2 14l3-3M11 11l3 3M8 1v2M8 13v2M1 8h2M13 8h2"/>',
-    incursion: '<path d="M2 8h9M8 5l3 3-3 3M13 2v4M13 10v4"/>',
-    diplo: '<path d="m2 6 3-3 6 10 3-3M2 10l3 3L11 3l3 3M1 8h4M11 8h4"/>',
-    legal: '<path d="M8 2v12M4 14h8M2 4h12M3 4l-2 6h4zM13 4l-2 6h4z"/>',
-    coin: '<path d="m8 1 6 3v8l-6 3-6-3V4zM10 5H6v3h4v3H6M8 3v2M8 11v2"/>',
-    crate: '<path d="m2 5 6-3 6 3v6l-6 3-6-3zM2 5l6 3 6-3M8 8v6M5 3.5l6 3v3"/>',
-    factory: '<path d="M2 14V8l4-3v3l4-3v3h4v6zM11 8V2h3v6M5 11v1M8 11v1M11 11v1"/>',
-    carrier: '<path d="m1 9 2-3h10l2 2-2 4H3zM5 8h6M9 6V3h3v3M5 14h6"/>',
-    alert: '<path d="m8 2 7 12H1zM8 6v4M8 12v.1"/>',
+    missile: '<path d="M13.6 2.4 12.4 7 7 12.4 3.6 9 9 3.6zM9 3.6l3.4 3.4M5.3 10.7 2 14M3.6 9 1.8 9.9l.8 2.1M7 12.4l-.9 1.8 2.1.8"/>',
+    air: '<path d="M8 1.5 9.1 6l5.4 3.9v1.5L9.2 9.9l-.3 3 1.8 1.2v.9L8 14.3 5.3 15v-.9l1.8-1.2-.3-3-5.3 1.5V9.9L6.9 6z"/>',
+    shield: '<path d="M8 1.5 13.5 4v4.2c0 3-2.4 5-5.5 6.3-3.1-1.3-5.5-3.3-5.5-6.3V4zM5.5 8l1.8 1.8L10.8 6.3"/>',
+    blast: '<path d="M8 1.5 9.2 5l3.4-1.6L11 6.8l3.5 1.2-3.5 1.2 1.6 3.4L9.2 11 8 14.5 6.8 11l-3.4 1.6L5 9.2 1.5 8 5 6.8 3.4 3.4 6.8 5z"/><circle cx="8" cy="8" r="1.2"/>',
+    artillery: '<path d="M1.5 13.5C3.5 4 12 3.5 13.6 11.6M11.7 10.4l1.9 1.6 1.4-2.1"/><circle cx="3" cy="13" r="1.4"/>',
+    ground: '<path d="M1.5 3.5h13v9h-13zM1.5 3.5l13 9M14.5 3.5l-13 9"/>',
+    territory: '<path d="M4 15V1.5M4 2.5h8.5L10.6 5.5l1.9 3H4M2 15h4"/>',
+    naval: '<path d="M1.5 9.5h13L12.6 13H3.4zM4 9.5V7.5h7.5v2M6.5 7.5V5h3v2.5M8 5V2M1 15h14"/>',
+    deploy: '<path d="m2.5 7.5 5.5-4 5.5 4M2.5 12l5.5-4 5.5 4M2.5 14.5h11"/>',
+    hybrid: '<path d="M8 1.5 13.6 4.7v6.6L8 14.5l-5.6-3.2V4.7zM5.8 6.2h4.4v3.6H5.8zM8 1.5v4.7M8 9.8v4.7M2.4 4.7l3.4 1.5M13.6 11.3l-3.4-1.5"/>',
+    incursion: '<path d="M12.5 1.5v2.5M12.5 6.5v3M12.5 12v2.5M1.5 8h9M7.5 5l3 3-3 3"/>',
+    diplo: '<path d="M1.5 6 8 2l6.5 4zM3 6.5v6M6.3 6.5v6M9.7 6.5v6M13 6.5v6M1.5 14.5h13M2.2 12.5h11.6"/>',
+    legal: '<path d="M8 1.5v12.5M4.5 14.5h7M2 3.8h12M3.5 3.8 1.5 9h4zM12.5 3.8 10.5 9h4zM1.5 9c.5 1.4 3.5 1.4 4 0M10.5 9c.5 1.4 3.5 1.4 4 0"/>',
+    coin: '<circle cx="8" cy="8" r="6.5"/><path d="M10.2 5.6H7c-1.4 0-1.4 2.4 0 2.4h2c1.4 0 1.4 2.4 0 2.4H5.8M8 3.6v1.9M8 10.5v1.9"/>',
+    crate: '<path d="M2 5.2 8 2l6 3.2v5.6L8 14l-6-3.2zM2 5.2l6 3.2 6-3.2M8 8.4V14M5 3.6l6 3.2v2.4"/>',
+    factory: '<path d="M1.5 14.5V8l4-2.5V8l4-2.5V8h5v6.5zM11 8V1.5h2.5V8M4.5 11h1.5M8 11h1.5M11.5 11H13"/>',
+    carrier: '<path d="M1 9.5 2.6 6.5h11l1.4 2-1.6 3.5H2.6zM4.5 8.5h5.5M10.5 6.5V3.5h2v3M3 14.5h10"/>',
+    alert: '<path d="M8 1.8 14.8 14H1.2zM8 6v4.2M8 11.8v.4"/>',
   };
-  const svgIcon = (name) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">${ICONS[name] || ICONS.blast}</svg>`;
+  const svgIcon = (name) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.15" stroke-linecap="butt" stroke-linejoin="miter" aria-hidden="true">${ICONS[name] || ICONS.blast}</svg>`;
   // "On the map": each entry is also a filter. The key is the marker's icon (see legendKey).
   const LEGEND = [
     ["missile", "strike", "Drone or missile"], ["air", "strike", "Airstrike"],
@@ -680,12 +682,25 @@
       paintedBase = base;
       g.fillStyle = OCEAN;
       g.fillRect(0, 0, W, H);
-      // a fine 10° grid on the ocean, painted into the same picture (no extra layer)
-      g.strokeStyle = "rgba(70, 130, 190, 0.16)";
-      g.lineWidth = W / 4096;
+      // a graticule painted into the same picture (no extra layer): a fine 10° grid, every 30° stronger,
+      // the equator and prime meridian strongest, with 2° ticks along them like a plotting chart
+      const grid = (step, alpha, width) => {
+        g.strokeStyle = `rgba(110, 200, 210, ${alpha})`;
+        g.lineWidth = W / width;
+        g.beginPath();
+        for (let lon = -180; lon <= 180; lon += step) { g.moveTo(X(lon), 0); g.lineTo(X(lon), H); }
+        for (let lat = -90 + step; lat < 90; lat += step) { g.moveTo(0, Y(lat)); g.lineTo(W, Y(lat)); }
+        g.stroke();
+      };
+      grid(10, 0.09, 4096);
+      grid(30, 0.16, 3072);
+      g.strokeStyle = "rgba(110, 200, 210, 0.26)";
+      g.lineWidth = W / 2048;
       g.beginPath();
-      for (let lon = -180; lon <= 180; lon += 10) { g.moveTo(X(lon), 0); g.lineTo(X(lon), H); }
-      for (let lat = -80; lat <= 80; lat += 10) { g.moveTo(0, Y(lat)); g.lineTo(W, Y(lat)); }
+      g.moveTo(0, Y(0)); g.lineTo(W, Y(0)); g.moveTo(X(0), 0); g.lineTo(X(0), H);
+      const tick = H / 360;
+      for (let lon = -180; lon <= 180; lon += 2) { g.moveTo(X(lon), Y(0) - tick); g.lineTo(X(lon), Y(0) + tick); }
+      for (let lat = -88; lat <= 88; lat += 2) { g.moveTo(X(0) - tick, Y(lat)); g.lineTo(X(0) + tick, Y(lat)); }
       g.stroke();
       for (const f of landShapes) {
         g.fillStyle = landColor(f);
@@ -763,10 +778,23 @@
       world.arcStroke(arcStroke);
     }
   }
+  // Instrument readouts over the globe: the camera's centre and height, and the point under the pointer.
+  const dms = (v, pos, neg, w) => `${String(Math.abs(v).toFixed(2)).padStart(w, "0")}°${v >= 0 ? pos : neg}`;
+  const latLonText = (lat, lon) => `${dms(lat, "N", "S", 5)} ${dms(((lon + 540) % 360) - 180, "E", "W", 6)}`;
+  const camRead = document.getElementById("camRead"), cursorRead = document.getElementById("cursorRead");
+  let camQueued = false;
+  function showCamera() {
+    camQueued = false;
+    if (!camRead) return;
+    const p = world.pointOfView();
+    camRead.textContent = `CAM ${latLonText(p.lat, p.lng)}  ALT ${Math.round(p.altitude * 6371).toLocaleString("en-US")} KM`;
+  }
   world.onZoom(() => {
     if (!moving) applyZoomScale();
     queueDeclutter();
+    if (!camQueued) { camQueued = true; requestAnimationFrame(showCamera); }
   });
+  requestAnimationFrame(showCamera);
 
   // Lines, dots and rings keep their identity from one render to the next (same key, same object),
   // so ones already drawn don't rise from the ground again and rings don't restart; new ones still
@@ -1247,6 +1275,17 @@
     return L ? { L, lat: at.lat, lng: at.lng } : null;
   }
   function hideControlTip() { if (ctlTip) { ctlTip = false; hideTip(); } }
+  let cursorQueued = null;
+  globeCanvas.addEventListener("pointermove", (ev) => {
+    if (ev.pointerType !== "mouse" || !cursorRead) return;
+    if (!cursorQueued) requestAnimationFrame(() => {
+      const r = globeCanvas.getBoundingClientRect(), at = world.toGlobeCoords(cursorQueued.x - r.left, cursorQueued.y - r.top);
+      cursorRead.textContent = at ? `PTR ${latLonText(at.lat, at.lng)}` : "PTR OFF-GLOBE";
+      cursorQueued = null;
+    });
+    cursorQueued = { x: ev.clientX, y: ev.clientY };
+  });
+  globeCanvas.addEventListener("pointerleave", () => { if (cursorRead) cursorRead.textContent = "PTR ——"; });
   globeCanvas.addEventListener("pointermove", (ev) => {
     if (ev.pointerType !== "mouse") return;
     const first = !ctlQueued;

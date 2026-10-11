@@ -1,0 +1,140 @@
+/* Command — a quieter, instrument-grade skin over the atlas (the owner, 2026-10-11: "more
+   serious/professional ... like a futuristic military command and less like a game").
+   Hairline frames with corner brackets, square corners, monospaced data readouts, a plotting-chart
+   grid behind the globe, and symbol-style markers. Colours keep their meanings: icon and colour
+   show what happened, the frame style (solid / outline / dashed) shows confidence. */
+:root {
+  --mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --signal: #7fe3c8;
+  --signal-rgb: 127, 227, 200;
+  --panel: rgba(5, 11, 15, .93);
+  --panel-solid: #060c11;
+  --line: rgba(127, 227, 200, .11);
+  --line-strong: rgba(127, 227, 200, .26);
+  --bracket: rgba(127, 227, 200, .55);
+}
+
+/* ---------------------------------------------------------------- backdrop: a plotting grid */
+body { background: radial-gradient(ellipse at 50% 46%, #0d1f27 0%, #060d13 50%, #020507 88%); }
+body::before {
+  background-image:
+    linear-gradient(rgba(var(--signal-rgb), .045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(var(--signal-rgb), .045) 1px, transparent 1px);
+  background-size: 64px 64px; background-position: center; opacity: 1;
+}
+
+/* ---------------------------------------------------------------- panels: hairline frames, corner brackets */
+.panel {
+  border-radius: 2px;
+  border-color: var(--line);
+  background-color: var(--panel);
+  background-image:
+    linear-gradient(var(--bracket), var(--bracket)), linear-gradient(var(--bracket), var(--bracket)),
+    linear-gradient(var(--bracket), var(--bracket)), linear-gradient(var(--bracket), var(--bracket)),
+    linear-gradient(var(--bracket), var(--bracket)), linear-gradient(var(--bracket), var(--bracket)),
+    linear-gradient(var(--bracket), var(--bracket)), linear-gradient(var(--bracket), var(--bracket));
+  background-repeat: no-repeat;
+  background-size: 10px 1px, 1px 10px, 10px 1px, 1px 10px, 10px 1px, 1px 10px, 10px 1px, 1px 10px;
+  background-position: left top, left top, right top, right top, left bottom, left bottom, right bottom, right bottom;
+  box-shadow: 0 10px 40px #0007, inset 0 1px 0 rgba(var(--signal-rgb), .04);
+}
+.brand { background: none; }
+.feed, .filters, .brand-row, .status-cluster { border-radius: 2px; }
+.feed-head { background: linear-gradient(180deg, rgba(var(--signal-rgb), .045), transparent); border-bottom: 1px solid var(--line); }
+
+/* ---------------------------------------------------------------- type: labels and data in mono */
+.eyebrow, .note, h2 .note, .region-kicker, .dock-time > .eyebrow, .map-hint, kbd, .feed-count,
+.live-clock, .live-tag, .freshness, .stat > span, .stat small, .item-meta, .item-meta time, .item-foot,
+.region-btn .count, .tip-meta, .tip-foot, .fly-sub, .fly-rows time, .detail-type, .detail-where,
+.brief-head time, .brief-note, .seg button, .region-actions button, .dock-button span, .mk-label, .mk-count,
+.scope-read, .target-meta, .chip, .chip-badge {
+  font-family: var(--mono);
+  font-feature-settings: "zero" 1;
+}
+.eyebrow, .region-kicker, .fly-sub, .detail-type, .dock-time > .eyebrow { text-transform: uppercase; letter-spacing: .14em; font-weight: 500; }
+.eyebrow { color: rgba(var(--signal-rgb), .62); }
+.filters h2, .side-title, .brief-head h3, .detail h2, .reports-title {
+  font-family: var(--mono); font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: .16em; color: var(--ink-2);
+}
+.feed-head h2 { font-family: var(--mono); font-size: 15px; font-weight: 500; text-transform: uppercase; letter-spacing: .18em; }
+.wordmark { font-weight: 600; letter-spacing: -.02em; }
+.wordmark span { font-weight: 300; }
+.tally strong, .status-cluster .tally strong { font-family: var(--mono); font-weight: 500; letter-spacing: -.02em; color: var(--signal); text-shadow: 0 0 18px rgba(var(--signal-rgb), .25); }
+.stat > span { text-transform: uppercase; letter-spacing: .1em; font-size: 9px; }
+.item-meta, .item-foot { text-transform: uppercase; letter-spacing: .06em; font-size: 9.5px; }
+.item-summary { font-weight: 450; letter-spacing: -.003em; }
+.feed-count { border-radius: 2px; letter-spacing: .08em; }
+
+/* the live light: a square status lamp */
+.beacon { border-radius: 1px; }
+.live-tag { letter-spacing: .14em; text-transform: uppercase; }
+
+/* ---------------------------------------------------------------- controls: square, precise */
+.region-btn, .region-actions button, .legend-item, .check, .chip, .icon-btn, .filters-toggle, .seg, .seg::before,
+.seg button, .search input, .brief, .item, .tip, .fly, .fly-rows button, .fly-zoom, .region-focus, .region-focus button,
+.focus-toast, .feed-count, .sheet-handle::after, kbd, .map-dock, .map-dock .seg, .map-dock .seg::before, .target, .chip-badge {
+  border-radius: 2px;
+}
+.region-btn[aria-pressed=true] { background: rgba(var(--signal-rgb), .06); border-color: rgba(var(--signal-rgb), .28); box-shadow: inset 2px 0 0 var(--signal); }
+.region-mark { border-radius: 0; }
+.map-dock .seg { background: #01060a; border: 1px solid var(--line); }
+.map-dock .seg::before { background: rgba(var(--signal-rgb), .16); box-shadow: inset 0 0 0 1px rgba(var(--signal-rgb), .6); }
+.map-dock .seg button[aria-pressed=true] { color: var(--signal); }
+.map-dock .seg button { letter-spacing: .06em; }
+.search::before { content: ">"; font-family: var(--mono); font-size: 13px; top: 13px; left: 13px; color: var(--signal); }
+.search input { font-family: var(--mono); font-size: 12px; letter-spacing: .02em; background: #01060acc; }
+.search input::placeholder { text-transform: uppercase; letter-spacing: .1em; font-size: 10.5px; color: var(--ink-3); }
+.item { border-left: 2px solid transparent; }
+.item:hover { background: rgba(var(--signal-rgb), .035); border-color: var(--line); border-left-color: var(--signal); }
+.brief { background: rgba(var(--signal-rgb), .03); border-color: var(--line); box-shadow: inset 2px 0 0 rgba(var(--signal-rgb), .5); }
+.brief-head h3 { color: var(--signal); }
+.tip { background: #050b10f5; border: 1px solid var(--line-strong); box-shadow: 0 8px 30px #000a, inset 2px 0 0 rgba(var(--c, 127, 227, 200), .9); }
+.mk-fly .fly-tail { opacity: .7; }
+
+/* ---------------------------------------------------------------- map symbols */
+.mk:not(.mk-cvn) .mk-in, .ico { border-radius: 1px; border-width: 1px; }
+.mk.conf-solid:not(.mk-cvn) .mk-in, .ico.conf-solid {
+  background: color-mix(in srgb, rgb(var(--c)) 20%, #03080c);
+  color: rgb(var(--c));
+  border-color: rgb(var(--c));
+  box-shadow: 0 0 0 1px #02060ad0, 0 0 10px rgba(var(--c), .28);
+}
+.mk.conf-outline:not(.mk-cvn) .mk-in, .ico.conf-outline { background: #03080ce8; border-color: rgba(var(--c), .75); box-shadow: 0 0 0 1px #02060ad0; }
+.mk.conf-dashed:not(.mk-cvn) .mk-in, .ico.conf-dashed { background: #03080ce8; border-color: rgba(var(--c), .8); box-shadow: 0 0 0 1px #02060ad0; }
+.mk:not(.mk-cvn) .mk-in svg, .ico svg { width: 74%; height: 74%; }
+.mk-cvn .mk-in { border-radius: 1px; background: #03080ced; border: 1px solid rgba(205, 228, 255, .7); }
+.mk-label {
+  border-radius: 1px; font-size: 10px; font-weight: 500; letter-spacing: .02em;
+  background: #03080ce6; border: 1px solid var(--line); border-left: 2px solid rgb(var(--c, 127, 227, 200));
+}
+.mk-count { border-radius: 1px; font-weight: 500; }
+.mk.is-selected .mk-in { box-shadow: 0 0 0 1px #02060a, 0 0 0 3px var(--ink), 0 0 18px rgba(var(--c), .5); }
+
+/* cluster counts and "new" tags: square readout chips, not bubbles */
+.mk.cluster-lead .mk-count {
+  border-radius: 1px; height: 15px; min-width: 17px; padding: 0 4px; top: -8px; right: -10px;
+  background: #02070a; color: var(--ink); border: 1px solid rgba(var(--c), .85);
+  font: 600 9.5px/1 var(--mono); box-shadow: none;
+}
+.item.is-new .item-type::after {
+  border-radius: 1px; padding: 1px 4px; background: transparent; color: var(--accent);
+  border: 1px solid var(--accent); font: 600 8.5px/1.3 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+}
+.filters-toggle { font-family: var(--mono); text-transform: uppercase; letter-spacing: .12em; font-size: 11px; }
+
+/* ---------------------------------------------------------------- the scope over the globe */
+.scope { grid-column: 2; grid-row: 2; position: relative; pointer-events: none; z-index: 0; margin: 4px 6px 0; }
+.scope-c { position: absolute; width: 22px; height: 22px; border: 0 solid rgba(var(--signal-rgb), .42); }
+.scope-c.tl { left: 0; top: 0; border-left-width: 1px; border-top-width: 1px; }
+.scope-c.tr { right: 0; top: 0; border-right-width: 1px; border-top-width: 1px; }
+.scope-c.bl { left: 0; bottom: 0; border-left-width: 1px; border-bottom-width: 1px; }
+.scope-c.br { right: 0; bottom: 0; border-right-width: 1px; border-bottom-width: 1px; }
+.scope-cross { position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%); opacity: .35;
+  background: linear-gradient(rgba(var(--signal-rgb), .9), rgba(var(--signal-rgb), .9)) center/1px 100% no-repeat,
+              linear-gradient(rgba(var(--signal-rgb), .9), rgba(var(--signal-rgb), .9)) center/100% 1px no-repeat;
+  -webkit-mask: radial-gradient(circle, transparent 3px, #000 3.5px); mask: radial-gradient(circle, transparent 3px, #000 3.5px); }
+.scope-read { position: absolute; left: 30px; right: 30px; bottom: 6px; display: flex; justify-content: space-between; gap: 16px;
+  font-size: 9.5px; letter-spacing: .08em; color: rgba(var(--signal-rgb), .7); white-space: nowrap; }
+.focused .scope-cross, .focus .scope-cross { opacity: .15; }
+@media (max-width: 1023px) { .scope { display: none; } }
+@media (min-width: 1024px) and (max-width: 1190px) { .scope-read span:first-child { display: none; } }
