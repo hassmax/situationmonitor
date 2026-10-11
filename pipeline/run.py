@@ -42,6 +42,9 @@ import recency  # noqa: E402
 from common import hours_since, http_session, iso, load_json, log, make_item, now, save_json  # noqa: E402
 from sources import bluesky, gdelt, maproom, rss, telegram  # noqa: E402
 
+# The incident checks (incidents.py) need a few calls in a row: none starts with less room.
+INCIDENT_MIN_ROOM = 3
+
 
 def default_state() -> dict:
     return {"version": 1, "seen": {}, "pending": [], "geocache": {}, "health": {}}
@@ -298,12 +301,16 @@ def main() -> int:
         if same:
             merge.apply_status(events, cells)
         # Group current coverage before spending remaining capacity on historical campaigns.
-        events = incidents.repair(events, state, extract.ask_json, settings, t0, geocoder, cfg.theaters, hidden)
+        # Each takes a few calls in a row and keeps the originals if one fails, so neither starts
+        # without room for that many under its daily share (extract.SHARES; providers.ROUTES).
+        if extract.room(state, settings, t0, "incident_repair") >= INCIDENT_MIN_ROOM:
+            events = incidents.repair(events, state, extract.ask_json, settings, t0, geocoder, cfg.theaters, hidden)
         # The publication-boundary review includes archive restorations and every
         # newly split historical record, so later stages cannot recreate duplicates.
-        events, episodes = incidents.group_facility_episodes(events, state, extract.ask_json, settings, t0,
-                                                            hidden | cfg.removed, geocoder, cfg.theaters)
-        folded += episodes
+        if extract.room(state, settings, t0, "incident_grouping") >= INCIDENT_MIN_ROOM:
+            events, episodes = incidents.group_facility_episodes(events, state, extract.ask_json, settings, t0,
+                                                                hidden | cfg.removed, geocoder, cfg.theaters)
+            folded += episodes
         merge.apply_status(events, cells)
     # A follow-up may have restored an archived event. Apply the working-set cap to it too.
     events = merge.prune(events, t0, settings["event_retention_days"], settings["max_events"])

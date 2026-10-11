@@ -154,3 +154,32 @@ def test_a_call_bigger_than_the_minute_waits_for_a_clear_minute(monkeypatch):
     assert providers._pace(p, 36000, max_wait=65) and clock[0] > 1050    # waited for the minute to clear
     providers._recent["cerebras"] = [(clock[0] - 1, 3000)]
     assert not providers._pace(p, 36000)                                 # 25 s is not enough
+
+
+def test_the_extract_share_is_held_back_from_other_jobs():
+    # 2026-10-11: the other jobs used all of Cerebras' day while Gemini's calls were gone too,
+    # so no post could be read for six hours. Extraction's unused share now stays free for it.
+    env = {"CEREBRAS_API_KEY": "c"}
+    p = providers.configured({})["cerebras"]
+    state = {"providers": {"cerebras": {"date": "2026-10-04", "count": 50, "tokens": 745_000, "by": {}}}}
+    hold = providers.ROUTES["extract"]["cerebras"]
+    assert providers.held(p, state, NOW, "analysis") == hold
+    assert providers.held(p, state, NOW, "extract") == 0
+    assert not providers.has_room(p, None, state, NOW, "analysis", 20_000, env)    # 745K + 20K > 900K - 150K
+    assert providers.has_room(p, None, state, NOW, "extract", 20_000, env)
+    assert providers.room(state, SETTINGS, NOW, "frontline_social", env) == 0
+    # once extraction has used its share, the hold is gone
+    state["providers"]["cerebras"]["by"]["extract"] = {"calls": 9, "tokens": hold}
+    assert providers.held(p, state, NOW, "analysis") == 0
+
+
+def test_route_shares_fit_within_the_daily_cap():
+    total = sum(r.get("cerebras", 0) for r in providers.ROUTES.values())
+    assert total <= providers.configured({})["cerebras"]["daily_tokens"]
+
+
+def test_the_incident_checks_have_daily_gemini_shares():
+    state = {"llm_calls": {"date": "2026-10-04", "count": 100,
+                           "by": {"incident_grouping": 30, "incident_repair": 12}}}
+    assert extract.share_left(state, SETTINGS, NOW, "incident_grouping") <= 0
+    assert extract.share_left(state, SETTINGS, NOW, "incident_repair") <= 0

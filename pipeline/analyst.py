@@ -309,7 +309,7 @@ def update(state: dict, events: list[dict], theaters: list[dict], carriers: list
     order = settings.get("analysis_order") or ORDER
     outside = [providers.configured(settings).get(s) for s in order if s not in ("gemini-flash", "gemini")]
     caps = {p["name"]: cap for p, cap in providers.routes(settings, "analysis")}
-    outside = [p for p in outside if p and providers.has_room(p, caps.get(p["name"]), state, now, "analysis", 0)]
+    outside = [p for p in outside if p and providers.has_room(p, caps.get(p["name"]), state, now, "analysis", 0, settings=settings)]
     if remaining < int(settings.get("brief_min_calls", 5)):
         share = 0  # Gemini's day is nearly used up: outside providers only
     if share <= 0 and not outside:
@@ -340,7 +340,7 @@ def update(state: dict, events: list[dict], theaters: list[dict], carriers: list
                 # Cerebras counts the prompt and the answer allowance against its minute's limit: a full
                 # request (about 24,000 tokens plus 8,000, 2026-10-04) was refused even in a clear minute
                 seen, sent = _fit(shown, payload, int(p["tokens_per_minute"]) - 8000)
-            if not providers.has_room(p, caps.get(step), state, now, "analysis", extract_tokens(PROMPT + sent) + 2000):
+            if not providers.has_room(p, caps.get(step), state, now, "analysis", extract_tokens(PROMPT + sent) + 2000, settings=settings):
                 continue
             reply, model = providers.ask_json(p, PROMPT, sent, state, now, max_tokens=8000, purpose="analysis",
                                               max_wait=ANALYSIS_WAIT)

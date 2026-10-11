@@ -332,11 +332,15 @@ SHARES = {"dedupe": "dedupe_daily_max", "recency": "recency_daily_max", "maproom
           "frontline": "frontline_daily_max", "frontline_review": "frontline_review_daily_max",
           "frontline_isw": "frontline_isw_daily_max", "analysis": "analysis_daily_max",
           "frontline_social": "frontline_social_daily_max", "frontline_imagery": "frontline_imagery_daily_max",
-          "frontline_news": "frontline_news_daily_max"}
+          "frontline_news": "frontline_news_daily_max", "incident_grouping": "incident_grouping_daily_max",
+          "incident_repair": "incident_repair_daily_max"}
 SHARE_DEFAULTS = {"dedupe_daily_max": 140, "recency_daily_max": 48, "maproom_daily_max": 16,
                   "frontline_daily_max": 40, "frontline_review_daily_max": 60, "frontline_isw_daily_max": 60,
                   "analysis_daily_max": 24, "frontline_social_daily_max": 40, "frontline_imagery_daily_max": 8,
-                  "frontline_news_daily_max": 24}
+                  "frontline_news_daily_max": 24,
+                  # the incident checks (incidents.py) had none until 2026-10-11, when they took 143 of
+                  # the 470 calls and reading new posts stopped at 17:40 UTC with 400 posts waiting
+                  "incident_grouping_daily_max": 30, "incident_repair_daily_max": 12}
 SHARE_BURST = 4
 # Not paced over the day: ISW's maps come out together, around 01:00 UTC, and are read as they come;
 # ISW's written reports are read up front (two weeks' backlog first), then as they come.

@@ -43,15 +43,15 @@ DEFAULTS = [
 # Which purposes go to which providers first, with each purpose's daily token share there. Image
 # reading (the Map Room) stays on Gemini. Together the shares stay within Cerebras' daily cap.
 ROUTES = {
-    "analysis": {"cerebras": 380_000},
-    "incident_repair": {"cerebras": 150_000},  # bounded legacy campaign migration
-    "incident_grouping": {"cerebras": 150_000},  # continuing coverage of specific facilities
+    "analysis": {"cerebras": 300_000},
+    "incident_repair": {"cerebras": 60_000},  # bounded legacy campaign migration
+    "incident_grouping": {"cerebras": 100_000},  # continuing coverage of specific facilities
     "recency": {"cerebras": 50_000},
-    "frontline_review": {"cerebras": 80_000},
-    "frontline_isw": {"cerebras": 100_000},
-    "frontline": {"cerebras": 60_000},
-    "extract": {"cerebras": 110_000},   # overflow only: when Gemini can't take the batches
-    "frontline_social": {"cerebras": 120_000},
+    "frontline_review": {"cerebras": 60_000},
+    "frontline_isw": {"cerebras": 60_000},
+    "frontline": {"cerebras": 50_000},
+    "extract": {"cerebras": 150_000},   # overflow only: when Gemini can't take the batches; held for it (`held`)
+    "frontline_social": {"cerebras": 70_000},
 }
 MAX_WAIT = 25          # seconds a call may wait for the minute's token limit before going to Gemini
 COOL_DOWN = 60         # seconds a provider is left alone after a rate-limit refusal
@@ -112,12 +112,26 @@ def typical(state: dict, name: str, now, purpose: str) -> int:
     return int(by["tokens"] / by["calls"]) if by.get("calls") else TYPICAL_CALL
 
 
-def has_room(p: dict, cap: int | None, state: dict, now, purpose: str, need: int, env=os.environ) -> bool:
+def held(p: dict, state: dict, now, purpose: str, settings: dict | None = None) -> int:
+    """Tokens of `p`'s day kept back for reading new posts: the unused part of the "extract" route's
+    share there, which no other job may take. On 2026-10-11 the other jobs used Cerebras' whole day
+    while Gemini's calls were also gone, so no post was read for six hours."""
+    if purpose == "extract":
+        return 0
+    table = (settings or {}).get("provider_routes")
+    table = ROUTES if table is None else table
+    share = int(((table.get("extract") or {}).get(p["name"])) or 0)
+    used = int((_rec(state, p["name"], now)["by"].get("extract") or {}).get("tokens", 0))
+    return max(0, share - used)
+
+
+def has_room(p: dict, cap: int | None, state: dict, now, purpose: str, need: int, env=os.environ,
+             settings: dict | None = None) -> bool:
     """Whether `p` can take a call of about `need` tokens for `purpose` today."""
     if not available(p, state, now, env):
         return False
     rec = _rec(state, p["name"], now)
-    if p.get("daily_tokens") and rec["tokens"] + need > int(p["daily_tokens"]):
+    if p.get("daily_tokens") and rec["tokens"] + need > int(p["daily_tokens"]) - held(p, state, now, purpose, settings):
         return False
     return not cap or int((rec["by"].get(purpose) or {}).get("tokens", 0)) + need <= cap
 
@@ -132,7 +146,7 @@ def room(state: dict, settings: dict, now, purpose: str, env=os.environ) -> int:
         rec = _rec(state, p["name"], now)
         left = [int(p.get("daily_max", 40)) - rec["count"]]
         if p.get("daily_tokens"):
-            left.append((int(p["daily_tokens"]) - rec["tokens"]) // size)
+            left.append((int(p["daily_tokens"]) - held(p, state, now, purpose, settings) - rec["tokens"]) // size)
         if cap:
             left.append((cap - int((rec["by"].get(purpose) or {}).get("tokens", 0))) // size)
         best = max(best, min(left))
@@ -254,7 +268,7 @@ def ask_routed(system_prompt: str, user_text: str, state: dict, settings: dict, 
         max_wait = max(max_wait, 60)  # finish a partition across minute boundaries
     need = extract._estimate_tokens(system_prompt) + extract._estimate_tokens(user_text) + max_tokens // 4
     for p, cap in routes(settings, purpose):
-        if not has_room(p, cap, state, now, purpose, need, env):
+        if not has_room(p, cap, state, now, purpose, need, env, settings):
             continue
         reply, _ = ask_json(p, system_prompt, user_text, state, now, max_tokens, env, purpose, temperature, max_wait, effort)
         if reply is not None:
