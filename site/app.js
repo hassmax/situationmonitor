@@ -67,29 +67,33 @@
     ceasefire: ["diplo", "diplo", ""], legal: ["diplo", "legal", ""], arms_transfer: ["supply", "crate", ""],
     production: ["supply", "factory", ""],
   };
-  const CAT_RGB = { strike: [255, 91, 58], ground: [245, 165, 36], naval: [76, 195, 255], deploy: [159, 184, 212],
-    hybrid: [177, 140, 255], diplo: [233, 238, 245], supply: [63, 193, 201], aid: [96, 214, 122], fleet: [205, 228, 255] };
+  // Muted, briefing-room colours (the owner, 2026-10-11: "something a president would have on"):
+  // still one colour per kind of event, never bright.
+  const CAT_RGB = { strike: [207, 106, 93], ground: [196, 164, 106], naval: [127, 166, 198], deploy: [150, 168, 190],
+    hybrid: [155, 147, 191], diplo: [196, 205, 216], supply: [111, 176, 174], aid: [131, 176, 143], fleet: [227, 233, 240] };
+  // Precise, symbol-style glyphs on a 16-unit grid (the owner, 2026-10-11: "more serious/professional ...
+  // like a futuristic military command and less like a game"). Infantry is the NATO crossed box.
   const ICONS = {
-    missile: '<path d="m12 2 2 2-5 7-4-4zM5 7l-3 1 2 2M9 11l-1 3-2-2M4 12l-2 2M10 4l2 2"/>',
-    air: '<path d="M8 1v12M8 4l6 5v2l-6-2-6 2V9zM5 14l3-2 3 2"/>',
-    shield: '<path d="m8 1 6 3v4c0 3-3 5-6 7-3-2-6-4-6-7V4zM5 8l2 2 4-4"/>',
-    blast: '<path d="M2 5V2h3M11 2h3v3M14 11v3h-3M5 14H2v-3M8 5v6M5 8h6"/><circle cx="8" cy="8" r="3"/>',
-    artillery: '<path d="M2 12h12M4 10l7-7 2 2-7 7M2 14l3-4M12 2l2 2"/><circle cx="5" cy="12" r="2"/>',
-    ground: '<path d="M2 3h12v10H2zM2 3l12 10M14 3 2 13"/>',
-    territory: '<path d="M3 14V2h10l-2 3 2 3H3M1 14h4"/>',
-    naval: '<path d="M3 7h10l-2 5H5zM6 7V4h4v3M8 4V1M1 14l3-1 4 1 4-1 3 1"/>',
-    deploy: '<path d="m3 7 5-4 5 4M3 12l5-4 5 4M3 15h10"/>',
-    hybrid: '<path d="M5 5h6v6H5zM2 2l3 3M11 5l3-3M2 14l3-3M11 11l3 3M8 1v2M8 13v2M1 8h2M13 8h2"/>',
-    incursion: '<path d="M2 8h9M8 5l3 3-3 3M13 2v4M13 10v4"/>',
-    diplo: '<path d="m2 6 3-3 6 10 3-3M2 10l3 3L11 3l3 3M1 8h4M11 8h4"/>',
-    legal: '<path d="M8 2v12M4 14h8M2 4h12M3 4l-2 6h4zM13 4l-2 6h4z"/>',
-    coin: '<path d="m8 1 6 3v8l-6 3-6-3V4zM10 5H6v3h4v3H6M8 3v2M8 11v2"/>',
-    crate: '<path d="m2 5 6-3 6 3v6l-6 3-6-3zM2 5l6 3 6-3M8 8v6M5 3.5l6 3v3"/>',
-    factory: '<path d="M2 14V8l4-3v3l4-3v3h4v6zM11 8V2h3v6M5 11v1M8 11v1M11 11v1"/>',
-    carrier: '<path d="m1 9 2-3h10l2 2-2 4H3zM5 8h6M9 6V3h3v3M5 14h6"/>',
-    alert: '<path d="m8 2 7 12H1zM8 6v4M8 12v.1"/>',
+    missile: '<path d="M13.6 2.4 12.4 7 7 12.4 3.6 9 9 3.6zM9 3.6l3.4 3.4M5.3 10.7 2 14M3.6 9 1.8 9.9l.8 2.1M7 12.4l-.9 1.8 2.1.8"/>',
+    air: '<path d="M8 1.5 9.1 6l5.4 3.9v1.5L9.2 9.9l-.3 3 1.8 1.2v.9L8 14.3 5.3 15v-.9l1.8-1.2-.3-3-5.3 1.5V9.9L6.9 6z"/>',
+    shield: '<path d="M8 1.5 13.5 4v4.2c0 3-2.4 5-5.5 6.3-3.1-1.3-5.5-3.3-5.5-6.3V4zM5.5 8l1.8 1.8L10.8 6.3"/>',
+    blast: '<path d="M8 1.5 9.2 5l3.4-1.6L11 6.8l3.5 1.2-3.5 1.2 1.6 3.4L9.2 11 8 14.5 6.8 11l-3.4 1.6L5 9.2 1.5 8 5 6.8 3.4 3.4 6.8 5z"/><circle cx="8" cy="8" r="1.2"/>',
+    artillery: '<path d="M1.5 13.5C3.5 4 12 3.5 13.6 11.6M11.7 10.4l1.9 1.6 1.4-2.1"/><circle cx="3" cy="13" r="1.4"/>',
+    ground: '<path d="M1.5 3.5h13v9h-13zM1.5 3.5l13 9M14.5 3.5l-13 9"/>',
+    territory: '<path d="M4 15V1.5M4 2.5h8.5L10.6 5.5l1.9 3H4M2 15h4"/>',
+    naval: '<path d="M1.5 9.5h13L12.6 13H3.4zM4 9.5V7.5h7.5v2M6.5 7.5V5h3v2.5M8 5V2M1 15h14"/>',
+    deploy: '<path d="m2.5 7.5 5.5-4 5.5 4M2.5 12l5.5-4 5.5 4M2.5 14.5h11"/>',
+    hybrid: '<path d="M8 1.5 13.6 4.7v6.6L8 14.5l-5.6-3.2V4.7zM5.8 6.2h4.4v3.6H5.8zM8 1.5v4.7M8 9.8v4.7M2.4 4.7l3.4 1.5M13.6 11.3l-3.4-1.5"/>',
+    incursion: '<path d="M12.5 1.5v2.5M12.5 6.5v3M12.5 12v2.5M1.5 8h9M7.5 5l3 3-3 3"/>',
+    diplo: '<path d="M1.5 6 8 2l6.5 4zM3 6.5v6M6.3 6.5v6M9.7 6.5v6M13 6.5v6M1.5 14.5h13M2.2 12.5h11.6"/>',
+    legal: '<path d="M8 1.5v12.5M4.5 14.5h7M2 3.8h12M3.5 3.8 1.5 9h4zM12.5 3.8 10.5 9h4zM1.5 9c.5 1.4 3.5 1.4 4 0M10.5 9c.5 1.4 3.5 1.4 4 0"/>',
+    coin: '<circle cx="8" cy="8" r="6.5"/><path d="M10.2 5.6H7c-1.4 0-1.4 2.4 0 2.4h2c1.4 0 1.4 2.4 0 2.4H5.8M8 3.6v1.9M8 10.5v1.9"/>',
+    crate: '<path d="M2 5.2 8 2l6 3.2v5.6L8 14l-6-3.2zM2 5.2l6 3.2 6-3.2M8 8.4V14M5 3.6l6 3.2v2.4"/>',
+    factory: '<path d="M1.5 14.5V8l4-2.5V8l4-2.5V8h5v6.5zM11 8V1.5h2.5V8M4.5 11h1.5M8 11h1.5M11.5 11H13"/>',
+    carrier: '<path d="M1 9.5 2.6 6.5h11l1.4 2-1.6 3.5H2.6zM4.5 8.5h5.5M10.5 6.5V3.5h2v3M3 14.5h10"/>',
+    alert: '<path d="M8 1.8 14.8 14H1.2zM8 6v4.2M8 11.8v.4"/>',
   };
-  const svgIcon = (name) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.25" stroke-linecap="square" stroke-linejoin="miter" aria-hidden="true">${ICONS[name] || ICONS.blast}</svg>`;
+  const svgIcon = (name) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="butt" stroke-linejoin="miter" aria-hidden="true">${ICONS[name] || ICONS.blast}</svg>`;
   // "On the map": each entry is also a filter. The key is the marker's icon (see legendKey).
   const LEGEND = [
     ["missile", "strike", "Drone or missile"], ["air", "strike", "Airstrike"],
@@ -103,7 +107,42 @@
   const PLATFORM = { bluesky: "Bluesky", telegram: "Telegram", rss: "News feed", gdelt: "GDELT", map: "Map data", maproom: "ISW map", adsb: "Flight tracking" };
   const KIND = { official: "Official", partisan: "Partisan", osint: "OSINT", news: "News", analysis: "Analysis" };
   const WINDOWS = [["6h", 6], ["24h", 24], ["3d", 72], ["7d", 168]];
-  const ACCENT = [255, 90, 54];  // live, new and selected (styles.css --accent)
+  const ACCENT = [232, 238, 245];  // selection rings: white (styles.css --select)
+  // Major cities, named on the globe only while a region is focused (the owner, 2026-10-11: "Make
+  // sure major cities are added to the map. They should only appear if region is focused").
+  // [name, lat, lon, capital]. Reference points only: they say nothing about who holds a place.
+  const CITIES = {
+    ukraine: [["Kyiv", 50.45, 30.52, 1], ["Moscow", 55.76, 37.62, 1], ["Minsk", 53.9, 27.56, 1], ["Chisinau", 47.01, 28.86, 1],
+      ["Kharkiv", 49.99, 36.23], ["Odesa", 46.48, 30.72], ["Dnipro", 48.46, 35.05], ["Zaporizhzhia", 47.84, 35.14], ["Lviv", 49.84, 24.03],
+      ["Donetsk", 48.0, 37.8], ["Luhansk", 48.57, 39.31], ["Kherson", 46.64, 32.62], ["Mykolaiv", 46.97, 32.0], ["Sumy", 50.91, 34.8],
+      ["Sevastopol", 44.62, 33.52], ["Simferopol", 44.95, 34.1], ["Belgorod", 50.6, 36.59], ["Kursk", 51.73, 36.19], ["Rostov-on-Don", 47.24, 39.71],
+      ["Bryansk", 53.24, 34.36], ["Voronezh", 51.67, 39.18], ["Pokrovsk", 48.28, 37.18]],
+    nato_east: [["Warsaw", 52.23, 21.01, 1], ["Vilnius", 54.69, 25.28, 1], ["Riga", 56.95, 24.11, 1], ["Tallinn", 59.44, 24.75, 1], ["Helsinki", 60.17, 24.94, 1],
+      ["Stockholm", 59.33, 18.07, 1], ["Oslo", 59.91, 10.75, 1], ["Copenhagen", 55.68, 12.57, 1], ["Berlin", 52.52, 13.4, 1], ["Bucharest", 44.43, 26.1, 1],
+      ["Prague", 50.08, 14.44, 1], ["London", 51.51, -0.13, 1], ["Paris", 48.86, 2.35, 1], ["Brussels", 50.85, 4.35, 1], ["Kaliningrad", 54.71, 20.51],
+      ["St Petersburg", 59.93, 30.36], ["Gdansk", 54.35, 18.65], ["Rzeszow", 50.04, 22.0], ["Constanta", 44.18, 28.63], ["Murmansk", 68.97, 33.08]],
+    mideast: [["Riyadh", 24.71, 46.68, 1], ["Tehran", 35.69, 51.39, 1], ["Baghdad", 33.31, 44.36, 1], ["Damascus", 33.51, 36.29, 1], ["Beirut", 33.89, 35.5, 1],
+      ["Jerusalem", 31.77, 35.21], ["Amman", 31.95, 35.93, 1], ["Sanaa", 15.37, 44.21, 1], ["Aden", 12.79, 45.03], ["Hodeidah", 14.8, 42.95],
+      ["Doha", 25.29, 51.53, 1], ["Abu Dhabi", 24.45, 54.37, 1], ["Dubai", 25.2, 55.27], ["Muscat", 23.59, 58.41, 1], ["Kuwait City", 29.38, 47.98, 1],
+      ["Manama", 26.23, 50.59, 1], ["Jeddah", 21.54, 39.17], ["Tel Aviv", 32.09, 34.78], ["Gaza", 31.5, 34.47], ["Erbil", 36.19, 44.01],
+      ["Basra", 30.51, 47.78], ["Isfahan", 32.65, 51.67], ["Bandar Abbas", 27.18, 56.27], ["Cairo", 30.04, 31.24, 1], ["Ankara", 39.93, 32.85, 1]],
+    horn: [["Khartoum", 15.5, 32.56, 1], ["Port Sudan", 19.62, 37.22], ["El Fasher", 13.63, 25.35], ["Omdurman", 15.64, 32.48], ["Nyala", 12.05, 24.88],
+      ["Juba", 4.85, 31.58, 1], ["Addis Ababa", 9.03, 38.75, 1], ["Mekelle", 13.5, 39.47], ["Asmara", 15.32, 38.93, 1], ["Djibouti", 11.59, 43.15, 1],
+      ["Mogadishu", 2.05, 45.32, 1], ["Hargeisa", 9.56, 44.06], ["Kismayo", -0.36, 42.54], ["Baidoa", 3.11, 43.65], ["El Obeid", 13.18, 30.22]],
+    drc_sahel: [["Kinshasa", -4.32, 15.31, 1], ["Goma", -1.68, 29.22], ["Bukavu", -2.51, 28.86], ["Kigali", -1.95, 30.06, 1], ["Kampala", 0.35, 32.58, 1],
+      ["Bujumbura", -3.38, 29.36], ["Bamako", 12.64, -8.0, 1], ["Ouagadougou", 12.37, -1.52, 1], ["Niamey", 13.51, 2.11, 1], ["Abuja", 9.08, 7.4, 1],
+      ["N'Djamena", 12.13, 15.06, 1], ["Nouakchott", 18.08, -15.98, 1], ["Gao", 16.27, -0.04], ["Timbuktu", 16.77, -3.0], ["Maiduguri", 11.85, 13.16],
+      ["Kidal", 18.44, 1.41], ["Beni", 0.49, 29.47], ["Bunia", 1.56, 30.25]],
+    indopac: [["Beijing", 39.9, 116.4, 1], ["Taipei", 25.03, 121.57, 1], ["Tokyo", 35.68, 139.69, 1], ["Seoul", 37.57, 126.98, 1], ["Pyongyang", 39.04, 125.76, 1],
+      ["Manila", 14.6, 120.98, 1], ["Hanoi", 21.03, 105.85, 1], ["Naypyidaw", 19.76, 96.08, 1], ["Yangon", 16.87, 96.2], ["Bangkok", 13.76, 100.5, 1],
+      ["New Delhi", 28.61, 77.21, 1], ["Islamabad", 33.68, 73.05, 1], ["Shanghai", 31.23, 121.47], ["Hong Kong", 22.32, 114.17], ["Okinawa", 26.33, 127.8],
+      ["Guam", 13.44, 144.79], ["Kaohsiung", 22.63, 120.3], ["Karachi", 24.86, 67.01], ["Mandalay", 21.97, 96.08], ["Phnom Penh", 11.56, 104.92, 1]],
+    latam: [["Caracas", 10.48, -66.9, 1], ["Havana", 23.11, -82.37, 1], ["Bogota", 4.71, -74.07, 1], ["Quito", -0.18, -78.47, 1], ["Mexico City", 19.43, -99.13, 1],
+      ["Port-au-Prince", 18.59, -72.31, 1], ["Santo Domingo", 18.49, -69.93, 1], ["Panama City", 8.98, -79.52, 1], ["Managua", 12.11, -86.24, 1],
+      ["Tegucigalpa", 14.07, -87.19, 1], ["Guatemala City", 14.63, -90.51, 1], ["San Salvador", 13.69, -89.22, 1], ["Kingston", 17.97, -76.79, 1],
+      ["San Juan", 18.47, -66.11], ["Port of Spain", 10.65, -61.51, 1], ["Georgetown", 6.8, -58.16, 1], ["Guayaquil", -2.19, -79.89], ["Medellin", 6.24, -75.58],
+      ["Maracaibo", 10.65, -71.64], ["Culiacan", 24.81, -107.39]],
+  };
   const FALLBACK_THEATERS = [
     { id: "ukraine", name: "Russia–Ukraine", camera: { lat: 48.5, lng: 34, altitude: 0.85 }, highlight: ["804"] },
     { id: "nato_east", name: "NATO flank and hybrid", camera: { lat: 56, lng: 22, altitude: 1.1 }, highlight: ["233", "428", "440", "246", "616"] },
@@ -457,8 +496,8 @@
     return { lat: (Math.atan2(z, Math.hypot(x, y)) * 180) / Math.PI, lon: (Math.atan2(y, x) * 180) / Math.PI };
   }
   const countryCenter = (iso2) => REP_POINT[iso2] || centers.get(ISO_NUM.get(iso2)) || null;
-  const landColor = (f) => (S.active.has(f.id) ? "#1f3448" : S.hot.has(f.id) ? "#152536" : "#0e1620");
-  const OCEAN = "#05090f";
+  const landColor = (f) => (S.active.has(f.id) ? "#283748" : S.hot.has(f.id) ? "#1c2734" : "#141b24");
+  const OCEAN = "#060a10";
   // Territorial control (see controlNote): the source's shapes, painted onto the globe with the land.
   const CONTROL_FILL = { occupied: "rgba(214,174,110,0.55)", advance: "rgba(245,165,36,0.9)" };
   const CONTROL_LINE = "rgba(236,212,160,0.75)";
@@ -466,7 +505,7 @@
   const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(String(h || "#999999").slice(i, i + 2), 16));
   const AREA_ALPHA = { occupied: 0.5, claimed: 0.22 };
   const pathColorOf = (p) => (p.control ? (p.color ? rgba(hexRgb(p.color), p.faint ? 0.45 : 0.85) : CONTROL_LINE) : borderColor(p.fid));
-  const BORDER_RGBA = { active: [255, 120, 82, 0.9], hot: [120, 190, 245, 0.45], base: [120, 180, 235, 0.22] };
+  const BORDER_RGBA = { active: [214, 226, 240, 0.75], hot: [170, 190, 215, 0.4], base: [150, 170, 195, 0.2] };
   const borderRgba = (id) => (S.active.has(id) ? BORDER_RGBA.active : S.hot.has(id) ? BORDER_RGBA.hot : BORDER_RGBA.base);
   const borderColor = (id) => { const c = borderRgba(id); return `rgba(${c[0]},${c[1]},${c[2]},${c[3]})`; };
 
@@ -680,12 +719,25 @@
       paintedBase = base;
       g.fillStyle = OCEAN;
       g.fillRect(0, 0, W, H);
-      // a fine 10° grid on the ocean, painted into the same picture (no extra layer)
-      g.strokeStyle = "rgba(70, 130, 190, 0.16)";
-      g.lineWidth = W / 4096;
+      // a graticule painted into the same picture (no extra layer): a fine 10° grid, every 30° stronger,
+      // the equator and prime meridian strongest, with 2° ticks along them like a plotting chart
+      const grid = (step, alpha, width) => {
+        g.strokeStyle = `rgba(160, 180, 205, ${alpha})`;
+        g.lineWidth = W / width;
+        g.beginPath();
+        for (let lon = -180; lon <= 180; lon += step) { g.moveTo(X(lon), 0); g.lineTo(X(lon), H); }
+        for (let lat = -90 + step; lat < 90; lat += step) { g.moveTo(0, Y(lat)); g.lineTo(W, Y(lat)); }
+        g.stroke();
+      };
+      grid(10, 0.06, 4096);
+      grid(30, 0.11, 3072);
+      g.strokeStyle = "rgba(160, 180, 205, 0.18)";
+      g.lineWidth = W / 2048;
       g.beginPath();
-      for (let lon = -180; lon <= 180; lon += 10) { g.moveTo(X(lon), 0); g.lineTo(X(lon), H); }
-      for (let lat = -80; lat <= 80; lat += 10) { g.moveTo(0, Y(lat)); g.lineTo(W, Y(lat)); }
+      g.moveTo(0, Y(0)); g.lineTo(W, Y(0)); g.moveTo(X(0), 0); g.lineTo(X(0), H);
+      const tick = H / 360;
+      for (let lon = -180; lon <= 180; lon += 2) { g.moveTo(X(lon), Y(0) - tick); g.lineTo(X(lon), Y(0) + tick); }
+      for (let lat = -88; lat <= 88; lat += 2) { g.moveTo(X(0) - tick, Y(lat)); g.lineTo(X(0) + tick, Y(lat)); }
       g.stroke();
       for (const f of landShapes) {
         g.fillStyle = landColor(f);
@@ -763,10 +815,23 @@
       world.arcStroke(arcStroke);
     }
   }
+  // Instrument readouts over the globe: the camera's centre and height, and the point under the pointer.
+  const dms = (v, pos, neg, w) => `${String(Math.abs(v).toFixed(2)).padStart(w, "0")}°${v >= 0 ? pos : neg}`;
+  const latLonText = (lat, lon) => `${dms(lat, "N", "S", 5)} ${dms(((lon + 540) % 360) - 180, "E", "W", 6)}`;
+  const camRead = document.getElementById("camRead"), cursorRead = document.getElementById("cursorRead");
+  let camQueued = false;
+  function showCamera() {
+    camQueued = false;
+    if (!camRead) return;
+    const p = world.pointOfView();
+    camRead.textContent = `CAM ${latLonText(p.lat, p.lng)}  ALT ${Math.round(p.altitude * 6371).toLocaleString("en-US")} KM`;
+  }
   world.onZoom(() => {
     if (!moving) applyZoomScale();
     queueDeclutter();
+    if (!camQueued) { camQueued = true; requestAnimationFrame(showCamera); }
   });
+  requestAnimationFrame(showCamera);
 
   // Lines, dots and rings keep their identity from one render to the next (same key, same object),
   // so ones already drawn don't rise from the ground again and rings don't restart; new ones still
@@ -1084,6 +1149,20 @@
       if (el.firstChild.title !== title) el.firstChild.title = title;
     } else if (el.firstChild.title) el.firstChild.title = "";
   }
+  // A city name on the globe: a small dot (square for a capital) and its name, never clickable.
+  function cityMarker([name, lat, lon, capital]) {
+    const key = `city:${name}`;
+    let d = markerData.get(key);
+    if (!d) {
+      const el = document.createElement("div");
+      el.className = `mk-city${capital ? " is-capital" : ""}`;
+      el.setAttribute("aria-hidden", "true");
+      el.innerHTML = `<i></i><span>${esc(name)}</span>`;
+      d = markerDatum(key, { key, el, lat, lon, hAlt: 0.004, city: true, capital: !!capital, w: name.length * (capital ? 6.6 : 6) + 8 });
+    }
+    return d;
+  }
+
   function setHidden(d, hidden) { if (d.el.classList.contains("clustered") !== hidden) d.el.classList.toggle("clustered", hidden); }
 
   // Whole-globe view: 3+ events on one spot become the most important one's icon with a count.
@@ -1099,7 +1178,7 @@
     clusterMode = clusterMode ? pov.altitude > CLUSTER_OFF : pov.altitude > CLUSTER_ON;
     const vis = [];
     for (const d of S.html) {
-      if (!d.el) continue;
+      if (!d.el || d.city) continue;
       if (km(pov.lat, pov.lng, d.lat, d.lon) / 111.2 > horizon) { setOffset(d, 0, 0); if (d.isEvent) { setCluster(d, 0); setHidden(d, false); } continue; }
       const s = world.getScreenCoords(d.lat, d.lon, d.hAlt || 0.012);
       if (!s) continue;
@@ -1136,6 +1215,23 @@
       });
     }
     hidden.forEach((v) => setOffset(v.d, 0, 0));
+    // City names (a focused region): capitals first and always clear of other names; other cities
+    // are also left off where they would sit under an event symbol.
+    const symbols = vis.filter((v) => !hidden.has(v)).map((v) => [v.x - 13, v.y - 13, v.x + 13, v.y + 13]);
+    const taken = [];
+    const over = (list, b) => list.some((t) => b[0] < t[2] && b[2] > t[0] && b[1] < t[3] && b[3] > t[1]);
+    const hit = (b, capital) => over(taken, b) || (!capital && over(symbols, b));
+    const cityList = S.html.filter((d) => d.city).sort((a, b) => b.capital - a.capital);
+    for (const d of cityList) {
+      let show = km(pov.lat, pov.lng, d.lat, d.lon) / 111.2 <= horizon;
+      if (show) {
+        const s = world.getScreenCoords(d.lat, d.lon, d.hAlt);
+        const box = s && [s.x - 3, s.y - 8, s.x + 6 + d.w, s.y + 8];
+        show = !!box && !hit(box, d.capital);
+        if (show) taken.push(box);
+      }
+      if (d.el._off !== !show) { d.el._off = !show; d.el.classList.toggle("is-off", !show); }
+    }
   }
 
   // ------------------------------------------------------------------ tooltips
@@ -1247,6 +1343,17 @@
     return L ? { L, lat: at.lat, lng: at.lng } : null;
   }
   function hideControlTip() { if (ctlTip) { ctlTip = false; hideTip(); } }
+  let cursorQueued = null;
+  globeCanvas.addEventListener("pointermove", (ev) => {
+    if (ev.pointerType !== "mouse" || !cursorRead) return;
+    if (!cursorQueued) requestAnimationFrame(() => {
+      const r = globeCanvas.getBoundingClientRect(), at = world.toGlobeCoords(cursorQueued.x - r.left, cursorQueued.y - r.top);
+      cursorRead.textContent = at ? `PTR ${latLonText(at.lat, at.lng)}` : "PTR OFF-GLOBE";
+      cursorQueued = null;
+    });
+    cursorQueued = { x: ev.clientX, y: ev.clientY };
+  });
+  globeCanvas.addEventListener("pointerleave", () => { if (cursorRead) cursorRead.textContent = "PTR ——"; });
   globeCanvas.addEventListener("pointermove", (ev) => {
     if (ev.pointerType !== "mouse") return;
     const first = !ctlQueued;
@@ -1454,6 +1561,158 @@
     announceTimer = setTimeout(() => el.classList.remove("is-on"), 6000);
   }
 
+  // ------------------------------------------------------------------ breaking alerts
+  // A serious event (severity 2+) that arrives while the page is open (the owner's mockups,
+  // 2026-10-11): a banner drops in at the top ("ALERT  Drone or missile attack · Riyadh"), corner
+  // brackets close on its spot, a thin line draws out from it, and a card unfolds at the line's end,
+  // once. Acknowledge, Full report, Escape, or ALERT_MS untouched puts it away; the next one waits its
+  // turn (at most ALERT_MAX from one update). `?alert` in the address previews it on the newest
+  // serious event. The headline is the event's kind and place only, never words a report didn't give.
+  const ALERT_MS = 12000, ALERT_MAX = 3;
+  const alertQ = [];
+  let alertNow = null, alertN = 0;
+  const alertTimers = [];
+  const alertLater = (fn, ms) => alertTimers.push(setTimeout(fn, reduceMotion ? 0 : ms));
+  const utcHm = (ms) => new Date(ms).toISOString().slice(11, 16);
+  function queueAlerts(evs) {
+    const seen = new Set([...alertQ.map((e) => e.id), alertNow && alertNow.e.id]);
+    evs.filter((e) => !seen.has(e.id)).sort((a, b) => b.severity - a.severity || b._t - a._t).slice(0, ALERT_MAX).forEach((e) => alertQ.push(e));
+    if (!alertNow) nextAlert();
+  }
+  function alertEls() {
+    let banner = $("#alertBanner");
+    if (!banner) {
+      banner = document.createElement("div");
+      banner.id = "alertBanner"; banner.className = "alert-banner"; banner.setAttribute("role", "alert");
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.id = "alertLine"; svg.setAttribute("class", "alert-line"); svg.setAttribute("aria-hidden", "true");
+      svg.innerHTML = '<path class="al-brackets"/><path class="al-line"/><circle class="al-end" r="2.5"/>';
+      const card = document.createElement("section");
+      card.id = "alertCard"; card.className = "alert-card"; card.setAttribute("aria-label", "New alert");
+      document.body.append(svg, banner, card);
+      for (const el of [banner, card]) {
+        el.addEventListener("click", (ev) => {
+          const b = ev.target.closest("button");
+          if (!b || !alertNow) return;
+          const e = alertNow.e;
+          if (b.dataset.open != null) { endAlert(); select(e.id, true); } else endAlert();
+        });
+        el.addEventListener("pointerenter", () => { if (alertNow) alertNow.held = true; });
+        el.addEventListener("pointerleave", () => { if (alertNow) { alertNow.held = false; alertNow.until = Date.now() + 4000; } });
+      }
+    }
+    return { banner, svg: $("#alertLine"), card: $("#alertCard") };
+  }
+  // where the event is on screen, or null when it is behind the globe or off the page
+  function alertPoint(e) {
+    const pov = world.pointOfView();
+    const horizon = (Math.acos(1 / (1 + pov.altitude)) * 180) / Math.PI - 1;
+    if (km(pov.lat, pov.lng, e.lat, e.lon) / 111.2 > horizon) return null;
+    const s = world.getScreenCoords(e.lat, e.lon, 0.014), r = globeEl.getBoundingClientRect();
+    const x = s.x + r.left, y = s.y + r.top;
+    return x < 0 || y < 0 || x > innerWidth || y > innerHeight ? null : { x, y };
+  }
+  // the open stretch of map between the side panels
+  function mapArea() {
+    const box = (sel) => { const el = $(sel); if (!el || el.hidden || el.offsetParent === null) return null; const r = el.getBoundingClientRect(); return r.width ? r : null; };
+    const f = !isMobile() && box("#filters"), feed = !isMobile() && box("#feed");
+    return { left: f ? f.right + 14 : 12, right: feed ? feed.left - 14 : innerWidth - 12 };
+  }
+  function nextAlert() {
+    const e = alertQ.shift();
+    if (!e || !S.data) { alertNow = null; return; }
+    if (!S.data.events.some((x) => x.id === e.id)) { nextAlert(); return; }
+    const { banner, svg, card } = alertEls();
+    alertNow = { e, n: ++alertN, held: false, until: 0, card: null };
+    const more = alertQ.length ? `<span class="ab-more">${alertQ.length} more</span>` : "";
+    banner.innerHTML = `<span class="ab-tag">Alert</span><span class="ab-head">${esc(typeLabel(e))}${e.place ? ` · ${esc(e.place)}` : ""}</span>${more}<time>${utcHm(e._t)} UTC</time><button type="button" data-ack>Acknowledge</button>`;
+    const places = placesOf(e);
+    const n = e.sources_count || (e.reports || []).length;
+    const rows = [
+      places.length > 1 ? ["Places", byLatest(places).slice(0, 3).map((t) => esc(t.place)).join(", ") + (places.length > 3 ? ` and ${places.length - 3} more` : "")]
+        : ["Place", `${esc(e.place || "Location")} <span class="ac-ll">${esc(latLonText(e.lat, e.lon))}</span>`],
+      e.attacker ? ["Attributed to", `${esc(countryName(e.attacker))}, as reported`] : null,
+      ["Confidence", `<span class="conf-text conf-${STATUS[e.status].conf}">${esc(STATUS[e.status].label)}</span>${n ? ` · ${n} ${n === 1 ? "source" : "sources"}` : ""}`],
+      e.possibly_old ? ["Note", "Possibly an old story"] : null,
+    ].filter(Boolean);
+    card.innerHTML = `<div class="ac-top"><span class="ac-tag">Alert ${String(alertN).padStart(4, "0")}</span><span>${esc(typeLabel(e))}</span><time>${utcHm(e._t)} UTC</time></div>
+      <p class="ac-sum">${esc(e.summary)}</p>
+      <dl class="ac-facts">${rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join("")}</dl>
+      <div class="ac-actions"><button type="button" class="ac-ack" data-ack>Acknowledge</button><button type="button" data-open>Full report</button></div>`;
+    svg.classList.remove("is-lock", "is-drawn"); card.classList.remove("is-open"); card.hidden = false;
+    banner.classList.remove("is-on"); void banner.offsetWidth; banner.classList.add("is-on");
+    // the globe turns to it when it is out of view and nothing else is open
+    let wait = 0;
+    if (!alertPoint(e) && !focused()) {
+      const pov = world.pointOfView(), altitude = Math.min(Math.max(pov.altitude, 0.9), 1.8);
+      wait = reduceMotion ? 0 : flyMs(e.lat, e.lon, altitude);
+      world.pointOfView({ lat: e.lat, lng: e.lon, altitude }, wait);
+    }
+    alertLater(() => { placeAlertCard(); svg.classList.add("is-lock"); trackAlert(e); }, wait + 300);
+    alertLater(() => svg.classList.add("is-drawn"), wait + 560);
+    alertLater(() => card.classList.add("is-open"), wait + 900);
+    alertNow.until = Date.now() + wait + 900 + ALERT_MS;
+    const tick = () => {
+      if (!alertNow || alertNow.e !== e) return;
+      if (!alertNow.held && Date.now() > alertNow.until) { endAlert(); return; }
+      alertTimers.push(setTimeout(tick, 500));
+    };
+    alertLater(tick, 1000);
+  }
+  // the card's place, chosen once: beside the event, toward open map, clear of the panels
+  function placeAlertCard() {
+    if (!alertNow) return;
+    const { card, banner } = alertEls(), b = { bottom: banner.offsetTop + banner.offsetHeight };  // where it lands, not mid-slide
+    const p = alertPoint(alertNow.e) || { x: innerWidth / 2, y: innerHeight / 2 };
+    const W = card.offsetWidth, H = card.offsetHeight, area = mapArea();
+    let x, y, side;
+    if (isMobile()) { x = 12; y = b.bottom + 10; side = 0; }
+    else {
+      side = p.x + 70 + W <= area.right ? 1 : -1;
+      x = side > 0 ? p.x + 70 : Math.max(area.left, p.x - 70 - W);
+      y = Math.min(Math.max(p.y + 36, b.bottom + 16), innerHeight - H - 110);
+    }
+    card.style.left = `${Math.round(x)}px`; card.style.top = `${Math.round(y)}px`;
+    alertNow.card = { x, y, W, H, side };
+  }
+  // the brackets and the line follow the event as the globe turns
+  function trackAlert(e) {
+    if (!alertNow || alertNow.e !== e || !alertNow.card) return;
+    const { svg } = alertEls(), p = alertPoint(alertNow.e), c = alertNow.card;
+    const [brackets, line, end] = svg.children;
+    if (!p) { svg.style.opacity = "0"; }
+    else {
+      svg.style.opacity = "";
+      const k = 15, a = 7;
+      brackets.setAttribute("d", [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([sx, sy]) =>
+        `M${p.x + sx * k} ${p.y + sy * (k - a)}V${p.y + sy * k}H${p.x + sx * (k - a)}`).join(""));
+      let tx, ty;
+      if (c.side === 0) { tx = Math.min(Math.max(p.x, c.x + 24), c.x + c.W - 24); ty = c.y + c.H; }
+      else { tx = c.side > 0 ? c.x : c.x + c.W; ty = c.y + 28; }
+      const dx = tx - p.x, dy = ty - p.y, sx = Math.sign(dx) || 1, sy = Math.sign(dy) || 1;
+      const sx0 = p.x + sx * Math.min(k + 4, Math.abs(dx)), sy0 = p.y + sy * Math.min(k + 4, Math.abs(dy));
+      const d = c.side !== 0 && Math.abs(dy) < Math.abs(dx) - 20
+        ? `M${sx0} ${sy0}L${p.x + sx * Math.abs(dy)} ${ty}H${tx}`
+        : `M${p.x} ${sy0}L${tx} ${ty}`;
+      line.setAttribute("d", d);
+      end.setAttribute("cx", tx); end.setAttribute("cy", ty);
+      if (line._d !== d) { line._d = d; line.style.setProperty("--len", Math.ceil(line.getTotalLength() + 2)); }
+    }
+    requestAnimationFrame(() => trackAlert(e));
+  }
+  function endAlert() {
+    if (!alertNow) return;
+    alertTimers.splice(0).forEach(clearTimeout);
+    const { banner, svg, card } = alertEls();
+    banner.classList.remove("is-on"); svg.classList.remove("is-lock", "is-drawn"); card.classList.remove("is-open");
+    alertNow = null;
+    setTimeout(() => { if (!alertNow) card.hidden = true; nextAlert(); }, reduceMotion ? 0 : 450);
+  }
+  window.addEventListener("keydown", (ev) => {
+    if (ev.key === "Escape" && alertNow) { ev.stopImmediatePropagation(); endAlert(); }
+  }, true);
+  window.addEventListener("resize", () => { if (alertNow && alertNow.card) placeAlertCard(); });
+
   // If anything breaks while starting or drawing, say so on the page instead of hanging on "Loading".
   function fatal(err) {
     console.error(err);
@@ -1532,6 +1791,7 @@
         setTimeout(() => { S.arrived = null; }, 1500);
         // a serious new event marks its arrival with one ring spreading from its spot on the globe
         fresh.filter((e) => passes(e) && e.severity >= 2).slice(0, 8).forEach((e, i) => setTimeout(() => { if (passes(e)) landRing(e); }, i * 250));
+        queueAlerts(fresh.filter((e) => passes(e) && e.severity >= 2));
       }
     }
 
@@ -1549,6 +1809,10 @@
       if (hash && data.events.some((e) => e.id === hash)) select(hash, true);
       else if (/^CVN-\d{2}$/.test(hash) && S.fleet.some((c) => c.hull === hash)) selectCarrier(hash, true);
       else focusHotspot();
+      if (params.has("alert")) {  // preview: the newest serious event in the window
+        const pick = data.events.filter((e) => onMap(e) && passes(e) && e.severity >= 2).sort((a, b) => b._t - a._t)[0];
+        if (pick) setTimeout(() => queueAlerts([pick]), 1500);
+      }
     } else if (S.selectedId) {
       const e = data.events.find((x) => x.id === S.selectedId);
       if (e) renderEventDetail(e, true);
@@ -2150,7 +2414,10 @@
     const labelled = new Set(mapEvents.filter((e) => e.severity >= 3 || e.wave).sort((a, b) => b.severity - a.severity || b._t - a._t).slice(0, 5).map((e) => e.id));
     mapEvents.forEach((e) => { if (e.alert) labelled.add(e.id); });
     const animated = new Set(mapEvents.filter((e) => isLive(e) && catOf(e)[2]).slice(0, MAX_ANIMATED_NOW).map((e) => e.id));
-    const html = mapEvents.map((e) => eventMarker(e, labelled.has(e.id), animated.has(e.id)));
+    // a focused region names its major cities, under the markers (first in the list)
+    const region = selectedRegion();
+    const html = (region && CITIES[region.id] || []).map(cityMarker);
+    mapEvents.forEach((e) => html.push(eventMarker(e, labelled.has(e.id), animated.has(e.id))));
     S.fleet.filter(carrierOnMap).forEach((c) => html.push(carrierMarker(c)));
     S.html = html;
     if (!sailing) world.htmlElementsData(html);
@@ -2240,11 +2507,29 @@
     renderControlNote();
   }
 
-  // The running UTC clock in the header.
+  // The running UTC clock in the header, and world clocks beside it on wide screens (UTC first).
+  const CLOCKS = [["UTC", "UTC"], ["Washington", "America/New_York"], ["London", "Europe/London"], ["Kyiv", "Europe/Kyiv"],
+    ["Riyadh", "Asia/Riyadh"], ["Beijing", "Asia/Shanghai"]];
+  const clockFmt = new Map();
+  const zoneTime = (d, zone) => {
+    if (zone === "UTC") return d.toISOString().slice(11, 16);
+    if (!clockFmt.has(zone)) {
+      try { clockFmt.set(zone, new Intl.DateTimeFormat("en-GB", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone: zone })); }
+      catch (err) { clockFmt.set(zone, null); }
+    }
+    const f = clockFmt.get(zone);
+    return f ? f.format(d) : "--:--";
+  };
   function tickClock() {
     const d = new Date(), p = (n) => String(n).padStart(2, "0");
     const el = document.getElementById("utcClock");
     if (el) el.textContent = `${p(d.getUTCHours())}:${p(d.getUTCMinutes())}:${p(d.getUTCSeconds())} UTC`;
+    const clocks = document.getElementById("clocks");
+    if (!clocks || !clocks.getClientRects().length) return;  // hidden on narrow screens
+    const text = CLOCKS.map(([city, zone]) => `${city} ${zoneTime(d, zone)}`).join("|") + d.getUTCSeconds();
+    if (clocks._text === text) return;
+    clocks._text = text;
+    clocks.innerHTML = CLOCKS.map(([city, zone], i) => `<div class="clock${i ? "" : " is-utc"}"><span>${city}</span><time>${zoneTime(d, zone)}${i ? "" : `<small>:${p(d.getUTCSeconds())}</small>`}</time></div>`).join("");
   }
   tickClock();
   setInterval(tickClock, 1000);

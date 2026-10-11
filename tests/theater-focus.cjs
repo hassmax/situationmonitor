@@ -79,11 +79,11 @@ let brief = api.briefHtml(); assert(brief.includes('Middle East') && !brief.incl
 api.selectRegion('none'); assert.equal(api.briefHtml(), '');
 api.selectRegion('world'); brief = api.briefHtml(); assert(brief.includes('Middle East') && brief.includes('Russia–Ukraine'));
 assert(html.indexOf('class="theater-section"') < html.indexOf('class="legend-section"'), 'Theaters come first');
-assert(html.includes('family=Inter:wght@400;500;600;700') && css.includes('--font: "Inter"'));
+assert(html.includes('family=Public+Sans:wght@400;500;600;700') && css.includes('--font: "Public Sans"'));
 assert(!css.includes('font-stretch:') && !html.includes('family=Archivo'));
 assert(code.includes('else if (selectedRegion()) selectRegion("world")'), 'Escape leaves regional focus');
 assert(code.includes('if (t) selectRegion(t.id)'), 'Analysis region links activate the same focus');
 assert(code.includes('!selectedRegion()) S.region = "world"'), 'Removed regions safely fall back to Worldwide');
 assert(!code.includes('theaterOn') && !code.includes('unlisted()'), 'No multiple-region or global bypass remains');
 assert(!html.includes('x.activity'), 'Early first-load preview follows original event dates');
-console.log('PASS: exclusive region/Worldwide/Hide all, camera and phone focus, brightness, alert focus, refresh, regional brief, reduced motion, control order and Inter typography.');
+console.log('PASS: exclusive region/Worldwide/Hide all, camera and phone focus, brightness, alert focus, refresh, regional brief, reduced motion, control order and Public Sans typography.');

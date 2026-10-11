@@ -23,7 +23,7 @@
   --warn: #f3c14b;
   --bad: #ff5b3a;
 
-  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   --gap: 14px;
   --left-w: 312px;
   --right-w: 372px;
