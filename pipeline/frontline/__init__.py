@@ -42,7 +42,7 @@ from . import assess, cartographer, claims, heat, imagery, isw, ledger, review, 
 
 __all__ = ["search", "update", "public"]
 
-REVIEW_VERSION = 3   # bump when the reviewer's rules change in a way that should revisit its rejections
+REVIEW_VERSION = 4   # bump when the reviewer's rules change in a way that should revisit its rejections
 COUNTED_RE = re.compile(r"\b(majority|split|conflicting|mixed)\b", re.I)
 
 
@@ -101,6 +101,20 @@ def update(events: list[dict], conflicts: list[dict], state: dict, settings: dic
                     p.pop("asked", None)
         log(f"[frontline] {back} claims set aside by counting older reports are back for review; "
             f"{flipped} claims filed the wrong way round set aside")
+    if fl.get("review_version", 0) < 4:
+        # 2026-10-12: a side's own channel counts as admitting a loss only in so many words
+        # or of the enemy advancing (social.LOSS_RE). Set aside stored admissions whose note gives none: "Lobanivka liberated
+        # from Russian control", Colonelcassad's report of a Russian capture, filed as Russia's loss.
+        dropped = 0
+        for p in fl["places"].values():
+            for c in p["claims"]:
+                note = (c.get("summary") or "").split(": ", 1)[-1]
+                if (c.get("via") == "social" and c.get("change") == "lost" and c.get("aligned") == c.get("actor")
+                        and not c.get("rejected") and not social.LOSS_RE.search(note)):
+                    c["rejected"] = "a side's own post with no words of a loss or the enemy is not an admission"
+                    dropped += 1
+                    p.pop("asked", None)
+        log(f"[frontline] {dropped} social posts filed as a side's admission without loss words set aside")
     if fl.get("review_version", 0) < REVIEW_VERSION:
         fl["review_version"] = REVIEW_VERSION
     if not disabled:
@@ -143,8 +157,8 @@ def update(events: list[dict], conflicts: list[dict], state: dict, settings: dic
         if p.get("asked") is not None and live <= p["asked"]:
             continue  # the reviewer already saw this evidence
         pending.append((k, proposed))
-    if session is not None and not disabled:
-        # before-and-after satellite pictures of disputed settlements, for the reviewer
+    if session is not None and not disabled and settings.get("frontline_imagery", False):
+        # before-and-after satellite pictures of disputed settlements, for the reviewer (off by default)
         imagery.run(conflicts, fl, state, settings, session, now, ask, budget("frontline_imagery"), [k for k, _ in pending])
     counts = review.run(pending, conflicts, fl, state, settings, now, ask,
                         0 if disabled else budget("frontline_review"))

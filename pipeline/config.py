@@ -38,6 +38,10 @@ DEFAULT_SETTINGS = {
     # Batches Gemini can't take (down, busy, refused for billing, out of calls) that may go to the
     # outside providers routed for "extract" in one run (providers.ROUTES, `provider_routes`).
     "overflow_batches_per_run": 2,
+    # The satellite imagery agent (frontline/imagery.py), off since 2026-10-12: in its first week 73
+    # checks found 41 unchanged places, 30 clouded or missing pictures and 2 doubtful changes, and
+    # changed nothing on the map; 10 m pictures can't show fighting in a village.
+    "frontline_imagery": False,
     "max_item_age_hours": 36,
     "pending_max": 400,
     "geocode_per_run": 45,

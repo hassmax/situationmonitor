@@ -206,3 +206,16 @@ def test_the_attackers_own_word_does_not_make_a_town_contested():
     assert assess.assess({"claims": [attacker]}, UA, NOW) is None
     defender = {**attacker, "aligned": "UA", "claimed_by": "UA", "group": "ua-military", "url": "u2"}
     assert assess.assess({"claims": [attacker, defender]}, UA, NOW)["status"] == "contested"
+
+
+def test_a_sides_capture_post_misread_as_its_loss_is_not_an_admission():
+    # 2026-10-11: Colonelcassad's post of Russian "liberations" was filed as "Lobanivka liberated
+    # from Russian control", Russia admitting the loss. No words of a loss or of the enemy: no claim.
+    p = post("Северная группировка освободила Лобановку и Лукашово в Харьковской области",
+             source="Colonelcassad", side="RU", kind="partisan")
+    assert social.clean(said(change="took", actor="UA", claimed_by=None, basis="party"), p, CONFLICTS) is None
+    assert social.clean(said(change="lost", actor="RU", claimed_by=None, basis="party"), p, CONFLICTS) is None
+    # the same channel saying its forces were pushed out is still an admission
+    out = post("Наши подразделения были выбиты из Пискуновки", source="Rybar", side="RU", kind="partisan")
+    c = social.clean(said(change="lost", actor="RU", claimed_by=None, basis="party"), out, CONFLICTS)["claim"]
+    assert (c["change"], c["actor"], c["aligned"]) == ("lost", "RU", "RU")

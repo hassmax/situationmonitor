@@ -775,3 +775,17 @@ def test_a_wikipedia_map_of_several_countries_leaves_out_dots_in_the_excluded_ou
         ("Khiam", 33.327, 35.612), ("Hader", 33.279, 35.830), ("Naqoura", 33.118, 35.14)]]
     got = {p["name"]: p["country"] for p in wikipedia._placed(pts, c)}
     assert got == {"Khiam": "LB", "Hader": "SY", "Naqoura": "LB"}     # Israel itself (Metula just off NE's border), Golan, West Bank out
+
+
+def test_two_villages_a_few_km_apart_are_not_merged_as_spellings():
+    # until 2026-10-12 distance alone merged them: Korchakivka took in Kyianytsia's claims
+    from frontline import assess as _assess
+    claim = lambda url: {"time": "2026-10-09T12:00:00Z", "url": url, "actor": "RU", "change": "took"}
+    fl = {"places": {
+        "ua:korchakivka": {"name": "Korchakivka", "local": "Корчаківка", "conflict": "ukraine", "lat": 51.0912, "lon": 34.8954, "claims": [claim("a")]},
+        "ua:kyianytsia": {"name": "Kyianytsia", "local": "Кияниця", "conflict": "ukraine", "lat": 51.08, "lon": 34.87, "claims": [claim("b")]},
+        "ua:kiyanitsa": {"name": "Kiyanitsa", "local": "Кияница", "conflict": "ukraine", "lat": 51.081, "lon": 34.871, "claims": [claim("c")]},
+    }}
+    assert _assess.merge_spellings(fl) == 1
+    assert set(fl["places"]) == {"ua:korchakivka", "ua:kyianytsia"}
+    assert [c["url"] for c in fl["places"]["ua:korchakivka"]["claims"]] == ["a"]
