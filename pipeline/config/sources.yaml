@@ -42,16 +42,18 @@ settings:
   # batches Gemini can't take (down, busy, refused for billing, out of calls), at most
   # overflow_batches_per_run a run. Cerebras allows 1,000,000 tokens a day (capped at 900,000).
   # The run log's "[budget]" lines give each job's tokens per day, to tune these.
+  # The shares add up to the 900,000 cap, and extract's unused share is held back from the
+  # other jobs (providers.held), so reading new posts can always spill over here.
   provider_routes:
-    analysis: {cerebras: 380000}
-    incident_repair: {cerebras: 150000}
-    incident_grouping: {cerebras: 150000}
+    analysis: {cerebras: 300000}
+    incident_repair: {cerebras: 60000}
+    incident_grouping: {cerebras: 100000}
     recency: {cerebras: 50000}
-    frontline_review: {cerebras: 80000}
-    frontline_isw: {cerebras: 100000}
-    frontline: {cerebras: 60000}
-    extract: {cerebras: 110000}
-    frontline_social: {cerebras: 120000}
+    frontline_review: {cerebras: 60000}
+    frontline_isw: {cerebras: 60000}
+    frontline: {cerebras: 50000}
+    extract: {cerebras: 150000}
+    frontline_social: {cerebras: 70000}
   # GDELT (a free database that logs news reports of violence worldwide every 15 minutes) is used
   # only to corroborate: when 3+ outlets report violence near a single-source post, that post is
   # upgraded to corroborated. Set to false to turn it off.
