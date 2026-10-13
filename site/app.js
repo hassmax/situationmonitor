@@ -320,7 +320,7 @@
     off: new Set(),  // "On the map" entries switched off
     query: "",
     feedLimit: 250,
-    briefOpen: new Set(),
+    briefOpen: new Set(), brief: null, briefNum: null,
     selectedId: null,
     arrived: null,      // ids of events that just arrived (they slide into the feed once)
     selectedHull: null,
@@ -496,7 +496,7 @@
     return { lat: (Math.atan2(z, Math.hypot(x, y)) * 180) / Math.PI, lon: (Math.atan2(y, x) * 180) / Math.PI };
   }
   const countryCenter = (iso2) => REP_POINT[iso2] || centers.get(ISO_NUM.get(iso2)) || null;
-  const landColor = (f) => (S.active.has(f.id) ? "#283748" : S.hot.has(f.id) ? "#1c2734" : "#141b24");
+  const landColor = (f) => (S.briefNum && Number(f.id) === S.briefNum ? "#3a4e64" : S.active.has(f.id) ? "#283748" : S.hot.has(f.id) ? "#1c2734" : "#141b24");
   const OCEAN = "#060a10";
   // Territorial control (see controlNote): the source's shapes, painted onto the globe with the land.
   const CONTROL_FILL = { occupied: "rgba(214,174,110,0.55)", advance: "rgba(245,165,36,0.9)" };
@@ -803,7 +803,14 @@
     .onArcHover((a) => { globeEl.style.cursor = a ? "pointer" : ""; })
     .onArcClick((a) => { if (a.carrier) selectCarrier(a.carrier.hull, true); else if (a.flow) selectFlow(a.flow.key); else if (a.ref) select(a.ref.id, true); })
     // a click on bare globe (no marker, line or dot) ends the focus on an opened event, carrier or route
-    .onGlobeClick(() => { if (focused() && performance.now() - lineTapAt > 600) closeDetail(); });
+    // and a click on a country opens its intelligence brief; on the sea, or the same country again, closes it
+    .onGlobeClick((c) => {
+      if (performance.now() - lineTapAt <= 600) return;
+      if (focused()) { closeDetail(); return; }
+      const iso = c && countryAt(c.lat, c.lng);
+      if (!iso || (S.brief && S.brief.iso === iso)) { if (S.brief) closeDetail(); return; }
+      openBrief({ iso });
+    });
 
   // Dot and ring sizes follow the zoom, but are only rebuilt once a gesture ends.
   function applyZoomScale() {
@@ -1381,7 +1388,7 @@
       return;
     }
     // a click away from everything (empty space, or bare globe: onGlobeClick) ends the focus on an opened event
-    if (focused() && !world.toGlobeCoords(ev.clientX - globeCanvas.getBoundingClientRect().left, ev.clientY - globeCanvas.getBoundingClientRect().top)) closeDetail();
+    if ((focused() || S.brief) && !world.toGlobeCoords(ev.clientX - globeCanvas.getBoundingClientRect().left, ev.clientY - globeCanvas.getBoundingClientRect().top)) closeDetail();
     if (ev.pointerType === "mouse") return;
     const hit = controlUnder(ev.clientX, ev.clientY);
     clearTimeout(ctlTimer);
@@ -1831,6 +1838,8 @@
     } else if (S.selectedHull) {
       const c = S.fleet.find((x) => x.hull === S.selectedHull);
       if (c) renderCarrierDetail(c, true);
+    } else if (S.brief) {
+      openBrief(S.brief, true);
     }
   }
 
@@ -2521,7 +2530,7 @@
 
   // The running UTC clock in the header, and world clocks beside it on wide screens (UTC first).
   const CLOCKS = [["UTC", "UTC"], ["Washington", "America/New_York"], ["London", "Europe/London"], ["Kyiv", "Europe/Kyiv"],
-    ["Riyadh", "Asia/Riyadh"], ["Beijing", "Asia/Shanghai"]];
+    ["Moscow", "Europe/Moscow"], ["Beijing", "Asia/Shanghai"]];
   const clockFmt = new Map();
   const zoneTime = (d, zone) => {
     if (zone === "UTC") return d.toISOString().slice(11, 16);
@@ -2599,16 +2608,47 @@
       return judgment ? [{ region, judgment }] : [];
     }).sort((a, b) => compare(a.judgment, b.judgment)).slice(0, 3);
   }
-  function briefHtml() {
-    const a = S.data && S.data.analysis;
-    if (!a || !a.generated_at || S.region === null) return "";
-    const byId = new Map(S.data.events.map((e) => [e.id, e]));
+  // ------------------------------------------------------------------ intelligence brief
+  // The owner, 2026-10-13: "the situation brief is not very helpful ... make it more helpful but
+  // also not overwhelming ... Allow each country to be clickable so you can see the most recent
+  // developments within it. Call it intelligence brief and it replaces the list". The brief slides
+  // in where the list is (in the detail panel); a click away (bare sea, empty space, Escape, Back)
+  // brings the list back. Built in the page from the map's own events, front-line places, carriers
+  // and the regional analyst's judgments: no model call, no new data.
+  const BRIEF_ROWS = 6;
+  const ISO_ALPHA = new Map([...ISO_NUM].map(([a, n]) => [n, a]));
+  const CRIMEA_BOX = [32.4, 44.3, 36.7, 46.3];  // drawn inside Russia by the globe's shapes; Ukraine's
+  let shapeIndex = null;
+  function countryAt(lat, lng) {
+    if (!landShapes.length) return null;
+    // shapes crossing the 180th meridian (Russia, Fiji) jump from +180 to -180; they are tested
+    // with western longitudes moved past 180
+    const unwrap = (poly) => poly.map((ring) => ring.map(([x, y]) => [x < 0 ? x + 360 : x, y]));
+    if (!shapeIndex) shapeIndex = landShapes.filter((f) => ISO_ALPHA.has(String(f.id))).map((f) => ({
+      iso: ISO_ALPHA.get(String(f.id)),
+      polys: f.geometry.coordinates.map((poly) => { const b = polyBox(poly); return b[2] - b[0] > 300 ? { poly: unwrap(poly), wrap: true } : { poly }; }),
+    }));
+    for (const { iso, polys } of shapeIndex) {
+      for (const { poly, wrap } of polys) {
+        const x = wrap && lng < 0 ? lng + 360 : lng;
+        const b = polyBox(poly);
+        if (x < b[0] || x > b[2] || lat < b[1] || lat > b[3] || !inPoly(poly, x, lat)) continue;
+        const crimea = iso === "RU" && lng >= CRIMEA_BOX[0] && lng <= CRIMEA_BOX[2] && lat >= CRIMEA_BOX[1] && lat <= CRIMEA_BOX[3];
+        return crimea ? "UA" : iso;
+      }
+    }
+    return null;
+  }
+  const plural = (n, one, many = one + "s") => `${n} ${n === 1 ? one : many}`;
+  const weight = (e) => 3 * e.severity + STATUS[e.status].rank + (isNew(e) ? 1 : 0) + Math.log10(1 + magnitude(e));
+  // the analyst's machinery, shared by the region and country briefs
+  function analysisParts(byId) {
     const cites = (ids) => {
       const found = (ids || []).filter((i) => byId.has(i));
       return found.length ? `<span class="cites">${found.map((i) => {
         const e = byId.get(i);
         const label = (e.place || typeLabel(e)).split(",")[0].slice(0, 22);
-        return `<button class="cite" type="button" data-id="${esc(i)}" title="Open: ${esc(e.summary)}">${esc(label)}</button>`;
+        return `<button class="cite" type="button" data-event="${esc(i)}" title="Open: ${esc(e.summary)}">${esc(label)}</button>`;
       }).join("")}</span>` : "";
     };
     const basis = (t) => [t.corroborated && `${t.corroborated} corroborated`, t.single_source && `${t.single_source} single-source`,
@@ -2617,9 +2657,6 @@
     // flights the judgment cites: what each aircraft's transponder showed, linked to it on adsb.lol
     const flown = (list) => (list || []).length ? `<span class="cites">${list.map((f) =>
       `<a class="cite cite-flight" href="${esc(safeUrl(f.url))}" target="_blank" rel="noopener noreferrer" title="${esc(f.what)}">${esc(f.label)}</a>`).join("")}</span>` : "";
-    const regions = (a.regions || []).filter((r) => theaterShown(r.theater) && (r.judgments || []).length);
-    if (!regions.length && S.region !== "world") return "";
-    const scope = selectedRegion()?.name || "All regions";
     const judgmentHtml = (j, compact = false) => {
       const [mark, word] = TREND[j.trend] || TREND.steady;
       return `<div class="an-item trend-${esc(j.trend)}">
@@ -2628,41 +2665,155 @@
         <p class="an-foot"><span class="an-conf conf-${esc(j.confidence)}">${esc(CONF_WORDS[j.confidence] || "Low confidence")}</span>${basis(j.tally || {}) ? `<span>Based on ${esc(basis(j.tally || {}))}</span>` : ""}${cites(j.ids)}${flown(j.flights)}</p>
       </div>`;
     };
+    return { judgmentHtml };
+  }
+  // Activity in a set of events: the last 24 hours against the daily average of the days before.
+  function tempo(list) {
+    const now = Date.now();
+    const day = list.filter((e) => e._t >= now - DAY);
+    const before = list.filter((e) => e._t < now - DAY && e._t >= now - 7 * DAY);
+    const avg = before.length / 6;
+    const dir = day.length >= Math.max(3, 1.5 * avg) ? "up" : avg >= 2 && day.length <= 0.5 * avg ? "down" : "same";
+    return { day, avg, dir };
+  }
+  const TEMPO_MARK = { up: ["▲", "Busier than usual"], down: ["▼", "Quieter than usual"], same: ["●", "About the usual pace"] };
+  const topKinds = (list, n = 2) => {
+    const c = {};
+    list.forEach((e) => { const k = typeLabel(e); c[k] = (c[k] || 0) + 1; });
+    return Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, n);
+  };
+  const devRow = (e) => `<li><button class="bf-row" type="button" data-event="${esc(e.id)}">${eventIcon(e)}
+    <span><span class="bf-meta"><b>${esc(typeLabel(e))}</b> ${esc(e.place || "")}<time>${esc(agoShort(e._t))}</time></span>
+    <span class="bf-sum">${esc(e.summary)}</span>
+    <span class="bf-conf conf-text conf-${STATUS[e.status].conf}">${esc(STATUS[e.status].label)}${e.possibly_old ? " · possibly an old story" : ""}</span></span></button></li>`;
+  const briefShell = (kicker, title, sub, body) => `<section class="intel" aria-labelledby="intelTitle">
+      <p class="intel-kicker">${esc(kicker)}</p><h3 id="intelTitle">${esc(title)}</h3>
+      <p class="intel-sub">${sub}</p>${body}
+      <p class="brief-note">Compiled from this map's own events. Open the reports behind an item before relying on it.</p></section>`;
+
+  // The brief for the world, or the selected region: the analyst's lead judgments, then where it is busiest.
+  function worldBriefHtml() {
+    const a = (S.data && S.data.analysis) || {};
+    const byId = new Map(S.data.events.map((e) => [e.id, e]));
+    const { judgmentHtml } = analysisParts(byId);
+    const scope = selectedRegion()?.name || "Worldwide";
+    const regions = (a.regions || []).filter((r) => theaterShown(r.theater) && (r.judgments || []).length);
     const highlights = briefHighlights(regions, byId);
+    const live = S.data.events.filter((e) => !e._archived && e.country && theaterShown(e.theater));
+    const byCountry = new Map();
+    live.forEach((e) => { if (!byCountry.has(e.country)) byCountry.set(e.country, []); byCountry.get(e.country).push(e); });
+    const hot = [...byCountry].map(([iso, list]) => ({ iso, ...tempo(list) })).filter((h) => h.day.length)
+      .sort((x, y) => y.day.length - x.day.length).slice(0, 8);
     const lead = highlights.length ? `<ol class="brief-highlights">${highlights.map(({ region, judgment }) => `<li>
-      <button class="an-name" type="button" data-fly="${esc(region.theater)}" title="Fly to ${esc(region.name)}">${esc(region.name)}</button>
-      ${judgmentHtml(judgment, true)}</li>`).join("")}</ol>`
-      : `<p class="an-empty">No clear change in ${esc(scope.toLowerCase())} in the last ${esc(a.window_hours || 6)} hours.</p>`;
-    const body = regions.map((r) => `
-      <div class="an-region">
-        <button class="an-name" type="button" data-fly="${esc(r.theater)}" title="Fly to ${esc(r.name)}">${esc(r.name)}</button>
-        ${r.judgments.map((j) => judgmentHtml(j)).join("")}
-      </div>`).join("");
+      <span class="an-name">${esc(region.name)}</span>${judgmentHtml(judgment, true)}</li>`).join("")}</ol>`
+      : `<p class="an-empty">No clear change in the last ${esc(a.window_hours || 6)} hours.</p>`;
+    const hotHtml = hot.length ? `<ol class="bf-hot">${hot.map((h) => {
+      const [mark, word] = TEMPO_MARK[h.dir];
+      return `<li><button type="button" data-country="${esc(h.iso)}"><span class="bf-name">${esc(countryName(h.iso))}</span>
+        <span class="bf-tempo t-${h.dir}" title="${esc(word)}"><span aria-hidden="true">${mark}</span> ${h.day.length}</span>
+        <span class="bf-kind">${esc(topKinds(h.day, 1).map(([k]) => k).join(""))}</span></button></li>`;
+    }).join("")}</ol>` : '<p class="an-empty">Nothing reported in the last 24 hours.</p>';
+    const body = regions.map((r) => `<div class="an-region"><span class="an-name">${esc(r.name)}</span>${r.judgments.map((j) => judgmentHtml(j)).join("")}</div>`).join("");
     const written = Date.parse(a.generated_at);
-    const stale = Number.isFinite(written) && Date.now() - written > 3 * HOUR;
-    return `<li class="brief analysis"><section aria-labelledby="briefTitle">
-      <div class="brief-head"><h3 id="briefTitle">Situation brief</h3>
-        <time datetime="${esc(a.generated_at)}">Written ${esc(ago(Date.parse(a.generated_at)))}</time></div>
-      <p class="an-sub">${highlights.length ? `${highlights.length} selected ${highlights.length === 1 ? "development" : "developments"} · ` : ""}${esc(scope)} · last ${esc(a.window_hours || 6)} hours</p>
-      <p class="brief-note">Machine-written. Expand the regional analysis for the reasoning.</p>
-      ${stale ? '<p class="brief-stale" role="status">This analysis is over 3 hours old. Check the latest events below for newer reporting.</p>' : ""}
-      ${lead}
-      ${regions.length ? `<details class="brief-disclosure" data-brief-section="regions"${S.briefOpen.has("regions") ? " open" : ""}>
-        <summary>${S.region === "world" ? "All regional analysis" : "Regional analysis"} (${regions.reduce((n, r) => n + r.judgments.length, 0)})</summary>${body}</details>` : ""}
-      <details class="brief-disclosure brief-method" data-brief-section="method"${S.briefOpen.has("method") ? " open" : ""}>
-        <summary>How to read this brief</summary>
-        <p class="brief-note">Highlights prioritize changes, then confidence, then the latest cited event, with one development per region. The full regional analysis includes every judgment. The region selection applies to this brief. Its analysis uses its own ${esc(a.window_hours || 6)}-hour window against the ${esc(a.context_days || 3)} days before; time, confidence, type and search filters do not change it.</p>
-        <p class="brief-note">Machine-written analysis of this map's own events${a.by ? ` by ${esc(a.by)}` : ""}. Confidence comes from the cited events and tracked flights. Transponders show where aircraft went, not why. Open the evidence before relying on a judgment.</p>
-      </details>
-      ${a.flight_credit ? `<p class="brief-note"><a href="${esc(safeUrl(a.flight_credit.url || "https://opendatacommons.org/licenses/odbl/1-0/"))}" target="_blank" rel="noopener noreferrer">${esc(a.flight_credit.text || "Flight data: adsb.lol contributors")}</a>.</p>` : ""}
-    </section></li>`;
+    return briefShell("Intelligence brief", scope,
+      `${Number.isFinite(written) ? `Assessment written ${esc(ago(written))}` : "No assessment yet"} · counts for the last 24 hours`,
+      `<h4>Bottom line</h4>${lead}
+      ${Number.isFinite(written) && Date.now() - written > 3 * HOUR ? '<p class="brief-stale" role="status">This assessment is over 3 hours old.</p>' : ""}
+      <h4>Where it is busiest <span class="note">events, last 24 h · ▲ busier than the week before</span></h4>${hotHtml}
+      <p class="brief-note">Click a country here or on the globe for its own brief.</p>
+      ${regions.length ? `<details class="brief-disclosure"><summary>Full regional assessment (${regions.reduce((n, r) => n + r.judgments.length, 0)})</summary>${body}</details>` : ""}
+      <details class="brief-disclosure"><summary>How this is made</summary>
+        <p class="brief-note">The assessment is machine-written from this map's events${a.by ? ` by ${esc(a.by)}` : ""}, at most hourly, over the last ${esc(a.window_hours || 6)} hours against the ${esc(a.context_days || 3)} days before. Its confidence comes from the cited events and tracked flights, never from the model. Counts and lists are this map's events by where they happened.</p></details>
+      ${a.flight_credit ? `<p class="brief-note"><a href="${esc(safeUrl(a.flight_credit.url || "https://opendatacommons.org/licenses/odbl/1-0/"))}" target="_blank" rel="noopener noreferrer">${esc(a.flight_credit.text || "Flight data: adsb.lol contributors")}</a>.</p>` : ""}`);
+  }
+
+  // The brief for one country: pace, the main developments, the front line, who else is involved.
+  function countryBriefHtml(iso) {
+    const name = countryName(iso);
+    const now = Date.now();
+    const all = S.data.events.filter((e) => !e._archived);
+    const here = all.filter((e) => e.country === iso);
+    const t = tempo(here);
+    const recent = here.filter((e) => e._t >= now - S.windowH * HOUR);
+    const pool = recent.length ? recent : here;
+    const top = [...pool].sort((a, b) => weight(b) - weight(a) || b._t - a._t).slice(0, BRIEF_ROWS);
+    const span = { 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[S.windowH];
+    // bottom line, in words from the counts
+    const [mark, word] = TEMPO_MARK[t.dir];
+    const kinds = topKinds(t.day, 2).map(([k, n]) => `${k.toLowerCase()} (${n})`).join(" and ");
+    const corro = t.day.filter((e) => e.status === "corroborated").length;
+    const line = t.day.length
+      ? `<p class="bf-line"><span class="bf-tempo t-${t.dir}"><span aria-hidden="true">${mark}</span> ${esc(word)}.</span> ${esc(plural(t.day.length, "event"))} in the last 24 hours, against about ${esc(String(Math.round(t.avg)))} a day over the week before. Most reported: ${esc(kinds)}. ${esc(String(corro))} corroborated.</p>`
+      : `<p class="bf-line">Nothing reported here in the last 24 hours${here.length ? `; ${esc(plural(here.length, "event"))} in the past week` : ""}.</p>`;
+    // the analyst's judgments that cite events in this country
+    const byId = new Map(S.data.events.map((e) => [e.id, e]));
+    const { judgmentHtml } = analysisParts(byId);
+    const judged = ((S.data.analysis && S.data.analysis.regions) || []).flatMap((r) => r.judgments || [])
+      .filter((j) => (j.ids || []).some((i) => byId.get(i)?.country === iso)).slice(0, 2);
+    // front line: confirmed changes, fighting inside, captures only claimed
+    const places = ((S.data.frontline && S.data.frontline.places) || []).filter((p) => p.country === iso);
+    const fresh = (p) => Date.parse(p.last || p.since || 0) >= now - 7 * DAY;
+    const taken = places.filter((p) => p.changed && p.previous && p.holder !== p.previous && p.status === "assessed").slice(0, 5);
+    const fighting = places.filter((p) => p.status === "contested" && fresh(p)).slice(0, 6);
+    const claimed = places.filter((p) => p.status === "claimed" && fresh(p) && p.previous && p.holder !== p.previous).slice(0, 5);
+    const day = (iso8601) => (iso8601 ? new Date(iso8601).toLocaleDateString(undefined, { day: "numeric", month: "short", timeZone: "UTC" }) : "");
+    const front = taken.length || fighting.length || claimed.length ? `<h4>Front line <span class="note">this site's assessment</span></h4><ul class="bf-list">
+      ${taken.map((p) => `<li><b>${esc(p.name)}</b>: taken by ${esc(p.holder_name || "")} from ${esc(p.previous_name || "")}${p.since ? `, ${esc(day(p.since))}` : ""} <span class="note">confirmed</span></li>`).join("")}
+      ${claimed.map((p) => `<li><b>${esc(p.name)}</b>: ${esc(p.holder_name || "a side")} says it took it <span class="note">claim only</span></li>`).join("")}
+      ${fighting.length ? `<li><b>Fighting inside</b>: ${esc(fighting.map((p) => p.name).join(", "))}</li>` : ""}</ul>` : "";
+    // who else: attackers here, and this country's attacks elsewhere
+    const week = all.filter((e) => e._t >= now - 7 * DAY);
+    const tally = (list, key) => { const c = {}; list.forEach((e) => { const k = key(e); if (k && k !== iso) c[k] = (c[k] || 0) + 1; }); return Object.entries(c).sort((a, b) => b[1] - a[1]).slice(0, 4); };
+    const by = tally(week.filter((e) => e.country === iso && e.attacker), (e) => e.attacker);
+    const abroad = tally(week.filter((e) => e.attacker === iso && e.country !== iso), (e) => e.country);
+    const chips = (list) => list.map(([c, n]) => `<button class="cite" type="button" data-country="${esc(c)}">${esc(countryName(c))} ${n}</button>`).join("");
+    const involved = by.length || abroad.length ? `<h4>Involved <span class="note">last 7 days</span></h4>
+      ${by.length ? `<p class="bf-inv"><span>Attacks here, as reported, by</span>${chips(by)}</p>` : ""}
+      ${abroad.length ? `<p class="bf-inv"><span>${esc(name)}'s reported attacks elsewhere</span>${chips(abroad)}</p>` : ""}` : "";
+    // carriers within reach
+    const ctr = countryCenter(iso);
+    const ships = ctr ? S.fleet.filter((c) => !c.at_home && isFinite(c._lat) && km(ctr.lat, ctr.lon, c._lat, c._lon) < 1500) : [];
+    const fleetHtml = ships.length ? `<h4>US carriers within 1,500 km</h4><ul class="bf-list">${ships.map((c) =>
+      `<li><button class="linkish" type="button" data-hull="${esc(c.hull)}">${esc(c.name)}</button>, ${esc(c.place || "")}${c._asOf ? ` <span class="note">as of ${esc(fmtDay(c._asOf))}</span>` : ""}</li>`).join("")}</ul>` : "";
+    return briefShell("Intelligence brief", name, `Events placed in ${esc(name)} · developments over the last ${esc(recent.length ? span : "7 days")}`,
+      `<h4>Bottom line</h4>${line}
+      ${judged.length ? `<h4>Assessment</h4>${judged.map((j) => judgmentHtml(j)).join("")}` : ""}
+      <h4>Main developments <span class="note">most serious and best confirmed first</span></h4>
+      ${top.length ? `<ul class="bf-rows">${top.map(devRow).join("")}</ul>` : '<p class="an-empty">No events placed here this week.</p>'}
+      ${front}${involved}${fleetHtml}`);
+  }
+
+  // A short line at the top of the list that opens the brief.
+  function briefTeaser() {
+    if (S.region === null || !S.data) return "";
+    const a = S.data.analysis || {};
+    const regions = (a.regions || []).filter((r) => theaterShown(r.theater));
+    const moving = regions.flatMap((r) => r.judgments || []).filter((j) => j.trend && j.trend !== "steady").length;
+    const scope = selectedRegion()?.name || "Worldwide";
+    return `<li class="brief-teaser"><button type="button" data-brief><span class="intel-kicker">Intelligence brief</span>
+      <span class="bt-line">${esc(scope)}${moving ? ` · ${esc(plural(moving, "development"))} changing` : ""} · where it is busiest</span>
+      <span class="bt-go" aria-hidden="true">›</span></button></li>`;
+  }
+
+  function openBrief(target, refresh = false) {
+    if (!S.data) return;
+    if (!refresh) { closeFly(); hotEvent(null); stopLaunches(); stopRouteBurst(); }
+    S.selectedId = null; S.selectedHull = null; S.selectedFlow = null;
+    S.brief = target;
+    const num = target.iso ? Number(ISO_NUM.get(target.iso)) : null;
+    if (S.briefNum !== num) { S.briefNum = num; paintLand(); }
+    showDetail(target.iso ? countryBriefHtml(target.iso) : worldBriefHtml(), refresh);
+    $("#detail").classList.add("is-brief");
+    $("#detail").querySelectorAll("[data-country]").forEach((b) => b.addEventListener("click", () => openBrief({ iso: b.dataset.country })));
+    $("#detail").querySelectorAll("[data-hull]").forEach((b) => b.addEventListener("click", () => selectCarrier(b.dataset.hull, true)));
+    if (!refresh) render();
   }
 
   const FEED_PAGE = 250;  // the list is built in pages; a busy week has 1,000+ events
   function renderFeed(events) {
     const list = $("#feedList");
     const names = Object.fromEntries(S.theaters.map((t) => [t.id, t.name]));
-    const top = briefHtml();
+    const top = briefTeaser();
     $("#feedCount").textContent = `${events.length}`;
     if (!events.length) {
       if (S.region === null) {
@@ -2856,11 +3007,13 @@
     $("#sheetLabel").textContent = "Collapse the list";
     setTimeout(layout, 320);
   }
-  function hideDetail() { $("#detail").hidden = true; $("#feedList").hidden = false; $("#feedHead").hidden = false; }
+  function hideDetail() { $("#detail").hidden = true; $("#detail").classList.remove("is-brief"); $("#feedList").hidden = false; $("#feedHead").hidden = false; }
   function closeDetail() {
     stopLaunches();
     stopRouteBurst();
     S.selectedId = null; S.selectedHull = null; S.selectedFlow = null;
+    S.brief = null;
+    if (S.briefNum) { S.briefNum = null; paintLand(); }
     history.replaceState(null, "", APP_ROOT.pathname + location.search);
     document.title = "Global Situation Monitor";
     hideDetail();
@@ -3282,6 +3435,7 @@
     }, true);
     $("#feedList").addEventListener("click", (ev) => {
       if (ev.target.closest("[data-more]")) { S.feedLimit += FEED_PAGE; render(); return; }
+      if (ev.target.closest("[data-brief]")) { openBrief({ world: true }); return; }
       const b = ev.target.closest("[data-id]");
       if (b) { S.lastFocus = b.dataset.id; select(b.dataset.id, true); return; }
       const fly = ev.target.closest("[data-fly]");
