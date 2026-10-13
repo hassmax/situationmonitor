@@ -28,6 +28,6 @@ assert.equal(ctx.countryAt(30.0, -40.0), null, 'open sea');
 // the brief replaces the list and a click away closes it
 assert(code.includes('openBrief({ iso })') && code.includes('if (S.brief) closeDetail()'));
 assert(code.includes('(focused() || S.brief) && !world.toGlobeCoords'), 'a click off the globe closes it');
-assert(code.includes('["Moscow", "Europe/Moscow"]') && !code.includes('Asia/Riyadh'), 'Moscow clock, not Riyadh');
+assert(code.includes('["Moscow", "Europe/Moscow"]') && !code.includes('Asia/Riyadh') && code.includes('["Tehran", "Asia/Tehran"]') && !code.includes('Europe/Kyiv'), 'Moscow clock, not Riyadh');
 assert(html.includes('Click a country for its brief'));
 console.log('PASS: country lookup (180th meridian, Crimea, sea), brief opens and closes, Moscow clock.');

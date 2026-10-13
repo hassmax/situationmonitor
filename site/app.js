@@ -2529,8 +2529,8 @@
   }
 
   // The running UTC clock in the header, and world clocks beside it on wide screens (UTC first).
-  const CLOCKS = [["UTC", "UTC"], ["Washington", "America/New_York"], ["London", "Europe/London"], ["Kyiv", "Europe/Kyiv"],
-    ["Moscow", "Europe/Moscow"], ["Beijing", "Asia/Shanghai"]];
+  const CLOCKS = [["UTC", "UTC"], ["Washington", "America/New_York"], ["London", "Europe/London"],
+    ["Moscow", "Europe/Moscow"], ["Tehran", "Asia/Tehran"], ["Beijing", "Asia/Shanghai"]];
   const clockFmt = new Map();
   const zoneTime = (d, zone) => {
     if (zone === "UTC") return d.toISOString().slice(11, 16);
