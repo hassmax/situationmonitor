@@ -239,3 +239,52 @@ body::before { opacity: 0; }
 @media (prefers-reduced-motion: reduce) {
   .alert-banner, .alert-card, .alert-card > *, .alert-line .al-brackets, .alert-line .al-line, .alert-line .al-end { transition: none; }
 }
+
+/* ---------------------------------------------------------------- intelligence brief (app.js openBrief) */
+.detail.is-brief { animation: briefIn .32s cubic-bezier(.3, .7, .2, 1); }
+@keyframes briefIn { from { opacity: 0; transform: translateX(18px); } to { opacity: 1; transform: none; } }
+.intel-kicker { margin: 0; font: 600 9.5px/1.3 var(--font); letter-spacing: .16em; text-transform: uppercase; color: #e7a49b; }
+.intel h3 { margin: 4px 0 2px; font-size: 22px; font-weight: 700; letter-spacing: -.015em; }
+.intel-sub { margin: 0 0 14px; font-size: 11.5px; color: var(--ink-3); }
+.intel h4 { margin: 18px 0 8px; padding-top: 12px; border-top: 1px solid var(--line); font: 600 10px/1.3 var(--font);
+  letter-spacing: .13em; text-transform: uppercase; color: var(--ink-3); display: flex; gap: 8px; align-items: baseline; justify-content: space-between; }
+.intel h4 .note { text-transform: none; letter-spacing: 0; font-weight: 400; }
+.intel h4:first-of-type { border-top: 0; padding-top: 0; margin-top: 4px; }
+.bf-line { margin: 0; font-size: 13.5px; line-height: 1.55; color: var(--ink); }
+.bf-tempo { font-weight: 600; white-space: nowrap; }
+.bf-tempo.t-up { color: #e7a49b; }
+.bf-tempo.t-down { color: #9fb7a6; }
+.bf-tempo.t-same { color: var(--ink-2); }
+.bf-rows, .bf-hot, .bf-list { list-style: none; margin: 0; padding: 0; }
+.bf-row { all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 10px; width: 100%;
+  padding: 9px 8px; border-radius: 8px; }
+.bf-row:hover, .bf-hot button:hover { background: rgba(var(--signal-rgb), .05); }
+.bf-row:focus-visible, .bf-hot button:focus-visible { outline: 1px solid var(--select); }
+.bf-meta { display: flex; gap: 6px; align-items: baseline; font-size: 11px; color: var(--ink-3); }
+.bf-meta b { color: var(--ink-2); font-weight: 600; }
+.bf-meta time { margin-left: auto; font-family: var(--mono); }
+.bf-sum { display: block; margin-top: 3px; font-size: 13px; line-height: 1.45; color: var(--ink); }
+.bf-conf { display: block; margin-top: 3px; font-size: 10.5px; }
+.bf-hot li + li { border-top: 1px solid var(--line); }
+.bf-hot button { all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 12px;
+  width: 100%; padding: 8px; border-radius: 8px; }
+.bf-name { font-size: 13px; font-weight: 600; color: var(--ink); }
+.bf-hot .bf-tempo { font-family: var(--mono); font-size: 12px; text-align: right; }
+.bf-kind { grid-column: 1 / -1; font-size: 11px; color: var(--ink-3); }
+.bf-list li { padding: 5px 0; font-size: 12.5px; line-height: 1.45; color: var(--ink-2); }
+.bf-list b { color: var(--ink); }
+.bf-inv { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; margin: 0 0 6px; font-size: 11.5px; color: var(--ink-3); }
+.bf-inv span { width: 100%; }
+.intel .brief-highlights { margin: 0; padding: 0; list-style: none; }
+.intel .brief-highlights li { padding: 6px 0; }
+.intel .an-name { display: block; font: 600 10px/1.4 var(--font); letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+
+/* the line at the top of the list that opens it */
+.brief-teaser button { all: unset; box-sizing: border-box; cursor: pointer; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px;
+  width: 100%; margin: 2px 0 10px; padding: 11px 14px; border-radius: 10px; background: rgba(var(--signal-rgb), .04);
+  border: 1px solid var(--line); border-left: 2px solid var(--accent); }
+.brief-teaser button:hover { background: rgba(var(--signal-rgb), .07); }
+.brief-teaser button:focus-visible { outline: 1px solid var(--select); }
+.brief-teaser .bt-line { grid-column: 1; font-size: 12.5px; color: var(--ink); }
+.brief-teaser .bt-go { grid-row: 1 / 3; grid-column: 2; align-self: center; font-size: 20px; color: var(--ink-3); }
+@media (prefers-reduced-motion: reduce) { .detail.is-brief { animation: none; } }

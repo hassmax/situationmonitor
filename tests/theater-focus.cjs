@@ -31,8 +31,8 @@ vm.createContext(context);
 vm.runInContext([
   constant('selectedRegion'), constant('theaterShown'), constant('focused'), constant('FOCUS_DIM'), constant('dimOf'),
   constant('carrierOnMap'), section('  function syncRegionControls()', '  function renderCounts()'),
-  section('  function briefHtml()', '  const FEED_PAGE'),
-  'this.api = { selectedRegion, theaterShown, focused, dimOf, carrierOnMap, renderTheaters, syncRegionControls, selectRegion, briefHtml };'
+  section('  const plural =', '  // The brief for one country'), section('  function briefTeaser()', '  function openBrief('),
+  'this.api = { selectedRegion, theaterShown, focused, dimOf, carrierOnMap, renderTheaters, syncRegionControls, selectRegion, worldBriefHtml, briefTeaser };'
 ].join('\n'), context);
 const api = context.api;
 api.renderTheaters();
@@ -75,9 +75,10 @@ const before = closed; api.selectRegion('missing'); assert.equal(closed, before)
 context.reduceMotion = true; api.selectRegion('mideast'); assert.equal(camera.duration, 0);
 S.data = { events: [], analysis: { generated_at: new Date().toISOString(), regions: theaters.slice(0, 2).map(t =>
   ({ theater: t.id, name: t.name, judgments: [{ trend: 'steady', confidence: 'low', headline: t.name, tally: {} }] })) } };
-let brief = api.briefHtml(); assert(brief.includes('Middle East') && !brief.includes('Russia–Ukraine'));
-api.selectRegion('none'); assert.equal(api.briefHtml(), '');
-api.selectRegion('world'); brief = api.briefHtml(); assert(brief.includes('Middle East') && brief.includes('Russia–Ukraine'));
+let brief = api.worldBriefHtml(); assert(brief.includes('Middle East') && !brief.includes('Russia–Ukraine'));
+api.selectRegion('none'); assert.equal(api.briefTeaser(), '');
+api.selectRegion('world'); brief = api.worldBriefHtml(); assert(brief.includes('Middle East') && brief.includes('Russia–Ukraine'));
+assert(api.briefTeaser().includes('data-brief'));
 assert(html.indexOf('class="theater-section"') < html.indexOf('class="legend-section"'), 'Theaters come first');
 assert(html.includes('family=Public+Sans:wght@400;500;600;700') && css.includes('--font: "Public Sans"'));
 assert(!css.includes('font-stretch:') && !html.includes('family=Archivo'));
