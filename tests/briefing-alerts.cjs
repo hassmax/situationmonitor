@@ -41,7 +41,10 @@ assert(cities.ukraine.some(([n, , , cap]) => n === 'Kyiv' && cap));
 // clocks: UTC first; the alert banner and preview are wired
 assert(/const CLOCKS = \[\["UTC", "UTC"\]/.test(code));
 assert(html.includes('id="clocks"'));
-assert(code.includes('queueAlerts(fresh.filter((e) => passes(e) && e.severity >= 2));'));
+assert(code.includes('if (cleared.length) queueAlerts(cleared);'));
+// only events the gatekeeper checked (pipeline/gate.py) raise banners: new and checked, or checked since
+assert(/const cleared = data\.events\.filter\(\(e\) => !e\.unchecked && \(!before\.has\(e\.id\) \|\| before\.get\(e\.id\)\)/.test(code));
+assert(code.includes('passes(e) && !e.unchecked && e.severity >= 2'));
 assert(code.includes('params.has("alert")'));
 // one incident arriving as several events, at one spot, alerts once (2026-10-12: Koya came as four)
 api.alertQ.length = 0;

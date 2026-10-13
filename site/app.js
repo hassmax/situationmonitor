@@ -1799,10 +1799,15 @@
     if (S.region !== "world" && S.region !== null && !selectedRegion()) S.region = "world";
     syncRegionControls();
     checkBuild(data);
-    const before = S.data ? new Set(S.data.events.map((e) => e.id)) : null;
+    // id -> whether it was still unchecked (pipeline/gate.py) in the copy before
+    const before = S.data ? new Map(S.data.events.map((e) => [e.id, !!e.unchecked])) : null;
     S.data = data;
     if (before) {
       const fresh = data.events.filter((e) => !before.has(e.id) && onMap(e) && passes(e) && isNew(e));
+      // banners only for events checked for duplicates and old news: new and checked, or checked since
+      const cleared = data.events.filter((e) => !e.unchecked && (!before.has(e.id) || before.get(e.id))
+        && onMap(e) && passes(e) && isNew(e) && e.severity >= 2);
+      if (cleared.length) queueAlerts(cleared);
       if (fresh.length) {
         announce(`${fresh.length} new ${fresh.length === 1 ? "event" : "events"} added`);
         // they slide into the feed; only on this render, so later redraws don't replay it
@@ -1810,7 +1815,6 @@
         setTimeout(() => { S.arrived = null; }, 1500);
         // a serious new event marks its arrival with one ring spreading from its spot on the globe
         fresh.filter((e) => passes(e) && e.severity >= 2).slice(0, 8).forEach((e, i) => setTimeout(() => { if (passes(e)) landRing(e); }, i * 250));
-        queueAlerts(fresh.filter((e) => passes(e) && e.severity >= 2));
       }
     }
 
@@ -1829,7 +1833,7 @@
       else if (/^CVN-\d{2}$/.test(hash) && S.fleet.some((c) => c.hull === hash)) selectCarrier(hash, true);
       else focusHotspot();
       if (params.has("alert")) {  // preview: the newest serious event in the window
-        const pick = data.events.filter((e) => onMap(e) && passes(e) && e.severity >= 2).sort((a, b) => b._t - a._t)[0];
+        const pick = data.events.filter((e) => onMap(e) && passes(e) && !e.unchecked && e.severity >= 2).sort((a, b) => b._t - a._t)[0];
         if (pick) setTimeout(() => queueAlerts([pick]), 1500);
       }
     } else if (S.selectedId) {
@@ -3171,6 +3175,7 @@
         <div><dt>Latest report</dt><dd><time datetime="${esc(e.updated || e.time)}" title="${esc(new Date(e._tu).toUTCString())}">${esc(fmtEvidenceTime(e._tu))}</time></dd></div></dl>
       ${hasFollowup(e) ? '<p class="muted">Later reports about this same event are grouped here. The time filter uses when the event happened, not when the latest report arrived.</p>' : ""}
       ${e.possibly_old ? `<div class="verdict verdict--doubt"><span class="conf-swatch conf-dashed" aria-hidden="true"></span><div><strong>Possibly an old story</strong><p>Only one outlet has this, and a news search found earlier coverage of the same topic but nothing current from other outlets. It may be an old article republished with a new date. It stays on the map, quieter, and is confirmed if another source reports it.</p></div></div>` : ""}
+      ${e.unchecked ? `<div class="verdict verdict--doubt"><span class="conf-swatch conf-dashed" aria-hidden="true"></span><div><strong>Not yet checked against earlier reports</strong><p>Every new event is compared with what is already on the map and searched for older coverage before it can raise an alert. This one could not be checked yet, so it may repeat an event already shown or be an old story. It is checked in the next update that can.</p></div></div>` : ""}
       <div class="verdict"><span class="conf-swatch conf-${STATUS[e.status].conf}" aria-hidden="true"></span><div><strong>${esc(STATUS[e.status].label)}</strong><p>${esc(STATUS[e.status].note(e.sources_count, e.news_nearby))}</p></div></div>
       ${facts.length ? `<div class="facts">${facts.join("")}</div>` : ""}
       ${e.legal_basis ? `<div class="legal-basis"><span>Stated legal basis</span><strong>${esc(e.legal_basis)}</strong><p>As reported by the sources below. The dashboard records claimed justifications; it does not assess them.</p></div>` : ""}

@@ -29,6 +29,7 @@ import datecheck  # noqa: E402
 import dedupe  # noqa: E402
 import incidents  # noqa: E402
 import extract  # noqa: E402
+import gate  # noqa: E402
 import fleet  # noqa: E402
 import flights  # noqa: E402
 import frontline  # noqa: E402
@@ -286,16 +287,23 @@ def main() -> int:
     merge.apply_status(events, cells)
     # Old articles listed with a fresh date: the article's own publication date (no model calls).
     events = datecheck.check(events, session, state, t0, {e["id"] for e in events} - known)
-    # Old stories that arrived with a fresh date are dropped (see recency.py).
     if not args.no_llm:
+        history = archive.recent(state_dir, t0, dedupe.LATE_DAYS,
+                                 [s for group in ("rss", "bluesky", "telegram") for s in cfg.sources[group]]
+                                 + list(cfg.outlets.values()))
+        # Gatekeeper: every event new in this run is checked for duplicates and old news before
+        # anything is published; one it can't finish is published "unchecked", without alerts.
+        events, gated = gate.check(events, {e["id"] for e in events} - known, session, extract.ask_json, state,
+                                   settings, t0, hidden | cfg.removed, history)
+        folded += gated
+        if gated:
+            merge.apply_status(events, cells)
+        # Old stories that arrived with a fresh date are dropped (see recency.py): older events now.
         events = recency.check(events, {e["id"] for e in events} - known, session, extract.ask_json, state, settings, t0)
-        # Same story reported in different words or places: at most one model call an hour.
-        # New events are also compared with older ones, archived ones included (late follow-ups).
+        # Same story reported in different words or places, among older events (new ones were
+        # checked by the gatekeeper); also compared with archived ones (late follow-ups).
         events, same = dedupe.run(events, state, settings, t0, extract.ask_json,
-                                  extract.calls_remaining(state, settings, t0), hidden | cfg.removed,
-                                  archive.recent(state_dir, t0, dedupe.LATE_DAYS,
-                                                 [s for group in ("rss", "bluesky", "telegram") for s in cfg.sources[group]]
-                                                 + list(cfg.outlets.values())),
+                                  extract.calls_remaining(state, settings, t0), hidden | cfg.removed, history,
                                   share=extract.share_left(state, settings, t0, "dedupe"))
         folded += same
         if same:
@@ -322,7 +330,8 @@ def main() -> int:
     doubtful = {e["id"] for e in events if recency.held(e)}
     if doubtful:
         log(f"[recency] flagged as possibly old until a second source reports it: {len(doubtful)}")
-    published = corrections.publish([{**merge.public_event(e), **({"possibly_old": True} if e["id"] in doubtful else {})}
+    published = corrections.publish([{**merge.public_event(e), **({"possibly_old": True} if e["id"] in doubtful else {}),
+                                      **({"unchecked": True} if gate.unchecked(e) else {})}
                                      for e in events], fixes, extract.EVENT_TYPES)
     # Front lines: the claims, assessor and reviewer agents (see frontline/), on this run's events
     reserve = int(settings.get("extraction_reserve", 30))

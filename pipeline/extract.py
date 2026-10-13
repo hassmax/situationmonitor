@@ -333,14 +333,18 @@ SHARES = {"dedupe": "dedupe_daily_max", "recency": "recency_daily_max", "maproom
           "frontline_isw": "frontline_isw_daily_max", "analysis": "analysis_daily_max",
           "frontline_social": "frontline_social_daily_max", "frontline_imagery": "frontline_imagery_daily_max",
           "frontline_news": "frontline_news_daily_max", "incident_grouping": "incident_grouping_daily_max",
-          "incident_repair": "incident_repair_daily_max"}
-SHARE_DEFAULTS = {"dedupe_daily_max": 140, "recency_daily_max": 48, "maproom_daily_max": 16,
+          "incident_repair": "incident_repair_daily_max", "gate": "gate_daily_max"}
+SHARE_DEFAULTS = {"dedupe_daily_max": 100, "recency_daily_max": 24, "maproom_daily_max": 16,
                   "frontline_daily_max": 40, "frontline_review_daily_max": 60, "frontline_isw_daily_max": 60,
                   "analysis_daily_max": 24, "frontline_social_daily_max": 40, "frontline_imagery_daily_max": 8,
                   "frontline_news_daily_max": 24,
                   # the incident checks (incidents.py) had none until 2026-10-11, when they took 143 of
                   # the 470 calls and reading new posts stopped at 17:40 UTC with 400 posts waiting
-                  "incident_grouping_daily_max": 30, "incident_repair_daily_max": 12}
+                  "incident_grouping_daily_max": 30, "incident_repair_daily_max": 12,
+                  # the gatekeeper (gate.py): about one call a run, every new event checked before it is
+                  # published; the same-story and old-story checks (140 and 48 until 2026-10-13) now
+                  # only work through older events
+                  "gate_daily_max": 120}
 SHARE_BURST = 4
 # Not paced over the day: ISW's maps come out together, around 01:00 UTC, and are read as they come;
 # ISW's written reports are read up front (two weeks' backlog first), then as they come.
@@ -895,13 +899,32 @@ def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, no
     `images` (data: URLs) are shown to the model after the text. `model` asks a named model at the
     chosen model's address instead (the analyst prefers regular Flash); a failure returns None.
     Text-only calls whose purpose is routed to outside providers (providers.ROUTES) go there first,
-    within their token shares, and come to Gemini only when none answers."""
-    if not images and not model and purpose not in SELF_ROUTED and _retry:
+    within their token shares, and come to Gemini only when none answers; for GEMINI_FIRST
+    purposes the other way round."""
+    routed = not images and not model and purpose not in SELF_ROUTED and _retry
+    if routed:
         import providers
 
-        reply = providers.ask_routed(system_prompt, user_text, state, settings, now, purpose, max_tokens)
-        if reply is not None:
-            return reply
+        if purpose not in GEMINI_FIRST:
+            reply = providers.ask_routed(system_prompt, user_text, state, settings, now, purpose, max_tokens)
+            if reply is not None:
+                return reply
+        else:
+            reply = _ask_gemini(system_prompt, user_text, state, settings, now, max_tokens, True, purpose, images, model)
+            if reply is not None:
+                return reply
+            return providers.ask_routed(system_prompt, user_text, state, settings, now, purpose, max_tokens)
+    return _ask_gemini(system_prompt, user_text, state, settings, now, max_tokens, _retry, purpose, images, model)
+
+
+# Purposes that ask Gemini first and the outside providers only when Gemini gives no answer: the
+# gatekeeper (gate.py) makes one call nearly every run, which Gemini's call count takes easily,
+# while its tokens would use up the providers' daily token allowance.
+GEMINI_FIRST = {"gate"}
+
+
+def _ask_gemini(system_prompt: str, user_text: str, state: dict, settings: dict, now: datetime,
+                max_tokens: int, _retry: bool, purpose: str, images: list[str] | None, model: str | None) -> dict | None:
     token = os.environ.get("LLM_API_KEY", "").strip()
     chosen = state.get("llm_model")
     if (not token or not chosen or _paused(state, now) or calls_allowed(state, settings, now) <= 0
@@ -930,8 +953,8 @@ def ask_json(system_prompt: str, user_text: str, state: dict, settings: dict, no
                 except RateLimited:
                     other = None
                 if other:
-                    return ask_json(system_prompt, user_text, state, settings, now, max_tokens, _retry=False,
-                                    purpose=purpose, images=images)
+                    return _ask_gemini(system_prompt, user_text, state, settings, now, max_tokens, False,
+                                       purpose, images, None)
             return None
         if r.status_code == 402:
             _spend(state, purpose, -1)  # refused for billing: nothing was done, not counted
