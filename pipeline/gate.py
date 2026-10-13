@@ -38,7 +38,7 @@ from datetime import timedelta
 import dedupe
 import embed
 import recency
-from common import iso, log, parse_time
+from common import iso, log, parse_time, short_hash
 
 CASES_PER_CALL = 12
 MAX_CALLS = 3
@@ -119,6 +119,45 @@ def _show(e: dict, cands: list, found) -> dict:
         case["recent"] = [{"title": r["title"], "date": day(r)} for r in recent[:5]]
         case["older"] = [{"n": k, "title": r["title"], "date": day(r)} for k, r in enumerate(older)]
     return case
+
+
+# Reports folded into older incidents by the first version of the gatekeeper (13 October 2026, from
+# about 02:50 UTC), before dedupe.different_times: read again as new posts, once.
+REPAIR_VERSION = 1
+REPAIR_FROM = "2026-10-13T02:50:00Z"
+
+
+def take_back_late_folds(events: list[dict], state: dict) -> list[dict]:
+    """Reports that joined a strike, fight or other incident more than PAIR_WINDOW after it happened,
+    since REPAIR_FROM, are taken out and returned as items for the extraction queue (each from its
+    own summary, credited to its source), so the fixed rules file them: a new incident becomes its
+    own event, and late coverage of the old one rejoins it by its occurrence date."""
+    if state.get("gate_repair", 0) >= REPAIR_VERSION:
+        return []
+    state["gate_repair"] = REPAIR_VERSION
+    since = parse_time(REPAIR_FROM)
+    items = []
+    for e in events:
+        if dedupe._family(e) not in dedupe.VIOLENCE or e.get("alert") or e.get("wave") or not e.get("reports"):
+            continue
+        t = parse_time(e["time"])
+        late = [r for r in e["reports"] if parse_time(r["time"]) >= since and parse_time(r["time"]) - t > dedupe.PAIR_WINDOW]
+        if not late or len(late) == len(e["reports"]):
+            continue
+        gone = {id(r) for r in late}
+        e["reports"] = [r for r in e["reports"] if id(r) not in gone]
+        e["updated"] = max(r["time"] for r in e["reports"])
+        e.pop("headline", None)
+        for r in late:
+            items.append({"id": short_hash("gate-repair", r.get("url"), r.get("summary")),
+                          "source_id": r.get("source_id") or "gate-repair", "source": r.get("source"),
+                          "platform": r.get("platform"), "kind": r.get("kind", "news"), "side": r.get("side"),
+                          "group": r.get("group") or r.get("source"), "weight": int(r.get("weight", 2)),
+                          "prefilter": False, "url": r.get("url"), "text": r.get("summary") or "", "time": r["time"],
+                          "max_age_h": 24 * 30})
+    if items:
+        log(f"[gate] {len(items)} reports taken out of older incidents they were folded into, to be read again")
+    return items
 
 
 def check(events: list[dict], new_ids: set[str], session, ask, state: dict, settings: dict, now,
