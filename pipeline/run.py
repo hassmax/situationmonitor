@@ -201,6 +201,7 @@ def main() -> int:
     # Once: reports filed under an old arms transfer days after it began (the old merge rule) are
     # read again so they become their own events (B-1s leaving Fairford, 2026-10-04).
     fresh += merge.split_overgrown_transfers(events, state, t0)
+    fresh += gate.take_back_late_folds(events, state)  # once: incidents the first gatekeeper folded across days
     # Once: recent deployments into another country, filed as markers under the old rule, are read
     # again so the model files them as routes (2026-10-07). Only when the model is in use.
     if not args.no_llm:

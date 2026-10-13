@@ -194,3 +194,40 @@ def test_meaning_readings_are_kept_between_runs(tmp_path, monkeypatch):
     assert set(embed.vectors(["a", "b", "c"])) == {"a", "b", "c"}
     assert read == ["a", "b", "c"]  # "a" and "b" were not read again
     assert abs(embed.similarity(["a"], ["b"], embed.vectors(["a", "b"])) - 1.0) < 1e-3
+
+
+def test_a_new_attack_is_never_folded_into_one_days_earlier(monkeypatch):
+    """13 Oct 2026: North Korea's 12 October launch was filed under its 1 October test."""
+    no_meaning(monkeypatch)
+    no_search(monkeypatch)
+    old = ev("a", "North Korea test-fired a tactical ballistic missile into the East Sea.", "missile_drone", "KP",
+             "East Sea", 24 * 11, 39.0, 129.0)
+    new = ev("n", "North Korea fired a tactical ballistic missile into the East Sea, Seoul says.", "missile_drone", "KP",
+             "East Sea", 1, 39.0, 129.0)
+    model = Model(same={"n": ["a"]})
+    out, folded = gate.check(background() + [old, new], {"n"}, None, model, {}, SETTINGS, NOW, set(), [])
+    assert not folded and {"a", "n"} <= {e["id"] for e in out}
+    # nor when an earlier answer said "same"
+    import dedupe
+    out, folded = dedupe._fold([old, new], [("a", "n")], set())
+    assert not folded
+
+
+def test_late_statement_about_an_incident_still_joins():
+    import dedupe
+    old = ev("a", "Drones hit the RAF Fairford air base.", "hybrid", "GB", "Fairford", 24 * 10, 51.7, -1.8)
+    late = ev("n", "UK says Iran's IRGC was behind the RAF Fairford drone plot.", "diplomacy", "GB", "London", 1, 51.5, -0.1)
+    assert not dedupe.different_times(old, late)
+
+
+def test_reports_folded_across_days_are_read_again_once():
+    from datetime import timedelta
+    old = ev("a", "Drones sank a ship off Bulgaria.", "naval", "BG", "Black Sea", 24 * 7, 43.0, 29.0)
+    t = (NOW - timedelta(hours=2)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    old["reports"].append({"url": "u-late", "time": t, "summary": "A drone sank a ship off Byala.", "source": "Reuters"})
+    gate.REPAIR_FROM = (NOW - timedelta(hours=10)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    state = {}
+    items = gate.take_back_late_folds([old], state)
+    assert [i["url"] for i in items] == ["u-late"] and [r["url"] for r in old["reports"]] == ["u-a"]
+    assert items[0]["text"] == "A drone sank a ship off Byala." and items[0]["max_age_h"] == 720
+    assert gate.take_back_late_folds([old], state) == []

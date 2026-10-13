@@ -192,6 +192,30 @@ def _gap(e: dict, f: dict) -> timedelta:
     return abs((parse_time(e.get("time")) or parse_time(f.get("time"))) - (parse_time(f.get("time")) or parse_time(e.get("time"))))
 
 
+# A report of an act (an attack, a launch, a sinking, a clash) ...
+_ACT = re.compile(r"\b(fir(e|es|ed|ing)|test-fir\w*|launch\w*|struck|strikes?|hits?|attack(s|ed|ing)?|shell(s|ed|ing)|"
+                  r"bomb(s|ed|ing)|sank|sinks?|sinking|sunk|kill(s|ed|ing)?|wound(s|ed|ing)|injur\w*|shot down|"
+                  r"intercept\w*|explo\w*|blasts?|clash\w*|raid\w*|seiz\w*|captur\w*|ambush\w*)\b", re.I)
+# ... unless it is about findings or reactions: those join the incident they are about
+_AFTER = re.compile(r"\b(investigat\w*|probe[sd]?|inquir(y|ies)|attribut\w*|blam\w*|behind|responsib\w*|accus\w*|"
+                    r"condemn\w*|den(y|ies|ied|ial)|funerals?|death toll|toll|aftermath|died of)\b", re.I)
+
+
+def different_times(e: dict, f: dict) -> bool:
+    """Two incidents (strikes, fighting, attacks at sea, sabotage, incursions) that happened more
+    than PAIR_WINDOW apart, the later one reporting an act of its own (fired, struck, sank) rather
+    than findings or reactions (an investigation, attribution, condemnation), are separate
+    incidents whatever the model says: on 2026-10-13 the gatekeeper filed North Korea's 12 October
+    missile launch under its 1 October test, and a ship sunk off Bulgaria that day under one sunk on
+    6 October, so the new incidents left the 24-hour window. An investigation attributing a
+    blast days later still joins it."""
+    if _family(e) not in VIOLENCE or _family(f) not in VIOLENCE or _gap(e, f) <= PAIR_WINDOW:
+        return False
+    later = max((e, f), key=lambda x: parse_time(x.get("time")) or parse_time("1970-01-01T00:00:00Z"))
+    text = later.get("summary") or ""
+    return bool(_ACT.search(text)) and not _AFTER.search(text)
+
+
 def separate_incidents(e: dict, f: dict) -> bool:
     """Legacy campaigns and explicitly partitioned siblings must never be folded back."""
     return (bool(e.get("wave") or f.get("wave")) or
@@ -229,7 +253,8 @@ def candidates(e: dict, pool: list[dict], vec: dict, late: bool = False) -> list
     follow-ups older than that, up to LATE_DAYS."""
     out = []
     for f in pool:
-        if f["id"] == e["id"] or separate_incidents(e, f) or f.get("alert") or apart(e, f) or older_partition(e, f, pool):
+        if (f["id"] == e["id"] or separate_incidents(e, f) or f.get("alert") or apart(e, f) or different_times(e, f)
+                or older_partition(e, f, pool)):
             continue
         gap = _gap(e, f)
         if late:
@@ -359,7 +384,8 @@ def _fold(events: list[dict], same: list[tuple[str, str]], skip: set[str], histo
     for a, b in same:
         if a in by_id and b in by_id and a not in skip and b not in skip:
             ra, rb = root(a), root(b)
-            if ra != rb and not older_partition(by_id[a], by_id[b], list(by_id.values())) and not any(separate_incidents(by_id[x], by_id[y])
+            if ra != rb and not older_partition(by_id[a], by_id[b], list(by_id.values())) and not any(
+                    separate_incidents(by_id[x], by_id[y]) or different_times(by_id[x], by_id[y])
                                    for x in by_id if root(x) == ra
                                    for y in by_id if root(y) == rb):
                 first, second = sorted((ra, rb), key=rank)
