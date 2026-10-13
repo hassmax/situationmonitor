@@ -275,3 +275,30 @@ def test_an_older_or_already_read_tracker_edition_is_never_read_again(monkeypatc
         monkeypatch.setattr(fleet, "_latest_edition", lambda items, session, u=url, tt=t: {"url": u, "time": tt, "html": "x" * 2000})
         assert fleet.read_tracker(state, [], None, {}, None, None) == []
     assert state["fleet_meta"]["tracker_url"] == "oct5"
+
+
+def test_an_edition_over_ten_days_old_is_not_read(monkeypatch):
+    # 2026-10-13: with the feed down, the 14 September headline was read and put the Bush back in
+    # the Arabian Sea as of 14 September
+    state = {"fleet_meta": {"tracker_url": "x", "tracker_time": "2026-09-01T00:00:00Z", "tracker_parser": 4}}
+    monkeypatch.setattr(fleet, "_latest_edition", lambda items, session: {
+        "url": "https://news.usni.org/2026/09/14/usni-news-fleet-and-marine-tracker-sept-14-2026",
+        "time": "2026-09-14T19:26:11Z", "html": "x" * 2000})
+    now = datetime(2026, 10, 13, 1, 0, tzinfo=timezone.utc)
+    assert fleet.read_tracker(state, [], None, {}, now, None) == []
+    assert state["fleet_meta"]["tracker_url"] == "x"
+
+
+def test_without_the_feed_the_last_mondays_edition_is_tried_by_its_address():
+    asked = []
+
+    class Session:
+        def get(self, url, timeout=0):
+            asked.append(url)
+            ok = url.endswith("oct-5-2026")
+            return type("R", (), {"status_code": 200 if ok else 404, "text": "USNI News Fleet and Marine Tracker" if ok else ""})()
+
+    got = fleet._guess_edition(Session(), datetime(2026, 10, 13, 1, 0, tzinfo=timezone.utc))
+    assert asked[0].endswith("/2026/10/12/usni-news-fleet-and-marine-tracker-oct-12-2026")
+    assert got["url"] == "https://news.usni.org/2026/10/05/usni-news-fleet-and-marine-tracker-oct-5-2026"
+    assert got["time"] == "2026-10-05T12:00:00Z"

@@ -67,6 +67,11 @@ HOLD = timedelta(hours=72)
 ELSEWHERE_KM = 1000    # another carrier reported this close: an impossible move is probably about it
 ELSEWHERE_DAYS = 7     # ... if it was placed there within this many days
 TRACKER_MAX_AGE = timedelta(days=3)  # the tracker is daily; an older edition can't say who is home now
+# An edition older than this is not read at all. On 2026-10-13 the feed failed, the newest tracker
+# headline among the run's items was 14 September's, and reading it (again, for a new reader) put
+# the Bush back in the Arabian Sea "as of 14 September" over its 5 October port call in Phuket.
+READ_MAX_AGE = timedelta(days=10)
+_MONTHS = ["jan", "feb", "march", "april", "may", "june", "july", "aug", "sept", "oct", "nov", "dec"]
 VAGUE = {"middle east", "the middle east", "indo-pacific", "the indo-pacific", "pacific", "the pacific",
          "pacific ocean", "atlantic", "the atlantic", "atlantic ocean", "europe", "asia", "africa", "at sea",
          "overseas", "the region", "region", "gulf region", "west asia", "western asia", "south asia", "southeast asia",
@@ -465,11 +470,38 @@ def _latest_edition(items: list[dict], session) -> dict | None:
                 best = {"url": e["link"], "time": t, "title": title, "html": content}
     if best:
         return best
+    # no feed: USNI publishes the tracker on Mondays at a predictable address; try the last two
+    found = _guess_edition(session)
+    if found:
+        return found
     editions = [it for it in items if it["platform"] == "rss" and "fleet and marine tracker" in it["text"][:160].lower()]
     if not editions:
         return None
-    it = max(editions, key=lambda x: x["time"])
-    return {"url": it["url"], "time": it["time"], "title": it["text"][:120]}
+    it = max(editions, key=lambda x: _url_day(x["url"]) or x["time"])
+    return {"url": it["url"], "time": _url_day(it["url"]) or it["time"], "title": it["text"][:120]}
+
+
+def _url_day(url: str) -> str | None:
+    """The date in a USNI address ("/2026/10/05/"), as the edition's time."""
+    m = re.search(r"/(20\d\d)/(\d\d)/(\d\d)/", url or "")
+    return f"{m[1]}-{m[2]}-{m[3]}T12:00:00Z" if m else None
+
+
+def _guess_edition(session, today: datetime | None = None) -> dict | None:
+    """The newest of the last two Mondays' editions that opens, by its usual address."""
+    today = today or datetime.now(UTC)
+    monday = today - timedelta(days=today.weekday())
+    for d in (monday, monday - timedelta(days=7)):
+        url = (f"https://news.usni.org/{d:%Y/%m/%d}/usni-news-fleet-and-marine-tracker-"
+               f"{_MONTHS[d.month - 1]}-{d.day}-{d.year}")
+        try:
+            r = session.get(url, timeout=20)
+        except Exception as exc:  # noqa: BLE001
+            log(f"[fleet] tracker {url}: {exc}")
+            continue
+        if r.status_code == 200 and "fleet and marine tracker" in r.text.lower():
+            return {"url": url, "time": f"{d:%Y-%m-%d}T12:00:00Z", "title": "USNI News Fleet and Marine Tracker", "html": r.text}
+    return None
 
 
 def read_tracker(state: dict, items: list[dict], session, settings: dict, now: datetime, ask_json) -> list[dict]:
@@ -480,6 +512,8 @@ def read_tracker(state: dict, items: list[dict], session, settings: dict, now: d
         return []
     if latest["url"] == meta.get("tracker_url") and meta.get("tracker_parser") == TRACKER_PARSER:
         return []
+    if now and now - datetime.fromisoformat(latest["time"].replace("Z", "+00:00")) > READ_MAX_AGE:
+        return []  # too old to say where anything is now
     if latest["time"] < meta.get("tracker_time", "") or (
             latest["url"] in meta.get("read", {}) and meta["read"][latest["url"]] == TRACKER_PARSER
             and latest["url"] != meta.get("tracker_url")):
