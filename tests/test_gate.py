@@ -172,3 +172,25 @@ def test_settings_file_routes_match():
 
 
 _ = datetime, timezone
+
+
+def test_meaning_readings_are_kept_between_runs(tmp_path, monkeypatch):
+    import numpy as np
+
+    read = []
+
+    class Fake:
+        def embed(self, texts, batch_size=64):
+            read.extend(texts)
+            return [np.ones(4) * (i + 1) for i, _ in enumerate(texts)]
+
+    monkeypatch.setattr(embed, "_model", Fake())
+    monkeypatch.setattr(embed, "_cache", {})
+    monkeypatch.setattr(embed, "_used", set())
+    assert set(embed.vectors(["a", "b"])) == {"a", "b"}
+    embed.save(tmp_path / "e.npz")
+    monkeypatch.setattr(embed, "_cache", {})
+    embed.load(tmp_path / "e.npz")
+    assert set(embed.vectors(["a", "b", "c"])) == {"a", "b", "c"}
+    assert read == ["a", "b", "c"]  # "a" and "b" were not read again
+    assert abs(embed.similarity(["a"], ["b"], embed.vectors(["a", "b"])) - 1.0) < 1e-3

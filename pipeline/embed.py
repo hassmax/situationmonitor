@@ -11,7 +11,9 @@ gatekeeper finds candidates by word overlap alone (dedupe.py's TF-IDF), as befor
 """
 from __future__ import annotations
 
+import hashlib
 import os
+from pathlib import Path
 
 from common import log
 
@@ -20,6 +22,40 @@ MAX_TEXTS = 4000   # texts embedded a run at most (a few seconds on GitHub's ser
 
 _model = None
 _failed = False
+# Readings kept between runs (a file beside state.json), so a run reads only the texts it hasn't
+# seen: reading the two days' events near the new ones took 11 to 14 seconds a run in a trial on
+# 2026-10-13, nearly all of it texts read the run before.
+_cache: dict[str, object] = {}
+_used: set[str] = set()
+
+
+def _key(text: str) -> str:
+    return hashlib.sha1(text.encode("utf-8")).hexdigest()[:20]
+
+
+def load(path: Path) -> None:
+    """Read the kept readings (none if the file is missing or unreadable)."""
+    try:
+        import numpy as np
+
+        with np.load(path) as f:
+            keys, vecs = f["keys"], f["vectors"].astype("float32")
+        _cache.update({str(k): vecs[i] for i, k in enumerate(keys)})
+    except Exception:  # noqa: BLE001 - first run, or the package missing
+        pass
+
+
+def save(path: Path) -> None:
+    """Keep the readings this run used (the events near this run's new ones)."""
+    keys = [k for k in _used if k in _cache]
+    if not keys:
+        return
+    try:
+        import numpy as np
+
+        np.savez_compressed(path, keys=np.array(keys), vectors=np.stack([_cache[k] for k in keys]).astype("float16"))
+    except Exception as exc:  # noqa: BLE001
+        log(f"[gate] could not keep the meaning readings: {exc}")
 
 
 def _load():
@@ -38,18 +74,20 @@ def _load():
 
 def vectors(texts: list[str]) -> dict[str, list[float]] | None:
     """Unit vectors by text, or None when the model is unavailable."""
-    texts = list(dict.fromkeys(t for t in texts if t))[:MAX_TEXTS]
-    model = _load()
-    if model is None:
+    texts = list(dict.fromkeys(t for t in texts if t))
+    keys = {t: _key(t) for t in texts}
+    _used.update(keys.values())
+    todo = [t for t in texts if keys[t] not in _cache][:MAX_TEXTS]
+    if todo and _load() is None:
         return None
     try:
         import numpy as np
 
-        out = {}
-        for t, v in zip(texts, model.embed(texts, batch_size=64)):
-            v = np.asarray(v, dtype="float32")
-            out[t] = v / (float(np.linalg.norm(v)) or 1.0)
-        return out
+        if todo:
+            for t, v in zip(todo, _model.embed(todo, batch_size=64)):
+                v = np.asarray(v, dtype="float32")
+                _cache[keys[t]] = v / (float(np.linalg.norm(v)) or 1.0)
+        return {t: _cache[keys[t]] for t in texts if keys[t] in _cache}
     except Exception as exc:  # noqa: BLE001
         log(f"[gate] meaning-matching failed: {str(exc)[:120]}")
         return None

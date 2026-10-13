@@ -27,6 +27,7 @@ import config as config_mod  # noqa: E402
 import corrections  # noqa: E402
 import datecheck  # noqa: E402
 import dedupe  # noqa: E402
+import embed  # noqa: E402
 import incidents  # noqa: E402
 import extract  # noqa: E402
 import gate  # noqa: E402
@@ -293,8 +294,10 @@ def main() -> int:
                                  + list(cfg.outlets.values()))
         # Gatekeeper: every event new in this run is checked for duplicates and old news before
         # anything is published; one it can't finish is published "unchecked", without alerts.
+        embed.load(state_dir / "embeddings.npz")  # the meaning readings kept from earlier runs
         events, gated = gate.check(events, {e["id"] for e in events} - known, session, extract.ask_json, state,
                                    settings, t0, hidden | cfg.removed, history)
+        embed.save(state_dir / "embeddings.npz")
         folded += gated
         if gated:
             merge.apply_status(events, cells)
