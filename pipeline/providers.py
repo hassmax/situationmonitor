@@ -43,7 +43,8 @@ DEFAULTS = [
 # Which purposes go to which providers first, with each purpose's daily token share there. Image
 # reading (the Map Room) stays on Gemini. Together the shares stay within Cerebras' daily cap.
 ROUTES = {
-    "analysis": {"cerebras": 300_000},
+    "analysis": {"cerebras": 200_000},
+    "gate": {"cerebras": 100_000},   # only when Gemini gives no answer (extract.GEMINI_FIRST)
     "incident_repair": {"cerebras": 60_000},  # bounded legacy campaign migration
     "incident_grouping": {"cerebras": 100_000},  # continuing coverage of specific facilities
     "recency": {"cerebras": 50_000},
