@@ -251,6 +251,19 @@ def update(state: dict, reports: list[dict]) -> int:
 # Sea areas and ports named in USNI's tracker, most specific first. Only named places: "the
 # Pacific" or "the Atlantic" alone are not positions.
 TRACKER_PLACES = [
+    # ports and seas of Southeast and South Asia and the Indian Ocean (until 2026-10-13 none were
+    # known, so the Bush's port call in Phuket was read as the "Arabian Sea" it had come from)
+    (r"phuket", "Phuket, Thailand", 7.88, 98.39), (r"laem chabang|sattahip", "Laem Chabang, Thailand", 13.08, 100.88),
+    (r"port klang|kuala lumpur", "Port Klang, Malaysia", 3.0, 101.39), (r"colombo|sri lanka", "Colombo, Sri Lanka", 6.95, 79.85),
+    (r"diego garcia", "Diego Garcia", -7.31, 72.41), (r"\bduqm\b", "Duqm, Oman", 19.67, 57.70), (r"salalah", "Salalah, Oman", 16.94, 54.0),
+    (r"jebel ali|dubai", "Jebel Ali, UAE", 25.01, 55.06), (r"sasebo", "Sasebo, Japan", 33.16, 129.72),
+    (r"hong kong", "Hong Kong", 22.29, 114.17), (r"cam ranh", "Cam Ranh Bay, Vietnam", 11.9, 109.2),
+    (r"subic bay", "Subic Bay, Philippines", 14.8, 120.27), (r"darwin", "Darwin, Australia", -12.46, 130.84),
+    (r"perth|fremantle|hmas stirling", "Perth, Australia", -32.2, 115.68), (r"brisbane", "Brisbane, Australia", -27.38, 153.17),
+    (r"sydney", "Sydney, Australia", -33.85, 151.23), (r"\brota\b", "Rota, Spain", 36.62, -6.35),
+    (r"marseille", "Marseille, France", 43.3, 5.36), (r"limassol|cyprus", "off Cyprus", 34.6, 33.1),
+    (r"andaman sea", "Andaman Sea", 10.0, 96.0), (r"strait of malacca|malacca strait", "Strait of Malacca", 3.5, 100.5),
+    (r"gulf of thailand", "Gulf of Thailand", 10.0, 102.0), (r"java sea", "Java Sea", -5.0, 110.0),
     (r"pearl harbor", "Pearl Harbor, Hawaii", 21.35, -157.95), (r"hawaii", "near Hawaii", 21.0, -158.5),
     (r"san diego|north island", "San Diego", 32.70, -117.19), (r"southern california|socal|off california", "off Southern California", 32.5, -118.5),
     (r"newport news", "Newport News, Va.", 36.98, -76.43), (r"norfolk", "Norfolk, Va.", 36.95, -76.33),
@@ -296,7 +309,8 @@ def _tracker_place(text: str):
     return None
 
 
-TRACKER_PARSER = 4  # bump to re-read the current edition after changing parse_tracker
+_AT_PORT = re.compile(r"(?i)\barriv\w*|port (?:visit|call)|pierside|moored|anchored|in port\b")
+TRACKER_PARSER = 5  # 5: Southeast Asian ports and seas (2026-10-13). Bump to re-read the current edition after changing parse_tracker
 _CAPTION = re.compile(r"(?i)navy photo|photo(?:graph)? (?:by|courtesy)|\bphoto\b\s*$|file photo|\bimage\b")
 
 
@@ -382,7 +396,11 @@ def parse_tracker(html: str, evidence: list | None = None) -> list[dict]:
     out, unplaced = [], []
     for hull in order:
         c = info[hull]
-        if c["section"]:
+        if (c["current"] and "," in c["current"]["place"] and c["section"] and "," not in c["section"]["place"]
+                and _AT_PORT.search(c["current_sentence"] or "")):
+            # a named port the carrier "arrived in" beats a broad sea heading above it
+            here, source = c["current"], f"port in sentence {c['current_sentence'][:120]!r}"
+        elif c["section"]:
             here, source = c["section"], f"section '{c['heading']}'"
         elif c["current"]:
             here, source = c["current"], f"sentence {c['current_sentence'][:120]!r}"
@@ -462,6 +480,14 @@ def read_tracker(state: dict, items: list[dict], session, settings: dict, now: d
         return []
     if latest["url"] == meta.get("tracker_url") and meta.get("tracker_parser") == TRACKER_PARSER:
         return []
+    if latest["time"] < meta.get("tracker_time", "") or (
+            latest["url"] in meta.get("read", {}) and meta["read"][latest["url"]] == TRACKER_PARSER
+            and latest["url"] != meta.get("tracker_url")):
+        # an older edition (a feed that failed this run, a stale headline in the news), or one already
+        # read: never again. Until 2026-10-13 the feed and a 14 September headline took turns, so the
+        # 5 October edition was read anew every few runs and put the Bush back in the Arabian Sea
+        # over the later reports of it in Phuket.
+        return []
     if latest["url"] == meta.get("tracker_url"):
         # re-reading with a changed parser: drop what the old reading placed, so nothing it got wrong stays
         fleet = state.setdefault("fleet", {})
@@ -494,6 +520,8 @@ def read_tracker(state: dict, items: list[dict], session, settings: dict, now: d
         return []
     meta["tracker_url"] = latest["url"]
     meta["tracker_parser"] = TRACKER_PARSER
+    meta.setdefault("read", {})[latest["url"]] = TRACKER_PARSER
+    meta["read"] = dict(sorted(meta["read"].items())[-20:])
     meta["tracker_time"] = latest["time"]
     meta["tracker_hulls"] = sorted({h for h in (_hull(c.get("hull")) for c in out["carriers"] if isinstance(c, dict)) if h})
     status_map = {"deployed": "operating", "in maintenance": "in port"}  # older model replies may still say "deployed"

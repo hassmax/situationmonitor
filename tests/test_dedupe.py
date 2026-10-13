@@ -180,3 +180,14 @@ def test_incidents_far_apart_are_never_candidates_unless_one_is_pinned_broadly()
     sea = [ev("y", "Explosions were reported near a ship off Yemen's coast.", "naval", None, "Gulf of Aden", 5, 12.6, 45.0),
            ev("h", "A security incident was reported near the Strait of Hormuz.", "naval", None, "Strait of Hormuz", 2, 26.6, 56.4)]
     assert dedupe.apart(*sea)
+
+
+def test_the_likeliest_duplicates_are_asked_first():
+    # 2026-10-13: asked newest first, a day's backlog never reached the morning's word-for-word pairs
+    evs = background() + [
+        ev("k1", "Two drones strike an Iranian Kurdish opposition camp near Koya in Iraq.", "missile_drone", "IQ", "Koya", 18, 36.08, 44.63),
+        ev("k2", "Two drones strike an Iranian Kurdish opposition camp near Koya in Iraq.", "missile_drone", "IQ", "Koya", 12, 36.08, 44.63),
+        ev("n1", "Israeli strike in Gaza City.", hours_ago=1),
+        ev("n2", "Israeli tanks shelled Gaza City, wounding two people.", "artillery", hours_ago=1)]
+    questions, _ = dedupe.cases(evs, [], {}, NOW)
+    assert {questions[0][0]["id"], questions[0][1][0][1]["id"]} == {"k1", "k2"}

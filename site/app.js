@@ -1574,9 +1574,21 @@
   const alertTimers = [];
   const alertLater = (fn, ms) => alertTimers.push(setTimeout(fn, reduceMotion ? 0 : ms));
   const utcHm = (ms) => new Date(ms).toISOString().slice(11, 16);
+  // An event of the same kind within ALERT_NEAR_KM of one alerted in the last ALERT_QUIET is not
+  // alerted again: until the same-story check folds them, one incident can arrive as several events
+  // (on 2026-10-12 one drone strike near Koya came as four), and each set off its own banner.
+  const ALERT_QUIET = 6 * HOUR, ALERT_NEAR_KM = 60;
+  const alerted = [];
+  const alertedLike = (e) => alerted.some((a) => Date.now() - a.at < ALERT_QUIET && a.cat === catOf(e)[0]
+    && km(a.lat, a.lon, e.lat, e.lon) <= ALERT_NEAR_KM);
   function queueAlerts(evs) {
     const seen = new Set([...alertQ.map((e) => e.id), alertNow && alertNow.e.id]);
-    evs.filter((e) => !seen.has(e.id)).sort((a, b) => b.severity - a.severity || b._t - a._t).slice(0, ALERT_MAX).forEach((e) => alertQ.push(e));
+    const picked = [];
+    evs.filter((e) => !seen.has(e.id)).sort((a, b) => b.severity - a.severity || b._t - a._t).forEach((e) => {
+      if (picked.length >= ALERT_MAX || alertedLike(e) || picked.some((p) => catOf(p)[0] === catOf(e)[0] && km(p.lat, p.lon, e.lat, e.lon) <= ALERT_NEAR_KM)) return;
+      picked.push(e);
+    });
+    picked.forEach((e) => { alertQ.push(e); alerted.push({ at: Date.now(), cat: catOf(e)[0], lat: e.lat, lon: e.lon }); });
     if (!alertNow) nextAlert();
   }
   function alertEls() {

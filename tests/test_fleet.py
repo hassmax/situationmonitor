@@ -254,3 +254,24 @@ def test_a_held_report_is_released_when_it_fits_the_last_tracker_position():
     c = state["fleet"]["CVN-77"]
     assert (c["place"], c["source"], c["prev"]["place"]) == ("Strait of Malacca", "Flattop Fiesta (ship imagery)", "Arabian Sea")
     assert "held" not in c and fleet.release_held(state) == 0
+
+
+def test_a_port_call_in_phuket_is_read_as_phuket_not_the_sea_it_came_from():
+    # USNI's 5 October 2026 tracker; Phuket was unknown, so the next sentence's Arabian Sea was used
+    html = ('<h3>In the Indian Ocean</h3><p>Aircraft carrier USS George H. W. Bush (CVN-77) arrived Sunday in Phuket, '
+            'Thailand, for a port visit. The George H.W. Bush Carrier Strike Group has been operating in the Arabian Sea '
+            'in support of U.S. operations in the Middle East.</p>'
+            '<h3>In the Philippine Sea</h3><p>USS George Washington (CVN-73) is operating in the Philippine Sea.</p>')
+    got = {c["hull"]: c["place"] for c in fleet.parse_tracker(html)}
+    assert got == {"CVN-77": "Phuket, Thailand", "CVN-73": "Philippine Sea"}
+
+
+def test_an_older_or_already_read_tracker_edition_is_never_read_again(monkeypatch):
+    # until 2026-10-13 the feed and a stale 14 September headline took turns, and each re-read of the
+    # 5 October edition put the Bush back where that edition had it, over later reports
+    state = {"fleet_meta": {"tracker_url": "oct5", "tracker_time": "2026-10-05T18:13:05Z",
+                            "tracker_parser": fleet.TRACKER_PARSER, "read": {"oct5": fleet.TRACKER_PARSER}}}
+    for url, t in (("sep14", "2026-09-14T19:26:11Z"), ("oct5", "2026-10-05T18:13:05Z")):
+        monkeypatch.setattr(fleet, "_latest_edition", lambda items, session, u=url, tt=t: {"url": u, "time": tt, "html": "x" * 2000})
+        assert fleet.read_tracker(state, [], None, {}, None, None) == []
+    assert state["fleet_meta"]["tracker_url"] == "oct5"

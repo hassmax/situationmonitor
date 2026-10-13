@@ -315,6 +315,10 @@ def cases(events: list[dict], history: list[dict], judged: dict, now) -> tuple[l
                 todo.append((s, f))
         if todo:
             out.append((e, todo))
+    # the likeliest duplicates first (events of the last day before older ones): asked newest first,
+    # a busy day's backlog (697 events on 2026-10-13) never reached the morning's word-for-word
+    # pairs, such as one drone strike near Koya filed twice six hours apart
+    out.sort(key=lambda q: (parse_time(q[0].get("updated") or q[0]["time"]) < day, -max(s for s, _ in q[1])))
     return out, auto
 
 

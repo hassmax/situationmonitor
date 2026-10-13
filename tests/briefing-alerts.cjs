@@ -10,16 +10,17 @@ const section = (from, to) => code.slice(code.indexOf(from), code.indexOf(to, co
 const constant = name => code.match(new RegExp('^  const ' + name + ' = .*$', 'm'))[0];
 
 let shown = [];
-const context = { reduceMotion: true, setTimeout, clearTimeout };
+const context = { reduceMotion: true, setTimeout, clearTimeout, HOUR: 3600e3,
+  catOf: e => [e.cat || 'strike'], km: (a, b, c, d) => Math.hypot(a - c, b - d) * 111 };
 vm.createContext(context);
 vm.runInContext([
   constant('ALERT_MS'), 'const alertQ = []; let alertNow = null;',
   'function nextAlert() { const e = alertQ.shift(); alertNow = e ? { e } : null; if (e) this.shown.push(e.id); }',
-  section('  function queueAlerts(evs)', '  function alertEls()'),
+  section('  const ALERT_QUIET', '  function alertEls()'),
   'this.api = { queueAlerts, alertQ, get now() { return alertNow; }, ALERT_MAX };',
 ].join('\n'), Object.assign(context, { shown }));
 const { api } = context;
-const ev = (id, severity, t) => ({ id, severity, _t: t });
+const ev = (id, severity, t, lat = t, cat = 'strike') => ({ id, severity, _t: t, lat, lon: 0, cat });
 api.queueAlerts([ev('a', 2, 1), ev('b', 3, 1), ev('c', 2, 5), ev('d', 2, 3)]);
 assert.equal(api.ALERT_MAX, 3);
 assert.deepEqual(shown, ['b'], 'the most severe shows first');
@@ -42,4 +43,13 @@ assert(/const CLOCKS = \[\["UTC", "UTC"\]/.test(code));
 assert(html.includes('id="clocks"'));
 assert(code.includes('queueAlerts(fresh.filter((e) => passes(e) && e.severity >= 2));'));
 assert(code.includes('params.has("alert")'));
-console.log('PASS: alert queue order, cap and no repeats; cities only for a focused region; UTC clock first.');
+// one incident arriving as several events, at one spot, alerts once (2026-10-12: Koya came as four)
+api.alertQ.length = 0;
+api.queueAlerts([ev('k1', 3, 50, 36), ev('k2', 3, 51, 36.1), ev('k3', 2, 52, 36.05, 'strike')]);
+const got = ['k1', 'k2', 'k3'].filter(id => shown.includes(id) || [...api.alertQ].some(e => e.id === id));
+assert.deepEqual(got, ['k2'], 'one alert for the incident: the most serious, newest copy');
+api.queueAlerts([ev('k4', 3, 60, 36.02)]);
+assert.ok(![...api.alertQ].some(e => e.id === 'k4') && !shown.includes('k4'), 'a later copy within the quiet hours is not alerted');
+api.queueAlerts([ev('n1', 3, 61, 36.02, 'naval')]);
+assert.ok(shown.includes('n1') || [...api.alertQ].some(e => e.id === 'n1'), 'another kind of event at the spot is');
+console.log('PASS: alert queue order, cap and no repeats; cities only for a focused region; UTC clock first; one alert per incident nearby.');
