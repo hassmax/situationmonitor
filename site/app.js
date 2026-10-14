@@ -315,6 +315,7 @@
     theaters: FALLBACK_THEATERS,
     windowH: 24,
     region: "world",  // worldwide, one theater id, or null (all regions hidden)
+    country: null,  // a focused country (ISO code), over the region: only events involving it
     statusOn: new Set(Object.keys(STATUS)),
     layers: { paths: true, supply: true, carriers: true },
     off: new Set(),  // "On the map" entries switched off
@@ -496,6 +497,10 @@
     return { lat: (Math.atan2(z, Math.hypot(x, y)) * 180) / Math.PI, lon: (Math.atan2(y, x) * 180) / Math.PI };
   }
   const countryCenter = (iso2) => REP_POINT[iso2] || centers.get(ISO_NUM.get(iso2)) || null;
+  function carrierNear(c, iso) {  // within 1,500 km of a country: its brief and its focus show these
+    const p = countryCenter(iso);
+    return !!p && isFinite(c._lat) && km(p.lat, p.lon, c._lat, c._lon) < 1500;
+  }
   const landColor = (f) => (S.briefNum && Number(f.id) === S.briefNum ? "#3a4e64" : S.active.has(f.id) ? "#283748" : S.hot.has(f.id) ? "#1c2734" : "#141b24");
   const OCEAN = "#060a10";
   // Territorial control (see controlNote): the source's shapes, painted onto the globe with the land.
@@ -604,10 +609,11 @@
   const CONTROL_THEATER = { ukraine: "ukraine", yemen: "mideast", israel: "mideast",
     sudan: "horn", ethiopia: "horn", somalia: "horn", drc: "drc_sahel", sahel: "drc_sahel", myanmar: "indopac" };
   function controlInRegion(layer) {
+    const countryId = ISO_NUM.get(layer.country) || layer.country;
+    if (S.country) return !!countryId && countryId === ISO_NUM.get(S.country);
     if (S.region === null) return false;
     const listed = S.theaters.filter((t) => t.listed !== false);
     const theaterId = CONTROL_THEATER[layer.conflict];
-    const countryId = ISO_NUM.get(layer.country) || layer.country;
     return listed.some((t) => (S.region === "world" || S.region === t.id) &&
       (theaterId ? t.id === theaterId : countryId && (t.highlight || []).includes(countryId)));
   }
@@ -803,12 +809,14 @@
     .onArcHover((a) => { globeEl.style.cursor = a ? "pointer" : ""; })
     .onArcClick((a) => { if (a.carrier) selectCarrier(a.carrier.hull, true); else if (a.flow) selectFlow(a.flow.key); else if (a.ref) select(a.ref.id, true); })
     // a click on bare globe (no marker, line or dot) ends the focus on an opened event, carrier or route
-    // and a click on a country opens its intelligence brief; on the sea, or the same country again, closes it
+    // and a click on a country focuses it and opens its intelligence brief; the same country again
+    // closes the brief for its list of events; the sea closes the brief, then leaves the country
     .onGlobeClick((c) => {
       if (performance.now() - lineTapAt <= 600) return;
       if (focused()) { closeDetail(); return; }
       const iso = c && countryAt(c.lat, c.lng);
-      if (!iso || (S.brief && S.brief.iso === iso)) { if (S.brief) closeDetail(); return; }
+      if (!iso) { if (S.brief) closeDetail(); else leaveCountry(); return; }
+      if (S.brief && S.brief.iso === iso) { closeDetail(); return; }
       openBrief({ iso });
     });
 
@@ -1905,12 +1913,17 @@
   const matches = (e) => words().every((w) => e._search.includes(w));
   const selectedRegion = () => S.theaters.find((t) => t.id === S.region && t.listed !== false);
   const theaterShown = (id) => S.region === "world" || (S.region !== null && S.region === id);
+  // A focused country keeps every event involving it, wherever it happened: placed there, its attacks
+  // elsewhere, talks or deals it is a party to, and arms it sends or receives.
+  const involves = (e, iso) => e.country === iso || e.attacker === iso || (e.parties || []).includes(iso)
+    || !!(e.transfer && (e.transfer.supplier === iso || e.transfer.recipient === iso));
+  const inScope = (e) => (S.country ? involves(e, S.country) : theaterShown(e.theater));
   // Every time window follows when the event happened, even when new coverage arrives later.
   const hasFollowup = (e) => !e.alert && !e.possibly_old && onMap(e) && e._tu >= e._t + DAY;
   function passes(e, ignoreTheater = false) {
     if (e._archived) return false; // shared history never enters live counts or the latest list
     if (e._t < Date.now() - S.windowH * HOUR) return false;
-    if (!ignoreTheater && !theaterShown(e.theater)) return false;
+    if (!ignoreTheater && !inScope(e)) return false;
     if (!S.statusOn.has(e.status)) return false;
     if (S.off.has(legendKey(e))) return false;
     if (!matches(e)) return false;
@@ -1989,7 +2002,7 @@
     const flows = new Map(), pledges = new Map();
     for (const e of S.data.events) {
       const t = e.transfer;
-      if (e._archived || e.type !== "arms_transfer" || !t || e._t < since || !theaterShown(e.theater) || !S.statusOn.has(e.status)) continue;
+      if (e._archived || e.type !== "arms_transfer" || !t || e._t < since || !inScope(e) || !S.statusOn.has(e.status)) continue;
       if (!matches(e)) continue;
       const kind = tkind(e);
       if (kind === "interdiction") continue;
@@ -2078,7 +2091,7 @@
     }
   }
   // On the globe: carriers at sea, carriers that moved this week (so a return home is visible), and the one you selected.
-  const carrierOnMap = (c) => S.region !== null && S.layers.carriers && (!c.at_home || (c._moved && Date.now() - c._moved < 7 * DAY) || c.hull === S.selectedHull);
+  const carrierOnMap = (c) => (S.country ? carrierNear(c, S.country) : S.region !== null) && S.layers.carriers && (!c.at_home || (c._moved && Date.now() - c._moved < 7 * DAY) || c.hull === S.selectedHull);
   const sailed = new Set();
   let sailing = false;
   function sailRecentMoves() {
@@ -2433,7 +2446,7 @@
     if (routeBurst && !S.supply.flows.some((f) => f.key === routeBurst.key)) stopRouteBurst();
     newFrame();
     document.body.classList.toggle("focus", focused());
-    document.body.classList.toggle("region-focused", !!selectedRegion());
+    document.body.classList.toggle("region-focused", !!(selectedRegion() || S.country));
 
     // HTML markers: events (labels on the most important, and on alert groups), carriers
     const labelled = new Set(mapEvents.filter((e) => e.severity >= 3 || e.wave).sort((a, b) => b.severity - a.severity || b._t - a._t).slice(0, 5).map((e) => e.id));
@@ -2775,8 +2788,7 @@
       ${by.length ? `<p class="bf-inv"><span>Attacks here, as reported, by</span>${chips(by)}</p>` : ""}
       ${abroad.length ? `<p class="bf-inv"><span>${esc(name)}'s reported attacks elsewhere</span>${chips(abroad)}</p>` : ""}` : "";
     // carriers within reach
-    const ctr = countryCenter(iso);
-    const ships = ctr ? S.fleet.filter((c) => !c.at_home && isFinite(c._lat) && km(ctr.lat, ctr.lon, c._lat, c._lon) < 1500) : [];
+    const ships = S.fleet.filter((c) => !c.at_home && carrierNear(c, iso));
     const fleetHtml = ships.length ? `<h4>US carriers within 1,500 km</h4><ul class="bf-list">${ships.map((c) =>
       `<li><button class="linkish" type="button" data-hull="${esc(c.hull)}">${esc(c.name)}</button>, ${esc(c.place || "")}${c._asOf ? ` <span class="note">as of ${esc(fmtDay(c._asOf))}</span>` : ""}</li>`).join("")}</ul>` : "";
     return briefShell("Intelligence brief", name, `Events placed in ${esc(name)} · developments over the last ${esc(recent.length ? span : "7 days")}`,
@@ -2789,6 +2801,9 @@
 
   // A short line at the top of the list that opens the brief.
   function briefTeaser() {
+    if (S.country) return `<li class="brief-teaser"><button type="button" data-brief="${esc(S.country)}"><span class="intel-kicker">Intelligence brief</span>
+      <span class="bt-line">${esc(countryName(S.country))} · pace, main developments, who is involved</span>
+      <span class="bt-go" aria-hidden="true">›</span></button></li>`;
     if (S.region === null || !S.data) return "";
     const a = S.data.analysis || {};
     const regions = (a.regions || []).filter((r) => theaterShown(r.theater));
@@ -2804,6 +2819,7 @@
     if (!refresh) { closeFly(); hotEvent(null); stopLaunches(); stopRouteBurst(); }
     S.selectedId = null; S.selectedHull = null; S.selectedFlow = null;
     S.brief = target;
+    if (target.iso && !refresh) focusCountry(target.iso);
     const num = target.iso ? Number(ISO_NUM.get(target.iso)) : null;
     if (S.briefNum !== num) { S.briefNum = num; paintLand(); }
     showDetail(target.iso ? countryBriefHtml(target.iso) : worldBriefHtml(), refresh);
@@ -2820,6 +2836,10 @@
     const top = briefTeaser();
     $("#feedCount").textContent = `${events.length}`;
     if (!events.length) {
+      if (S.country) {
+        list.innerHTML = top + `<li class="empty"><strong>Nothing involving ${esc(countryName(S.country))} in the ${esc(windowText())}.</strong>Widen the time window, or show more event types or confidence levels.</li>`;
+        return;
+      }
       if (S.region === null) {
         list.innerHTML = '<li class="empty"><strong>All regions are hidden.</strong>Choose a theater or Worldwide to show events.</li>';
         return;
@@ -2881,13 +2901,19 @@
 
   function syncRegionControls() {
     const region = selectedRegion();
-    S.hot = new Set((S.region === "world" ? S.theaters : region ? [region] : []).flatMap((t) => t.highlight || []));
+    const num = S.country && ISO_NUM.get(S.country);
+    S.hot = new Set(num ? [num] : (S.region === "world" ? S.theaters : region ? [region] : []).flatMap((t) => t.highlight || []));
     document.querySelectorAll("[data-region]").forEach((b) => {
       const active = b.dataset.region === (S.region === null ? "none" : S.region);
       b.setAttribute("aria-pressed", String(active));
     });
-    $("#regionFocus").hidden = !region;
-    $("#regionName").textContent = region ? region.name : "";
+    $("#regionFocus").hidden = !region && !S.country;
+    $("#regionKicker").textContent = S.country ? "Country focus" : "Region focus";
+    $("#regionName").textContent = S.country ? countryName(S.country) : region ? region.name : "";
+    // the bar's button leaves the country for its region, or the region for Worldwide
+    const back = S.country && region ? region.name : "Worldwide";
+    $("#regionBack").innerHTML = `${esc(back)} <span aria-hidden="true">↗</span>`;
+    $("#regionBack").setAttribute("aria-label", `Return to ${back}`);
   }
 
   function renderTheaters() {
@@ -2905,6 +2931,7 @@
     const theater = S.theaters.find((t) => t.id === region && t.listed !== false);
     if (region !== null && region !== "world" && !theater) return;
     S.region = region;
+    S.country = null;
     S.lastFocus = null;
     closeFly();
     hotEvent(null);
@@ -2913,11 +2940,41 @@
     $("#feedList").scrollTop = 0;
     $("#focusToast").hidden = true;
     const camera = theater ? theater.camera : region === "world" ? { lat: 25, lng: 10, altitude: 2.6 } : null;
-    if (camera) {
-      const altitude = isMobile() ? camera.altitude + 0.5 : camera.altitude;
-      world.pointOfView({ ...camera, altitude }, reduceMotion ? 0 : flyMs(camera.lat, camera.lng, altitude));
-    }
+    if (camera) flyTo(camera);
     if (isMobile()) toggleFilters(false);
+  }
+
+  // Country focus: like a region, for one country and everything involving it. It sits over the
+  // region (leaving it returns there), and is kept through live refreshes.
+  function countryAltitude(iso) {
+    const f = landShapes.find((x) => Number(x.id) === Number(ISO_NUM.get(iso)));
+    if (!f) return 0.9;
+    const ring = f.geometry.coordinates.map((poly) => poly[0]).sort((a, b) => ringKm2(b) - ringKm2(a))[0];
+    const lats = ring.map((p) => p[1]), lons = ring.map((p) => p[0]);
+    const midLat = (Math.max(...lats) + Math.min(...lats)) / 2;
+    const span = Math.max(Math.max(...lats) - Math.min(...lats), Math.min(180, Math.max(...lons) - Math.min(...lons)) * Math.cos(toRad(midLat)));
+    return clamp(span / 15, 0.4, 1.8);
+  }
+  function flyTo(camera) {
+    const altitude = isMobile() ? camera.altitude + 0.5 : camera.altitude;
+    world.pointOfView({ ...camera, altitude }, reduceMotion ? 0 : flyMs(camera.lat, camera.lng, altitude));
+  }
+  function focusCountry(iso) {
+    if (S.country === iso) return;
+    S.country = iso;
+    S.lastFocus = null;
+    syncRegionControls();
+    $("#feedList").scrollTop = 0;
+    const p = countryCenter(iso);
+    if (p) flyTo({ lat: p.lat, lng: p.lon, altitude: countryAltitude(iso) });
+  }
+  function leaveCountry() {
+    if (!S.country) return;
+    S.country = null;
+    syncRegionControls();
+    const region = selectedRegion();
+    if (region) flyTo(region.camera);
+    if (S.brief && S.brief.iso) closeDetail(); else render();
   }
 
   function renderCounts() {
@@ -2939,7 +2996,7 @@
     });
     const byStatus = {};
     for (const e of S.data.events) {
-      if (e._archived || !onMap(e) || e._t < now - S.windowH * HOUR || !theaterShown(e.theater)) continue;
+      if (e._archived || !onMap(e) || e._t < now - S.windowH * HOUR || !inScope(e)) continue;
       byStatus[e.status] = (byStatus[e.status] || 0) + 1;
     }
     document.querySelectorAll("[data-status-count]").forEach((el) => { el.textContent = byStatus[el.dataset.statusCount] || 0; });
@@ -3406,7 +3463,7 @@
       legendChanged();
     });
     $("#regionFocus").addEventListener("click", (ev) => {
-      if (ev.target.closest("[data-region]")) selectRegion("world");
+      if (ev.target.closest("[data-region]")) { if (S.country) leaveCountry(); else selectRegion("world"); }
     });
     $("#filters").addEventListener("click", (ev) => {
       const region = ev.target.closest("[data-region]");
@@ -3440,7 +3497,8 @@
     }, true);
     $("#feedList").addEventListener("click", (ev) => {
       if (ev.target.closest("[data-more]")) { S.feedLimit += FEED_PAGE; render(); return; }
-      if (ev.target.closest("[data-brief]")) { openBrief({ world: true }); return; }
+      const brief = ev.target.closest("[data-brief]");
+      if (brief) { openBrief(brief.dataset.brief ? { iso: brief.dataset.brief } : { world: true }); return; }
       const b = ev.target.closest("[data-id]");
       if (b) { S.lastFocus = b.dataset.id; select(b.dataset.id, true); return; }
       const fly = ev.target.closest("[data-fly]");
@@ -3466,6 +3524,7 @@
         closeFly();
         if (!$("#detail").hidden) closeDetail();
         else if ($("#filters").classList.contains("open")) toggleFilters(false);
+        else if (S.country) leaveCountry();
         else if (selectedRegion()) selectRegion("world");
       }
       if (typing) return;
