@@ -37,7 +37,7 @@ This file is the short version. **`docs/NOTES.md` holds the full history** (why 
 ## Testing before you push
 
 - Python: `pip install -r pipeline/requirements.txt`, `python -m pyflakes pipeline`, `python -m pytest -q`, and `python pipeline/run.py --state /tmp/state --out /tmp/out --no-llm` (network; no model).
-- Front end: `node tests/*.cjs` (incl. `theater-focus`, `briefing-alerts`, `intel-brief`) and `node --check site/app.js`; `python -m http.server --directory site 8000`, open `?demo`, check the console at desktop and ~390 px. Never commit `site/data/events.json` or `site/data/reports/`.
+- Front end: `node tests/*.cjs` (incl. `theater-focus`, `country-focus`, `briefing-alerts`, `intel-brief`) and `node --check site/app.js`; `python -m http.server --directory site 8000`, open `?demo`, check the console at desktop and ~390 px. Never commit `site/data/events.json` or `site/data/reports/`.
 - If startup breaks, the page shows the error in the feed panel (`fatal()`); keep that.
 - Read large logs filtered (grep), not whole.
 
@@ -57,6 +57,6 @@ This file is the short version. **`docs/NOTES.md` holds the full history** (why 
 
 - Default window 24 hours, opening on the busiest area. Everything on one screen.
 - Coverage priorities: Russia–Ukraine, NATO flank and Russian hybrid attacks, Middle East (incl. Hormuz and Red Sea shipping), Sudan and the Horn, eastern DRC and the Sahel, Indo-Pacific, Latin America; diplomacy, legal steps, arms transfers, US carriers; worldwide treaty and membership changes, expulsions, sanctions packages.
-- Regional selection is exclusive (`S.region`: `world`, one theater, or null for Hide all); a theater focuses its camera and keeps only its events, routes and brief; Escape leaves it; preserved across live refresh. Clicking a country opens its intelligence brief in place of the list; clicking away closes it.
+- Regional selection is exclusive (`S.region`: `world`, one theater, or null for Hide all); a theater focuses its camera and keeps only its events, routes and brief; Escape leaves it; preserved across live refresh. Clicking a country opens its intelligence brief in place of the list and focuses the map on it (`S.country`: only events involving it, over the region); clicking away closes the brief, then the focus.
 - World clocks: UTC, Washington, London, Moscow, Tehran, Beijing.
 - Ask before merging unless told to merge.

@@ -13,7 +13,8 @@ const theaters = [
 ];
 const S = { theaters, region: 'world', hot: new Set(), layers: { carriers: true },
   selectedId: 'opened', selectedHull: null, selectedFlow: null, briefOpen: new Set() };
-const nodes = Object.fromEntries(['#regionFocus', '#regionName', '#theaterList', '#focusToast', '#feedList'].map(id => [id, {}]));
+const nodes = Object.fromEntries(['#regionFocus', '#regionKicker', '#regionName', '#regionBack', '#theaterList', '#focusToast', '#feedList']
+  .map(id => [id, { setAttribute(k, v) { this[k] = v; } }]));
 const buttons = ['world', 'none', 'ukraine', 'mideast'].map(region => ({ dataset: { region },
   setAttribute(k, v) { this[k] = v; } }));
 let mobile = false, closed = 0, filtersClosed = 0, camera = null;
@@ -47,6 +48,8 @@ assert.equal(S.selectedId, null);
 assert.equal(nodes['#feedList'].scrollTop, 0, 'A new region starts at the top of the list');
 assert.equal(nodes['#regionName'].textContent, 'Russia–Ukraine');
 assert.equal(nodes['#regionFocus'].hidden, false);
+assert.equal(nodes['#regionKicker'].textContent, 'Region focus');
+assert.equal(nodes['#regionBack']['aria-label'], 'Return to Worldwide');
 assert.equal([...S.hot].join(), '804');
 assert.equal(buttons.filter(b => b['aria-pressed'] === 'true').length, 1);
 assert.equal(camera.value.lat, 48.5); assert.equal(camera.value.altitude, 0.85);
