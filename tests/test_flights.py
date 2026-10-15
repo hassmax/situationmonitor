@@ -209,3 +209,71 @@ def test_a_takeoff_surge_waits_for_a_landing_and_unknown_operators_get_no_route(
                    for i in range(4)}}
     flights.surges(st2, now)
     assert flights.surge_records({"flights": st2}, now, cfg.flight_bases, cfg.theaters, make_item) == []  # whose aircraft?
+
+
+RAMSTEIN = {"base": "Ramstein Air Base", "country": "Germany", "lat": 49.437, "lon": 7.6}
+
+
+def _left_ramstein(i, when, last=None, landed=None):
+    e = {"id": f"fr{i}", "hex": f"ae{i:04x}", "type": "C17", "callsign": f"RCH{i}", "from": {**RAMSTEIN, "time": when}}
+    if last:
+        e["last"] = last
+    if landed:
+        e["to"] = landed
+    return e
+
+
+def test_a_takeoff_group_lost_from_view_together_is_drawn_to_where_it_was_last_seen():
+    # the airlift from Ramstein (2026-10-15): C-17s leave together heading southeast and drop off
+    # public tracking over Bulgaria, so no landing is ever seen
+    from datetime import datetime, timezone
+    import config
+    import geo
+    import merge
+    from common import make_item
+    now = datetime(2026, 10, 12, 20, 0, tzinfo=timezone.utc)
+    cfg = config.load()
+    sofia = [(42.56, 23.98), (42.65, 23.97), (43.00, 23.91), (43.11, 23.72), (42.78, 23.95)]
+    log = {f"k{i}": _left_ramstein(i, f"2026-10-12T{4 + i:02d}:00:00Z",
+                                   last={"lat": lat, "lon": lon, "alt": 33000, "time": f"2026-10-12T{6 + i:02d}:00:00Z"})
+           for i, (lat, lon) in enumerate(sofia)}
+    lak = {"base": "RAF Lakenheath", "country": "United Kingdom", "lat": 52.409, "lon": 0.561, "time": "2026-10-12T09:00:00Z"}
+    log["k5"] = _left_ramstein(5, "2026-10-12T07:00:00Z", landed=lak)            # one went to England
+    log["k6"] = _left_ramstein(6, "2026-10-12T07:30:00Z",                         # one lost over the Atlantic
+                               last={"lat": 50.0, "lon": -20.0, "alt": 31000, "time": "2026-10-12T10:00:00Z"})
+    st = {"log": log}
+    (s,) = flights.surges(st, now)
+    assert s["count"] == 7
+    (rec,) = flights.surge_records({"flights": st}, now, cfg.flight_bases, cfg.theaters, make_item)
+    t = rec["transfer"]
+    assert t["flights"] == 5 and t["from"]["place"] == "Ramstein Air Base"
+    assert t["to"]["region"] and t["to"]["last_seen"] and t["to"]["place"] == "Last seen southeast of Ramstein Air Base"
+    assert (t["to"]["lat"], t["to"]["lon"]) in sofia                              # a reported position, never a guess
+    assert rec["country"] == "BG" and "No landing seen" in rec["summary"]
+    assert "Lakenheath" not in t["to"]["place"]                                   # one landing doesn't speak for seven
+
+    class NoLookup:
+        def locate(self, *a, **k):
+            return None
+    cand = geo.place_record(rec, NoLookup(), cfg.theaters)
+    cand["item"] = rec["item"]
+    (ev,) = merge.merge([], [cand])
+    assert ev["transfer"]["to"]["place"] == t["to"]["place"] and ev["transfer"]["to"]["region"]
+
+
+def test_a_takeoff_route_counts_only_the_aircraft_seen_landing_and_waits_while_they_are_tracked():
+    from datetime import datetime, timezone
+    import config
+    from common import make_item
+    now = datetime(2026, 10, 12, 20, 0, tzinfo=timezone.utc)
+    cfg = config.load()
+    lak = {"base": "RAF Lakenheath", "country": "United Kingdom", "lat": 52.409, "lon": 0.561, "time": "2026-10-12T12:00:00Z"}
+    st = {"log": {f"k{i}": _left_ramstein(i, f"2026-10-12T{4 + i:02d}:00:00Z", landed=lak if i < 3 else None) for i in range(5)}}
+    flights.surges(st, now)
+    (rec,) = flights.surge_records({"flights": st}, now, cfg.flight_bases, cfg.theaters, make_item)
+    assert rec["transfer"]["to"]["place"] == "RAF Lakenheath" and rec["transfer"]["flights"] == 3
+    # still in view (seen minutes ago): not lost yet, so no route
+    recent = {"lat": 42.6, "lon": 23.9, "alt": 33000, "time": "2026-10-12T19:50:00Z"}
+    st2 = {"log": {f"k{i}": _left_ramstein(i, f"2026-10-12T{14 + i:02d}:00:00Z", last=recent) for i in range(4)}}
+    flights.surges(st2, now)
+    assert flights.surge_records({"flights": st2}, now, cfg.flight_bases, cfg.theaters, make_item) == []

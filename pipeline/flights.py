@@ -477,7 +477,10 @@ def surge_records(state: dict, now: datetime, bases: list[dict], theaters: list[
     for s in (st.get("surges") or {}).values():
         if s.get("routed", 0) >= s["count"]:
             continue
-        group = [e for e in log_entries if e["hex"] in s["hexes"] and (e.get(s["way"]) or {}).get("base") == s["base"]]
+        count = s["count"]
+        # the surge's own flights: the same aircraft's other flights from this base that week aren't part of it
+        group = [e for e in log_entries if e["hex"] in s["hexes"] and (e.get(s["way"]) or {}).get("base") == s["base"]
+                 and s["first"] <= ((e.get(s["way"]) or {}).get("time") or "") <= s["last"]]
         operator, n = _most([_operator(e) for e in group])
         if not operator or n * 2 < len(group):
             continue  # whose aircraft they are is unclear: no route
@@ -489,16 +492,22 @@ def surge_records(state: dict, now: datetime, bases: list[dict], theaters: list[
         else:
             origin = here
             end, k = _most([(e.get("to") or {}).get("base") for e in group if (e.get("to") or {}).get("base") != s["base"]])
-            if not end:
-                continue  # no landing seen yet: no destination to draw to
             b = by_name.get(end) or {}
-            dest = {"place": end, "lat": b.get("lat"), "lon": b.get("lon"), "country": b.get("country")}
-            if dest["lat"] is None:
-                continue
+            text_end = ""
+            if end and k * 2 >= len(group) and b.get("lat") is not None:
+                # most of the group landed there: the route counts only those seen landing
+                dest = {"place": end, "lat": b["lat"], "lon": b["lon"], "country": b.get("country")}
+                count = k
+            else:
+                dest = _went_dark(group, here, now)
+                if not dest:
+                    continue  # neither a landing nor a shared last sighting yet: nothing to draw to
+                count = dest.pop("n")
+                text_end = " No landing seen; the route ends where they were last seen."
         theater = _theater(dest["lat"], dest["lon"], dest.get("country"), theaters)
         if not theater:
             continue
-        text = surge_text(s)
+        text = surge_text(s) + (text_end if s["way"] == "from" else "")
         item = item_maker({"name": SOURCE_NAME, "kind": "osint", "group": SOURCE_ID, "weight": 2, "prefilter": False},
                           "adsb", SOURCE_ID, MAP_LINK.format(hexes=",".join(s["hexes"])), text, parse_time(s["last"]) or now,
                           uid=f"surge|{s['id']}|{s['count']}")
@@ -507,12 +516,54 @@ def surge_records(state: dict, now: datetime, bases: list[dict], theaters: list[
             "country": dest.get("country"), "lat": dest["lat"], "lon": dest["lon"], "origins": [], "attacker": None,
             "parties": [], "launched": None, "intercepted": None, "alert": False, "legal_basis": None,
             "transfer": {"kind": "delivery", "via": [], "value_usd": None, "supplier": operator, "recipient": operator,
-                         "mode": "air", "what": s["label"], "flights": s["count"], "money": False,
+                         "mode": "air", "what": s["label"], "flights": count, "money": False,
                          "from": {"place": origin["name"], "lat": origin["lat"], "lon": origin["lon"]} if origin else None,
-                         "to": {"place": dest["place"], "lat": dest["lat"], "lon": dest["lon"]}},
+                         "to": {"place": dest["place"], "lat": dest["lat"], "lon": dest["lon"],
+                                **({"region": True, "last_seen": True} if dest.get("last_seen") else {})}},
             "theater": theater, "severity": 2, "claim": "report", "killed": None, "injured": None, "item": item})
         s["routed"] = s["count"]
     return out
+
+
+DARK_KM = 300             # a take-off group's aircraft lost from view this far from the base, at height,
+DARK_CLUSTER_KM = 250     # within this of one another, and not seen for DARK_MINUTES: they "went dark" there
+DARK_MINUTES = 60
+
+
+def _went_dark(group: list[dict], base: dict, now: datetime) -> dict | None:
+    """Where most of a take-off group was last seen, for aircraft never seen landing (the owner,
+    2026-10-15: the C-17 airlift from Ramstein to the Middle East showed no route, because the
+    aircraft drop off public tracking over Bulgaria and no landing is ever seen). Positions are never
+    estimated: the end is one aircraft's own last reported position, the one with the most of the
+    group last seen near it (ties: the furthest from the base), and the route is drawn faint,
+    labelled as where tracking stopped, never as a destination."""
+    if base.get("lat") is None:
+        return None
+    cutoff = now.timestamp() - DARK_MINUTES * 60
+    lost = []
+    for e in group:
+        last = e.get("last") or {}
+        if (e.get("to") or {}).get("base") not in (None, base["name"]) or last.get("lat") is None:
+            continue  # landed somewhere, or nothing reported after take-off
+        t = parse_time(last.get("time"))
+        if not t or t.timestamp() > cutoff or (last.get("alt") or 0) < LOW_FT:
+            continue  # still being tracked, or last seen low (landing unseen somewhere near)
+        if haversine_km(base["lat"], base["lon"], last["lat"], last["lon"]) >= DARK_KM:
+            lost.append(last)
+    best = None
+    for p in lost:
+        n = sum(1 for q in lost if haversine_km(p["lat"], p["lon"], q["lat"], q["lon"]) <= DARK_CLUSTER_KM)
+        far = haversine_km(base["lat"], base["lon"], p["lat"], p["lon"])
+        if not best or (n, far) > (best[0], best[1]):
+            best = (n, far, p)
+    if not best or best[0] * 2 < len(group):
+        return None  # most of the group wasn't lost in one place
+    n, far, p = best
+    way = _bearing(base["lat"], base["lon"], p["lat"], p["lon"])
+    from audit import _country_of
+    # no distance in the name: groups lost in the same direction join into one route on the map
+    return {"place": f"Last seen {way} of {base['name']}", "lat": p["lat"], "lon": p["lon"],
+            "country": _country_of(p["lat"], p["lon"]), "last_seen": True, "n": n}
 
 
 def _theater(lat: float, lon: float, country: str | None, theaters: list[dict]) -> str | None:
