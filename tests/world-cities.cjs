@@ -18,17 +18,17 @@ vm.runInContext([
   'this.api = { citiesFor, CITIES };'
 ].join('\n'), context);
 const { citiesFor, CITIES } = context.api;
-const names = (list) => list.map(c => c[0]).sort();
+const names = (list) => JSON.parse(JSON.stringify(list.map(c => c[0]).sort()));
 const events = [{ country: 'UA' }, { country: 'IR' }, { country: null }];
 assert.deepEqual(names(citiesFor(events)), ['Kharkiv', 'Kyiv', 'Tehran'], 'Worldwide names the cities of countries with events');
-assert.deepEqual(citiesFor([]), [], 'No events, no names');
+assert.equal(citiesFor([]).length, 0, 'No events, no names');
 S.region = 'mideast';
 assert.equal(citiesFor(events).length, CITIES.mideast.length, 'A region names all its own cities');
 S.country = 'SA';
 assert.deepEqual(names(citiesFor([{ country: 'SA' }])), ['Riyadh'], 'A focused country names its cities');
 S.country = null; S.region = null;
-assert.deepEqual(citiesFor(events), [], 'Hide all names nothing');
+assert.equal(citiesFor(events).length, 0, 'Hide all names nothing');
 context.landShapes = [];
 S.region = 'world';
-assert.deepEqual(citiesFor(events), [], 'Before the land shapes load, nothing is looked up');
+assert.equal(citiesFor(events).length, 0, 'Before the land shapes load, nothing is looked up');
 console.log('PASS: city names in Worldwide follow the countries with events; regions, country focus and Hide all.');

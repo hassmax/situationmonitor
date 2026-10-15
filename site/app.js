@@ -2468,7 +2468,6 @@
     mapEvents.forEach((e) => { if (e.alert) labelled.add(e.id); });
     const animated = new Set(mapEvents.filter((e) => isLive(e) && catOf(e)[2]).slice(0, MAX_ANIMATED_NOW).map((e) => e.id));
     // city names, under the markers (first in the list)
-    const region = selectedRegion();
     const html = citiesFor(mapEvents).map(cityMarker);
     mapEvents.forEach((e) => html.push(eventMarker(e, labelled.has(e.id), animated.has(e.id))));
     S.fleet.filter(carrierOnMap).forEach((c) => html.push(carrierMarker(c)));
