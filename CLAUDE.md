@@ -37,7 +37,7 @@ This file is the short version. **`docs/NOTES.md` holds the full history** (why 
 ## Testing before you push
 
 - Python: `pip install -r pipeline/requirements.txt`, `python -m pyflakes pipeline`, `python -m pytest -q`, and `python pipeline/run.py --state /tmp/state --out /tmp/out --no-llm` (network; no model).
-- Front end: `node tests/*.cjs` (incl. `theater-focus`, `country-focus`, `briefing-alerts`, `intel-brief`) and `node --check site/app.js`; `python -m http.server --directory site 8000`, open `?demo`, check the console at desktop and ~390 px. Never commit `site/data/events.json` or `site/data/reports/`.
+- Front end: `node tests/*.cjs` (incl. `theater-focus`, `country-focus`, `world-cities`, `briefing-alerts`, `intel-brief`) and `node --check site/app.js`; `python -m http.server --directory site 8000`, open `?demo`, check the console at desktop and ~390 px. Never commit `site/data/events.json` or `site/data/reports/`.
 - If startup breaks, the page shows the error in the feed panel (`fatal()`); keep that.
 - Read large logs filtered (grep), not whole.
 

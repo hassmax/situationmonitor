@@ -1164,6 +1164,21 @@
       if (el.firstChild.title !== title) el.firstChild.title = title;
     } else if (el.firstChild.title) el.firstChild.title = "";
   }
+  // Which city names to show: a focused region names its own major cities; Worldwide and a focused
+  // country name the cities, from every region's list, in the countries where the shown events happened
+  // (the owner, 2026-10-15), so a busy country is named without choosing its region.
+  let cityCountry = null;  // city name -> [city, its country], looked up once the land shapes are in
+  function citiesFor(mapEvents) {
+    const region = selectedRegion();
+    if (region && !S.country) return CITIES[region.id] || [];
+    if ((S.region !== "world" && !S.country) || !landShapes.length) return [];
+    if (!cityCountry) {
+      cityCountry = new Map();
+      for (const list of Object.values(CITIES)) for (const c of list) if (!cityCountry.has(c[0])) cityCountry.set(c[0], [c, countryAt(c[1], c[2])]);
+    }
+    const busy = new Set(mapEvents.map((e) => e.country).filter(Boolean));
+    return [...cityCountry.values()].filter(([, iso]) => iso && busy.has(iso)).map(([c]) => c);
+  }
   // A city name on the globe: a small dot (square for a capital) and its name, never clickable.
   function cityMarker([name, lat, lon, capital]) {
     const key = `city:${name}`;
@@ -1230,7 +1245,7 @@
       });
     }
     hidden.forEach((v) => setOffset(v.d, 0, 0));
-    // City names (a focused region): capitals first and always clear of other names; other cities
+    // City names: capitals first and always clear of other names; other cities
     // are also left off where they would sit under an event symbol.
     const symbols = vis.filter((v) => !hidden.has(v)).map((v) => [v.x - 13, v.y - 13, v.x + 13, v.y + 13]);
     const taken = [];
@@ -2452,9 +2467,9 @@
     const labelled = new Set(mapEvents.filter((e) => e.severity >= 3 || e.wave).sort((a, b) => b.severity - a.severity || b._t - a._t).slice(0, 5).map((e) => e.id));
     mapEvents.forEach((e) => { if (e.alert) labelled.add(e.id); });
     const animated = new Set(mapEvents.filter((e) => isLive(e) && catOf(e)[2]).slice(0, MAX_ANIMATED_NOW).map((e) => e.id));
-    // a focused region names its major cities, under the markers (first in the list)
+    // city names, under the markers (first in the list)
     const region = selectedRegion();
-    const html = (region && CITIES[region.id] || []).map(cityMarker);
+    const html = citiesFor(mapEvents).map(cityMarker);
     mapEvents.forEach((e) => html.push(eventMarker(e, labelled.has(e.id), animated.has(e.id))));
     S.fleet.filter(carrierOnMap).forEach((c) => html.push(carrierMarker(c)));
     S.html = html;

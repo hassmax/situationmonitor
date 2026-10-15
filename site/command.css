@@ -156,7 +156,7 @@ body::before { opacity: 0; }
   font: 500 9.5px/1 var(--mono); box-shadow: none;
 }
 
-/* city names, only while a region is focused (app.js cityMarker): under the event symbols */
+/* city names (app.js citiesFor, cityMarker): under the event symbols */
 .mk-city { pointer-events: none !important; position: relative; width: 0; height: 0; }
 .mk-city i { position: absolute; left: -2px; top: -2px; width: 4px; height: 4px; border-radius: 50%; border: 1px solid rgba(220, 228, 238, .7); box-sizing: border-box; }
 .mk-city span {
