@@ -320,6 +320,7 @@
     layers: { paths: true, supply: true, carriers: true },
     off: new Set(),  // "On the map" entries switched off
     query: "",
+    feedSort: "latest",  // or "important" (the "Important first" button)
     feedLimit: 250,
     briefOpen: new Set(), brief: null, briefNum: null,
     selectedId: null,
@@ -917,7 +918,7 @@
   const markerPx = (e, size) => Math.min(PHONE ? 40 : 46, SIZE_PX[size] + 4 * Math.log10(1 + magnitude(e)));
 
   // Marker classes set by the layout (declutter), kept when a render rewrites the others.
-  const layoutClasses = (el) => ["spread", "cluster-lead", "clustered"].filter((c) => el.classList.contains(c)).map((c) => ` ${c}`).join("");
+  const layoutClasses = (el) => ["spread", "cluster-lead", "clustered", "label-off"].filter((c) => el.classList.contains(c)).map((c) => ` ${c}`).join("");
   // The same data object for a marker from one render to the next: the globe library binds its
   // marker to that object, so a new object each render made it take every marker off the page and
   // put it back (restarting their animations) on every filter change.
@@ -934,7 +935,8 @@
     const el = markerEl(`ev:${e.id}`);
     const live = animate && !reduceMotion && !e.possibly_old;
     const size = e.alert ? "md" : e.severity >= 3 ? "lg" : e.severity === 2 ? "md" : "sm";
-    el.style.setProperty("--s", `${markerPx(e, size).toFixed(1)}px`);
+    const px = markerPx(e, size);
+    el.style.setProperty("--s", `${px.toFixed(1)}px`);
     el.className = `mk cat-${cat} conf-${STATUS[e.status].conf} size-${size}${live && fx ? ` fx-${fx}` : ""}${e.id === S.selectedId ? " is-selected" : ""}${e.id === hotId ? " is-hot" : ""}${layoutClasses(el)}`;
     el.style.setProperty("--fade", String(fade(e)));
     const label = labelIt ? (e.alert ? alertsText(e) : e.wave ? (e.launched ? `${e.launched} launched` : `${e.targets.length} places hit`) : e.place || "") : "";
@@ -962,7 +964,9 @@
     };
     btn.onmouseenter = () => { if (!canHover()) return; peek(); hotRow(e.id); };
     btn.onmouseleave = () => { if (!canHover()) return; hideFly(); hotRow(null); };
-    return markerDatum(`ev:${e.id}`, { key: `ev:${e.id}`, ev: e, el, lat: e.lat, lon: e.lon, hAlt: 0.014, isEvent: true, prio: e.severity * 10 + (isNew(e) ? 5 : 0) + Math.log10(1 + magnitude(e)) + (e._t / 1e13) });
+    // s and lw (the icon's size, the label's rough width) keep labels and city names apart (declutter)
+    return markerDatum(`ev:${e.id}`, { key: `ev:${e.id}`, ev: e, el, lat: e.lat, lon: e.lon, hAlt: 0.014, isEvent: true, s: px, lw: label ? label.length * 6 + 14 : 0,
+      prio: e.severity * 10 + (isNew(e) ? 5 : 0) + Math.log10(1 + magnitude(e)) + (e._t / 1e13) });
   }
 
   function carrierMarker(c) {
@@ -982,6 +986,7 @@
     btn.onmouseenter = () => { if (canHover()) showFly(el, tipCarrier(c)); };
     btn.onmouseleave = () => { if (canHover()) hideFly(); };
     c.el = el; c.key = `cvn:${c.hull}`; c.hAlt = 0.012; c.prio = 1;
+    c.cw = 35 + (c.short || c.hull).length * 6.3;  // the chip's rough width, its name inside (declutter)
     return c;
   }
 
@@ -1206,10 +1211,14 @@
     const R = isMobile() ? 30 : 27; // about one marker width
     // Count bubbles appear above 0.55 and go away below 0.45, so a pinch near the line doesn't flicker.
     clusterMode = clusterMode ? pov.altitude > CLUSTER_OFF : pov.altitude > CLUSTER_ON;
+    // Behind the globe: as the globe library decided when it hid the marker (el._vis), else by the
+    // estimate. The estimate alone stops a degree short of the edge, where markers still show: a
+    // pile of Washington events there covered "U.S.S. Truman" at Norfolk, never fanned out.
+    const behind = (d) => (d.el._vis === undefined ? km(pov.lat, pov.lng, d.lat, d.lon) / 111.2 > horizon : !d.el._vis);
     const vis = [];
     for (const d of S.html) {
       if (!d.el || d.city) continue;
-      if (km(pov.lat, pov.lng, d.lat, d.lon) / 111.2 > horizon) { setOffset(d, 0, 0); if (d.isEvent) { setCluster(d, 0); setHidden(d, false); } continue; }
+      if (behind(d)) { setOffset(d, 0, 0); if (d.isEvent) { setCluster(d, 0); setHidden(d, false); } continue; }
       const s = world.getScreenCoords(d.lat, d.lon, d.hAlt || 0.012);
       if (!s) continue;
       vis.push({ d, x: s.x, y: s.y });
@@ -1245,22 +1254,45 @@
       });
     }
     hidden.forEach((v) => setOffset(v.d, 0, 0));
-    // City names: capitals first and always clear of other names; other cities
-    // are also left off where they would sit under an event symbol.
-    const symbols = vis.filter((v) => !hidden.has(v)).map((v) => [v.x - 13, v.y - 13, v.x + 13, v.y + 13]);
-    const taken = [];
-    const over = (list, b) => list.some((t) => b[0] < t[2] && b[2] > t[0] && b[1] < t[3] && b[3] > t[1]);
-    const hit = (b, capital) => over(taken, b) || (!capital && over(symbols, b));
+    // Name labels and city names stay clear of every symbol still showing, where the fan-out put it,
+    // and of one another (a review the owner passed on, 2026-10-16: "Globe labels and carrier names
+    // overlap"; "U.S.S. Washington" sat on Riyadh, markers on Khartoum and Mogadishu). An event's
+    // label beside its icon gives way to symbols and to more important labels; a carrier's name (in
+    // its chip, either side of the icon) gives way to those too, leaving the icon, unless the carrier
+    // is selected. A city name, capitals first, goes right of its dot, else left of it, else is left off.
+    const shown = vis.filter((v) => !hidden.has(v)).map((v) => ({ d: v.d, x: v.x + (v.d._dx || 0), y: v.y + (v.d._dy || 0) }));
+    const taken = shown.map(({ d, x, y }) => {
+      const r = d.cw ? 13 : (d.s || 26) / 2;
+      return [x - r, y - r, x + r, y + r];
+    });
+    const over = (b) => taken.some((t) => b[0] < t[2] && b[2] > t[0] && b[1] < t[3] && b[3] > t[1]);
+    for (const { d, x, y } of shown) {  // most important first; carriers come last
+      if (!d.lw && !d.cw) continue;
+      let boxes, keep = false;
+      if (d.cw) {
+        boxes = [[x - d.cw / 2, y - 11, x - 13, y + 11], [x + 13, y - 11, x + d.cw / 2, y + 11]];
+        keep = d.hull === S.selectedHull;
+      } else {
+        const r = (d.s || 26) / 2;
+        boxes = [[x + r + 5, y - 9, x + r + 6 + d.lw, y + 9]];
+      }
+      const off = !keep && (!!(!d.cw && (d._dx || d._dy)) || counts.has(d) || boxes.some(over));
+      if (!off) taken.push(...boxes);
+      if (d.el._loff !== off) { d.el._loff = off; d.el.classList.toggle("label-off", off); }
+    }
     const cityList = S.html.filter((d) => d.city).sort((a, b) => b.capital - a.capital);
     for (const d of cityList) {
-      let show = km(pov.lat, pov.lng, d.lat, d.lon) / 111.2 <= horizon;
-      if (show) {
+      let side = 0;  // 1: right of the dot, -1: left of it, 0: left off
+      if (!behind(d)) {
         const s = world.getScreenCoords(d.lat, d.lon, d.hAlt);
-        const box = s && [s.x - 3, s.y - 8, s.x + 6 + d.w, s.y + 8];
-        show = !!box && !hit(box, d.capital);
-        if (show) taken.push(box);
+        if (s) {
+          const right = [s.x - 3, s.y - 8, s.x + 6 + d.w, s.y + 8], left = [s.x - 6 - d.w, s.y - 8, s.x + 3, s.y + 8];
+          const box = !over(right) ? right : !over(left) ? left : null;
+          if (box) { taken.push(box); side = box === right ? 1 : -1; }
+        }
       }
-      if (d.el._off !== !show) { d.el._off = !show; d.el.classList.toggle("is-off", !show); }
+      if (d.el._off !== !side) { d.el._off = !side; d.el.classList.toggle("is-off", !side); }
+      if (!!d.el._left !== (side === -1)) { d.el._left = side === -1; d.el.classList.toggle("is-left", side === -1); }
     }
   }
 
@@ -2408,13 +2440,16 @@
   // dropped off the map behind a day of minor reports. Diplomacy discs rank a step lower than
   // incidents. The feed says how many aren't drawn (mapLeftOut).
   const CONF_RANK = { corroborated: 2, unconfirmed: 1, claimed: 0 };
-  let mapLeftOut = 0;
+  // How much an event matters: the map keeps the highest when it has too many to draw, and the list
+  // puts them first when "Important first" is pressed.
+  const importance = (e, now) => 2 * e.severity + CONF_RANK[e.status] + (now - e._t < 6 * HOUR ? 2 : 0) - (isDiplomacy(e) ? 1 : 0);
+  const byImportance = (evs) => { const now = Date.now(); return [...evs].sort((a, b) => importance(b, now) - importance(a, now) || b._t - a._t); };
+  let mapLeftOut = 0, mapCandidates = 0;
   function markerPick(evs) {
+    mapCandidates = evs.length;
     mapLeftOut = Math.max(0, evs.length - MAX_MARKERS);
     if (!mapLeftOut) return evs;
-    const now = Date.now();
-    const score = (e) => 2 * e.severity + CONF_RANK[e.status] + (now - e._t < 6 * HOUR ? 2 : 0) - (isDiplomacy(e) ? 1 : 0);
-    const keep = new Set([...evs].sort((a, b) => score(b) - score(a) || b._t - a._t).slice(0, MAX_MARKERS).map((e) => e.id));
+    const keep = new Set(byImportance(evs).slice(0, MAX_MARKERS).map((e) => e.id));
     if (S.selectedId) keep.add(S.selectedId);
     return evs.filter((e) => keep.has(e.id));
   }
@@ -2815,8 +2850,11 @@
 
   // A short line at the top of the list that opens the brief.
   function briefTeaser() {
+    // A brief covers all events, never just a search's results (a review the owner passed on,
+    // 2026-10-16: the "Worldwide" brief stayed above search results as if it were about them).
+    const searching = !!String(S.query || "").trim();
     if (S.country) return `<li class="brief-teaser"><button type="button" data-brief="${esc(S.country)}"><span class="intel-kicker">Intelligence brief</span>
-      <span class="bt-line">${esc(countryName(S.country))} · pace, main developments, who is involved</span>
+      <span class="bt-line">${esc(countryName(S.country))} · ${searching ? "all its events, not only this search" : "pace, main developments, who is involved"}</span>
       <span class="bt-go" aria-hidden="true">›</span></button></li>`;
     if (S.region === null || !S.data) return "";
     const a = S.data.analysis || {};
@@ -2824,7 +2862,7 @@
     const moving = regions.flatMap((r) => r.judgments || []).filter((j) => j.trend && j.trend !== "steady").length;
     const scope = selectedRegion()?.name || "Worldwide";
     return `<li class="brief-teaser"><button type="button" data-brief><span class="intel-kicker">Intelligence brief</span>
-      <span class="bt-line">${esc(scope)}${moving ? ` · ${esc(plural(moving, "development"))} changing` : ""} · where it is busiest</span>
+      <span class="bt-line">${esc(scope)}${searching ? " · all events, not only this search" : `${moving ? ` · ${esc(plural(moving, "development"))} changing` : ""} · where it is busiest`}</span>
       <span class="bt-go" aria-hidden="true">›</span></button></li>`;
   }
 
@@ -2849,6 +2887,7 @@
     const names = Object.fromEntries(S.theaters.map((t) => [t.id, t.name]));
     const top = briefTeaser();
     $("#feedCount").textContent = `${events.length}`;
+    $("#feedTitle").textContent = S.feedSort === "important" ? "Most important" : "Latest";
     if (!events.length) {
       if (S.country) {
         list.innerHTML = top + `<li class="empty"><strong>Nothing involving ${esc(countryName(S.country))} in the ${esc(windowText())}.</strong>Widen the time window, or show more event types or confidence levels.</li>`;
@@ -2863,9 +2902,17 @@
         : `<li class="empty"><strong>No events in the last 7 days yet.</strong>The pipeline is running. New events appear here as sources report them.</li>`);
       return;
     }
-    // The brief above already sums up what matters; the list below it is simply newest first.
-    const shown = events.slice(0, S.feedLimit);
-    const capNote = mapLeftOut ? `<li class="map-note">The map draws the ${MAX_MARKERS} most serious and best-confirmed of these events (${mapLeftOut} left off). Search, or hide some kinds under “On the map”, to see the rest on the map.</li>` : "";
+    // Newest first, or with "Important first" (a review the owner passed on, 2026-10-16: routine
+    // diplomacy and procurement led the list beside attacks) the most serious and best confirmed
+    // first, newest first among equals. Either way only the events in the time window.
+    const ordered = S.feedSort === "important" ? byImportance(events) : events;
+    const shown = ordered.slice(0, S.feedLimit);
+    // The counts add up (a review the owner passed on, 2026-10-16: "160 plotted and 140 omitted,
+    // while the feed count is 311"): moves of arms or forces are drawn as routes, not markers.
+    const routes = Math.max(0, events.length - mapCandidates);
+    // One line, opened for the reasons, so it doesn't push the first event off a phone's screen.
+    const capNote = mapLeftOut ? `<li class="map-note"><details><summary>The map draws ${MAX_MARKERS} of these ${events.length} events</summary>
+      Of these ${events.length} events, ${mapCandidates} are marked by place and the map draws the ${MAX_MARKERS} most serious and best-confirmed of them (${mapLeftOut} left off)${routes ? `; the other ${routes} are arms or forces moved, drawn as routes` : ""}. Search, or hide some kinds under “On the map”, to see the rest on the map.</details></li>` : "";
     const more = events.length - shown.length;
     list.innerHTML = top + capNote + shown.map((e) => itemHtml(e, names)).join("")
       + (more > 0 ? `<li class="more"><button class="linkish" type="button" data-more>Show ${Math.min(FEED_PAGE, more)} more (${more} not shown)</button></li>` : "");
@@ -3365,7 +3412,7 @@
     feed.addEventListener("transitionend", (ev) => { if (ev.propertyName === "height" && isMobile()) layout(); });
     let drag = null;
     const start = (ev) => {
-      if (!isMobile()) return;
+      if (!isMobile() || ev.target.closest("#sortToggle")) return;
       drag = { y: ev.clientY, h: feed.getBoundingClientRect().height, moved: false, id: ev.pointerId };
       ev.currentTarget.setPointerCapture(ev.pointerId);
       feed.style.transition = "none";
@@ -3518,6 +3565,17 @@
       const fly = ev.target.closest("[data-fly]");
       const t = fly && S.theaters.find((x) => x.id === fly.dataset.fly);
       if (t) selectRegion(t.id);
+    });
+    const sortBtn = $("#sortToggle");
+    const showSort = () => sortBtn.setAttribute("aria-pressed", String(S.feedSort === "important"));
+    try { if (localStorage.getItem("gsm_feedSort") === "important") S.feedSort = "important"; } catch (_) { /* storage blocked */ }
+    showSort();
+    sortBtn.addEventListener("click", () => {
+      S.feedSort = S.feedSort === "important" ? "latest" : "important";
+      try { localStorage.setItem("gsm_feedSort", S.feedSort); } catch (_) { /* storage blocked */ }
+      showSort();
+      $("#feedList").scrollTop = 0;
+      renderSoon();
     });
     let searchTimer;
     $("#search").addEventListener("focus", () => { if (isMobile()) setSheet(2); });
