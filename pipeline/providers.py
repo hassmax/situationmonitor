@@ -100,10 +100,14 @@ def available(p: dict, state: dict, now, env=os.environ) -> bool:
             and (not p.get("daily_tokens") or _rec(state, p["name"], now)["tokens"] < int(p["daily_tokens"])))
 
 
+def _table(settings: dict | None) -> dict:
+    table = (settings or {}).get("provider_routes")
+    return ROUTES if table is None else table
+
+
 def routes(settings: dict, purpose: str) -> list[tuple[dict, int | None]]:
     """(provider, the purpose's daily token share there) in the order to try them."""
-    table = settings.get("provider_routes")
-    table = ROUTES if table is None else table
+    table = _table(settings)
     known = configured(settings)
     return [(known[name], int(cap) if cap else None) for name, cap in (table.get(purpose) or {}).items() if name in known]
 
@@ -119,11 +123,28 @@ def held(p: dict, state: dict, now, purpose: str, settings: dict | None = None) 
     while Gemini's calls were also gone, so no post was read for six hours."""
     if purpose == "extract":
         return 0
-    table = (settings or {}).get("provider_routes")
-    table = ROUTES if table is None else table
-    share = int(((table.get("extract") or {}).get(p["name"])) or 0)
+    share = int(((_table(settings).get("extract") or {}).get(p["name"])) or 0)
     used = int((_rec(state, p["name"], now)["by"].get("extract") or {}).get("tokens", 0))
     return max(0, share - used)
+
+
+def borrowable(p: dict, state: dict, now, settings: dict | None = None) -> int:
+    """Tokens of the other jobs' shares on `p` that reading new posts may use beyond its own: the
+    part of their unused shares that matches the part of the UTC day gone by, so each job keeps the
+    rest of its unused share for the rest of the day. On 2026-10-15 extraction's share was used by
+    18:30 UTC while Gemini's calls were gone too, so no post was read until midnight with 400
+    waiting, though 600,000 tokens of Cerebras' day sat unused in the other jobs' shares."""
+    by = _rec(state, p["name"], now)["by"]
+    unused = sum(max(0, int(shares.get(p["name"]) or 0) - int((by.get(job) or {}).get("tokens", 0)))
+                 for job, shares in _table(settings).items() if job != "extract" and shares)
+    return unused * (now.hour * 60 + now.minute) // (24 * 60)
+
+
+def cap_for(p: dict, cap: int | None, state: dict, now, purpose: str, settings: dict | None = None) -> int | None:
+    """`purpose`'s daily token share on `p`; reading new posts may borrow more (`borrowable`)."""
+    if purpose != "extract" or not cap:
+        return cap
+    return cap + borrowable(p, state, now, settings)
 
 
 def has_room(p: dict, cap: int | None, state: dict, now, purpose: str, need: int, env=os.environ,
@@ -134,6 +155,7 @@ def has_room(p: dict, cap: int | None, state: dict, now, purpose: str, need: int
     rec = _rec(state, p["name"], now)
     if p.get("daily_tokens") and rec["tokens"] + need > int(p["daily_tokens"]) - held(p, state, now, purpose, settings):
         return False
+    cap = cap_for(p, cap, state, now, purpose, settings)
     return not cap or int((rec["by"].get(purpose) or {}).get("tokens", 0)) + need <= cap
 
 
@@ -148,6 +170,7 @@ def room(state: dict, settings: dict, now, purpose: str, env=os.environ) -> int:
         left = [int(p.get("daily_max", 40)) - rec["count"]]
         if p.get("daily_tokens"):
             left.append((int(p["daily_tokens"]) - held(p, state, now, purpose, settings) - rec["tokens"]) // size)
+        cap = cap_for(p, cap, state, now, purpose, settings)
         if cap:
             left.append((cap - int((rec["by"].get(purpose) or {}).get("tokens", 0))) // size)
         best = max(best, min(left))

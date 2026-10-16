@@ -43,7 +43,9 @@ settings:
   # overflow_batches_per_run a run. Cerebras allows 1,000,000 tokens a day (capped at 900,000).
   # The run log's "[budget]" lines give each job's tokens per day, to tune these.
   # The shares add up to the 900,000 cap, and extract's unused share is held back from the
-  # other jobs (providers.held), so reading new posts can always spill over here.
+  # other jobs (providers.held), so reading new posts can always spill over here. Past its own
+  # share, reading new posts may also use the other jobs' unused shares, as much as the part of
+  # the day gone by (providers.borrowable): by 18:00 UTC, three quarters of what they left.
   provider_routes:
     analysis: {cerebras: 200000}
     gate: {cerebras: 100000}
