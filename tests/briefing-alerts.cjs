@@ -28,9 +28,9 @@ assert.deepEqual([...api.alertQ].map(e => e.id), ['c', 'd'], 'then the newest, c
 api.queueAlerts([ev('b', 3, 1), ev('c', 2, 5), ev('e', 2, 9)]);
 assert.deepEqual([...api.alertQ].map(e => e.id), ['c', 'd', 'e'], 'an event already shown or waiting is not queued again');
 
-// cities: only from the selected (listed) region
+// cities: a region's own, or in Worldwide those of countries with events (tests/world-cities.cjs)
 const render = section('  function renderGlobe(', '    // wave target dots');
-assert(/const region = selectedRegion\(\);\s+const html = \(region && CITIES\[region\.id\] \|\| \[\]\)\.map\(cityMarker\);/.test(render));
+assert(/const html = citiesFor\(mapEvents\)\.map\(cityMarker\);/.test(render));
 const cities = vm.runInNewContext('(' + code.match(/const CITIES = (\{[\s\S]*?\n  \});/)[1] + ')');
 for (const id of ['ukraine', 'nato_east', 'mideast', 'horn', 'drc_sahel', 'indopac', 'latam']) {
   assert(cities[id] && cities[id].length >= 10, id);
