@@ -173,6 +173,55 @@ def test_the_extract_share_is_held_back_from_other_jobs():
     assert providers.held(p, state, NOW, "analysis") == 0
 
 
+def test_overflow_keeps_reading_past_its_share_while_cerebras_is_idle(monkeypatch):
+    # 2026-10-15 18:30 UTC: Gemini's calls for the day were used up and extraction's Cerebras share
+    # nearly so (145,051 of 150,000 tokens), so no post was read until midnight, with 400 waiting
+    # and 600,000 tokens of Cerebras' day unused in the other jobs' shares.
+    def cerebras(body):
+        items = json.loads(body["messages"][1]["content"])["items"]
+        return R(200, {"events": [{"i": it["i"], "relevant": False} for it in items]}, 9700)
+    sent = routed(monkeypatch, cerebras)
+    clock = [1000.0]
+    monkeypatch.setattr(providers, "_clock", lambda: clock[0])
+    monkeypatch.setattr(providers, "_sleep", lambda s: clock.__setitem__(0, clock[0] + s))
+    evening = datetime(2026, 10, 15, 18, 30, tzinfo=timezone.utc)
+    state = {"llm_calls": {"date": "2026-10-15", "count": 470},
+             "providers": {"cerebras": {"date": "2026-10-15", "count": 38, "tokens": 298_608,
+                                        "by": {"extract": {"calls": 15, "tokens": 145_051},
+                                               "gate": {"calls": 9, "tokens": 97_141},
+                                               "recency": {"calls": 10, "tokens": 49_721}}}}}
+    records, left, used, _ = extract.run([item(i) for i in range(100)], state, SETTINGS, evening)
+    assert used == 0 and sent == [CEREBRAS, CEREBRAS]          # two overflow batches, as on any run
+    assert len(left) == 20
+
+
+def test_reading_new_posts_borrows_the_other_jobs_unused_shares_as_the_day_goes():
+    env = {"CEREBRAS_API_KEY": "c"}
+    p = providers.configured({})["cerebras"]
+    share = providers.ROUTES["extract"]["cerebras"]
+    others = sum(r.get("cerebras", 0) for job, r in providers.ROUTES.items() if job != "extract")
+    evening = datetime(2026, 10, 15, 18, 0, tzinfo=timezone.utc)
+    state = {"providers": {"cerebras": {"date": "2026-10-15", "count": 24, "tokens": share + 100_000,
+                                        "by": {"extract": {"calls": 15, "tokens": share},
+                                               "gate": {"calls": 9, "tokens": 100_000}}}}}
+    unused = others - 100_000
+    # by 18:00 three quarters of the day has gone, and so may three quarters of what the others left
+    assert providers.borrowable(p, state, evening) == unused * 3 // 4
+    assert providers.has_room(p, share, state, evening, "extract", 10_000, env)
+    assert providers.room(state, SETTINGS, evening, "extract", env) > 0
+    # little is lent early in the day, and only to reading new posts
+    assert providers.borrowable(p, state, datetime(2026, 10, 15, 0, 30, tzinfo=timezone.utc)) == unused * 30 // 1440
+    assert providers.cap_for(p, 50_000, state, evening, "recency") == 50_000
+    # once extraction has borrowed all it may, the other jobs still have the rest of the day's part
+    lent = providers.borrowable(p, state, evening)
+    rec = state["providers"]["cerebras"]
+    rec["by"]["extract"]["tokens"] += lent
+    rec["tokens"] += lent
+    assert not providers.has_room(p, share, state, evening, "extract", 10_000, env)
+    assert providers.has_room(p, providers.ROUTES["analysis"]["cerebras"], state, evening, "analysis", 20_000, env)
+    assert p["daily_tokens"] - rec["tokens"] == unused - lent
+
+
 def test_route_shares_fit_within_the_daily_cap():
     total = sum(r.get("cerebras", 0) for r in providers.ROUTES.values())
     assert total <= providers.configured({})["cerebras"]["daily_tokens"]
