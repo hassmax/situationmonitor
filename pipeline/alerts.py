@@ -25,6 +25,7 @@ TYPES = {
     "naval": "Naval incident", "explosion": "Explosion", "deployment": "Deployment or exercise",
     "diplomacy": "Diplomacy", "ceasefire": "Diplomacy", "hybrid": "Sabotage or hybrid attack",
     "incursion": "Airspace or border incursion", "arms_transfer": "Arms transfer", "legal": "Legal step",
+    "weapons_test": "Weapons test",
 }
 CONFIDENCE = {"corroborated": "Corroborated", "unconfirmed": "Single source", "claimed": "One side's claim"}
 REASON = {"major": "major corroborated event", "wave": "large attack wave", "legal": "new legal step",

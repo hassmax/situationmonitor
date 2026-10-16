@@ -64,7 +64,7 @@ Question 2, old news (only when "older" headlines are given): is the event an ol
 If the event is the same incident as a candidate, answer "old": false: it is coverage of an event already on the map.
 
 When you list any candidates, also give:
-- "type": the kind, of those the event and the listed candidates were filed under, that best fits what happened (a missile test is "missile_drone", not arms production; an approved arms sale is "arms_transfer"; a strike that killed people is "airstrike" or "missile_drone" over "diplomacy").
+- "type": the kind, of those the event and the listed candidates were filed under, that best fits what happened (a missile test is "weapons_test", not an attack or arms production; an approved arms sale is "arms_transfer"; a strike that killed people is "airstrike" or "missile_drone" over "diplomacy").
 - "summary": one neutral sentence of at most 25 words stating what they agree on, with the most recent figures; only facts in the summaries, keeping attributions ("Russian MoD claims", "reportedly"); never add a number, place, or name they don't give.
 
 Reply with one JSON object and nothing else, one entry for every case:

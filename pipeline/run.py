@@ -250,6 +250,7 @@ def main() -> int:
     candidates = [c for c in (geo.place_record(r, geocoder, cfg.theaters) for r in records) if c]
     log(f"[geo] placed {len(candidates)}/{len(records)} ({geocoder.calls} lookups)")
     geo.repair(events, geocoder, state)  # stored approximate pins, re-checked a few per run
+    geo.repair_niger_state(events, geocoder)  # "Niger" meaning Niger State, Nigeria
     # Reports of hidden events, and dropped reports, never create or join an event again.
     blocked = corrections.blocked_urls(events, fixes)
     fleet.drop_held(state, blocked)
@@ -260,6 +261,7 @@ def main() -> int:
     known = {e["id"] for e in events}
     merge.mine_incidents(events)  # ground mine blasts are not missile/drone attack waves
     merge.drone_strikes(candidates)  # drone and missile attacks filed as airstrikes, before they join waves
+    merge.weapons_tests(candidates)  # weapons tests filed as attacks
     events = merge.merge(events, candidates)
     events, folded = merge.consolidate(events, hidden)
     events, launches = merge.launch_sites(events, hidden)  # "fired from Wonsan": a launch area, not a target
@@ -269,6 +271,7 @@ def main() -> int:
     merge.carrier_moves(events)  # a carrier's own move is shown by its track, not as a supply route
     merge.deliveries_at_supplier(events)  # a "delivery" ending in the supplier's own country never left it
     merge.drone_strikes(events)  # stored drone and missile attacks filed as airstrikes
+    merge.weapons_tests(events)  # stored weapons tests filed as attacks
     # Editorially sourced manual events are reloaded on every run, surviving generated-data refreshes.
     manual_path = config_mod.CONFIG_DIR / "manual_events.yaml"
     if manual_path.exists():

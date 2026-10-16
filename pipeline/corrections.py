@@ -12,13 +12,14 @@ show a "Corrected" label with the note.
 """
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 import yaml
 
 from common import log
 
-EDITABLE = ("summary", "place", "lat", "lon", "type", "severity")
+EDITABLE = ("summary", "place", "lat", "lon", "country", "theater", "type", "severity")
 
 
 def load(path: Path) -> list[dict]:
@@ -73,7 +74,7 @@ def drop_reports(events: list[dict], entries: list[dict]) -> list[dict]:
     return kept
 
 
-def _edit(e: dict, changes: dict, event_types) -> list[str]:
+def _edit(e: dict, changes: dict, event_types, theaters=()) -> list[str]:
     done = []
     changes = changes if isinstance(changes, dict) else {}
     for k in EDITABLE:  # fixed order, so the label reads naturally
@@ -97,6 +98,13 @@ def _edit(e: dict, changes: dict, event_types) -> list[str]:
         elif k == "type":
             if v not in event_types:
                 continue
+        elif k == "country":
+            v = str(v).strip().upper()
+            if not re.fullmatch(r"[A-Z]{2}", v):
+                continue
+        elif k == "theater":
+            if v not in theaters:
+                continue
         else:
             v = str(v).strip()
             if not v:
@@ -111,6 +119,7 @@ def publish(published: list[dict], entries: list[dict], event_types) -> list[dic
     by_id: dict[str, list[dict]] = {}
     for c in entries:
         by_id.setdefault(c["id"], []).append(c)
+    theaters = {x.get("theater") for x in published if x.get("theater")}
     out = []
     for e in published:
         mine = by_id.get(e["id"])
@@ -123,7 +132,7 @@ def publish(published: list[dict], entries: list[dict], event_types) -> list[dic
         labels = []
         for c in mine:
             if c.get("edit"):
-                fields = _edit(e, c["edit"], event_types)
+                fields = _edit(e, c["edit"], event_types, theaters)
                 if fields:
                     labels.append({"note": c["note"], "change": "Edited " + ", ".join(fields)})
             if c.get("drop_report"):

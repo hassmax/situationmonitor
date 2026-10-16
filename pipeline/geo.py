@@ -313,9 +313,64 @@ def repair(events: list[dict], geocoder: Geocoder, state: dict) -> int:
     return moved
 
 
+# "Niger" in Nigerian reporting usually means Niger State, Nigeria. On 2026-10-15 four Nigerian
+# papers' attack on an immigration team "in Niger" (Niger State) was filed in the Republic of Niger,
+# pinned in the Sahara 900 km from the same attack filed correctly, and shown twice. An incident
+# filed in the Republic of Niger at a place that is just "Niger" goes to Niger State when its own
+# words name Niger State, or name Nigeria or Nigerians and nothing of the Republic of Niger.
+# Talks, transfers and the like stay: a Nigerian outlet may well report on its neighbour.
+_NIGER_STATE = re.compile(r"\bNiger State\b|\bMinna\b", re.I)
+_NIGERIA = re.compile(r"\bNigerians?\b|\bNigeria\b", re.I)
+_REPUBLIC_OF_NIGER = re.compile(r"\b(?:Niamey|Tillab[ée]ri|Tahoua|Agadez|Diffa|Dosso|Maradi|Zinder|junta|Tiani|"
+                                r"Nigerien|Republic of Niger)\b", re.I)
+_NOT_INCIDENTS = {"diplomacy", "ceasefire", "legal", "arms_transfer", "production", "deployment"}
+
+
+def niger_state(e: dict, texts: list[str]) -> bool:
+    """Whether a record or event filed in the Republic of Niger is about Niger State, Nigeria."""
+    if e.get("country") != "NE" or str(e.get("place") or "").strip().lower() not in ("niger", "niger state") \
+            or e.get("type") in _NOT_INCIDENTS:
+        return False
+    text = " ".join(t for t in texts if t)
+    return bool(_NIGER_STATE.search(text) or (_NIGERIA.search(text) and not _REPUBLIC_OF_NIGER.search(text)))
+
+
+def _title(r: dict) -> str:
+    """A report's headline without the outlet's name after it ("... - Peoples Gazette Nigeria")."""
+    return str(r.get("title") or "").rsplit(" - ", 1)[0]
+
+
+def _without_outlet(text: str | None, source: str | None) -> str:
+    """A post's text without its outlet's name, which Google News puts after the headline and in
+    the snippet ("... in Niger - Peoples Gazette Nigeria")."""
+    name = str(source or "").removesuffix(" (via Google News)").strip()
+    return str(text or "").replace(name, " ") if name else str(text or "")
+
+
+def repair_niger_state(events: list[dict], geocoder: Geocoder) -> int:
+    """Stored events filed in the Republic of Niger that are about Niger State (niger_state) move there."""
+    moved = 0
+    for e in events:
+        if e.get("wave") or e.get("alert"):
+            continue
+        texts = [e.get("summary")] + [x for r in e.get("reports") or [] for x in (r.get("summary"), _title(r))]
+        if not niger_state(e, texts):
+            continue
+        hit = geocoder.locate("Niger State", "Niger", "NG", None)
+        if not hit:
+            break  # no lookup possible now: try again next run
+        log(f"[geo] {e['summary'][:60]!r}: Niger State, Nigeria, not the Republic of Niger")
+        e.update(country="NG", place="Niger State", lat=hit[0], lon=hit[1], approx=False)
+        moved += 1
+    return moved
+
+
 def place_record(rec: dict, geocoder: Geocoder, theaters: list[dict]) -> dict | None:
     """Turn an extracted record into an event candidate with coordinates, or None."""
     item = rec["item"]
+    if niger_state(rec, [rec.get("summary"), _without_outlet(item.get("text"), item.get("source"))]):
+        # the model's coordinates are the Republic of Niger's: look the state up instead
+        rec = {**rec, "country": "NG", "place": "Niger State", "admin1": "Niger", "lat": None, "lon": None}
     hint = (rec["lat"], rec["lon"]) if rec["lat"] is not None and rec["lon"] is not None else None
     lat = lon = None
     approx = False

@@ -56,7 +56,7 @@
     territory: "Territorial change", air_defense: "Air defense", naval: "Naval incident", explosion: "Explosion",
     deployment: "Deployment or exercise", diplomacy: "Diplomacy", ceasefire: "Diplomacy", hybrid: "Sabotage or hybrid attack",
     incursion: "Airspace or border incursion", arms_transfer: "Arms transfer", legal: "Legal step",
-    production: "Arms production",
+    production: "Arms production", weapons_test: "Weapons test",
   };
   // type -> [category, icon, animation]
   const CAT = {
@@ -65,7 +65,7 @@
     territory: ["ground", "territory", "pulse"], naval: ["naval", "naval", "ripple"], deployment: ["deploy", "deploy", ""],
     hybrid: ["hybrid", "hybrid", "pulse"], incursion: ["hybrid", "incursion", "pulse"], diplomacy: ["diplo", "diplo", ""],
     ceasefire: ["diplo", "diplo", ""], legal: ["diplo", "legal", ""], arms_transfer: ["supply", "crate", ""],
-    production: ["supply", "factory", ""],
+    production: ["supply", "factory", ""], weapons_test: ["deploy", "test", ""],
   };
   // Muted, briefing-room colours (the owner, 2026-10-11: "something a president would have on"):
   // still one colour per kind of event, never bright.
@@ -91,6 +91,8 @@
     crate: '<path d="M2 5.2 8 2l6 3.2v5.6L8 14l-6-3.2zM2 5.2l6 3.2 6-3.2M8 8.4V14M5 3.6l6 3.2v2.4"/>',
     factory: '<path d="M1.5 14.5V8l4-2.5V8l4-2.5V8h5v6.5zM11 8V1.5h2.5V8M4.5 11h1.5M8 11h1.5M11.5 11H13"/>',
     carrier: '<path d="M1 9.5 2.6 6.5h11l1.4 2-1.6 3.5H2.6zM4.5 8.5h5.5M10.5 6.5V3.5h2v3M3 14.5h10"/>',
+    // a missile standing on its stand: a test launch, not an attack
+    test: '<path d="M8 1.5 9.5 4.5V11h-3V4.5zM6.5 8.5 4.5 11v1h2M9.5 8.5l2 2.5v1h-2M2.5 14.5h11"/>',
     alert: '<path d="M8 1.8 14.8 14H1.2zM8 6v4.2M8 11.8v.4"/>',
   };
   const svgIcon = (name) => `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.35" stroke-linecap="butt" stroke-linejoin="miter" aria-hidden="true">${ICONS[name] || ICONS.blast}</svg>`;
@@ -99,7 +101,7 @@
     ["missile", "strike", "Drone or missile"], ["air", "strike", "Airstrike"],
     ["blast", "strike", "Explosion"], ["artillery", "ground", "Shelling"],
     ["ground", "ground", "Ground fighting"], ["territory", "ground", "Territory change"], ["naval", "naval", "Naval"],
-    ["hybrid", "hybrid", "Hybrid attack"], ["incursion", "hybrid", "Incursion"], ["deploy", "deploy", "Deployment"],
+    ["hybrid", "hybrid", "Hybrid attack"], ["incursion", "hybrid", "Incursion"], ["deploy", "deploy", "Deploy or test"],
     ["diplo", "diplo", "Diplomacy, legal"], ["crate", "supply", "Arms or forces moved"], ["factory", "supply", "Arms production"], ["coin", "aid", "Financial aid"],
     ["carrier", "fleet", "US carrier at sea"],
   ];
@@ -262,7 +264,7 @@
   const catOf = (e) => (e.alert ? ["strike", "alert", ""] : e.type === "arms_transfer" && isMoney(e) ? ["aid", "coin", ""] : CAT[e.type] || ["strike", "blast", ""]);
   // Which "On the map" entry an event belongs to (legal steps share the diplomacy entry).
   // Drone and missile attacks, interceptions, and warnings of drones in flight are one filter.
-  const legendKey = (e) => { const icon = catOf(e)[1]; return icon === "legal" ? "diplo" : icon === "alert" ? "missile" : icon; };
+  const legendKey = (e) => { const icon = catOf(e)[1]; return icon === "legal" ? "diplo" : icon === "alert" ? "missile" : icon === "test" ? "deploy" : icon; };
   const alertsText = (e) => { const n = e.alerts || (e.reports || []).length || 1; return `${n} ${n === 1 ? "alert" : "alerts"}`; };
   const isDiplomacy = (e) => e.type === "diplomacy" || e.type === "ceasefire" || e.type === "legal";
   const tkind = (e) => (e.transfer && e.transfer.kind) || "delivery";

@@ -35,10 +35,10 @@ FAMILY = {
     "artillery": "ground", "ground": "ground", "territory": "ground",
     "naval": "naval", "deployment": "deployment", "diplomacy": "diplomacy", "ceasefire": "diplomacy",
     "hybrid": "hybrid", "incursion": "incursion", "arms_transfer": "transfer", "legal": "legal",
-    "production": "production",
+    "production": "production", "weapons_test": "test",
 }
 RADIUS_KM = {"strike": 30, "ground": 30, "naval": 150, "deployment": 120, "diplomacy": 400,
-             "hybrid": 50, "incursion": 150, "transfer": 0, "legal": 400, "production": 100}
+             "hybrid": 50, "incursion": 150, "transfer": 0, "legal": 400, "production": 100, "test": 100}
 TRANSFER_WINDOW = timedelta(hours=72)  # repeated flights or sailings on one route become one "bridge"
 ROUTE_KM = 250  # the same route: both ends within this distance (a base and the town beside it)
 WINDOW = timedelta(hours=18)  # measured from when the event first happened, never from later reports
@@ -358,7 +358,7 @@ def _find_match(events: list[dict], cand: dict) -> dict | None:
         # A shared place and time window identify candidates, not the same incident. Recurring
         # incidents need the same occurrence time and matching details; uncertain pairs
         # remain separate until dedupe confirms them. Follow-up publication times may differ.
-        if fam in ("strike", "ground", "naval", "hybrid", "incursion") and ct != parse_time(e["time"]):
+        if fam in ("strike", "ground", "naval", "hybrid", "incursion", "test") and ct != parse_time(e["time"]):
             continue
         if d <= radius:
             if not _similar(e, cand, STRIKE_FOLD_OVERLAP):
@@ -645,6 +645,35 @@ def drone_strikes(events: list[dict]) -> int:
             changed += 1
     if changed:
         log(f"[merge] {changed} drone or missile attacks filed as airstrikes retyped")
+    return changed
+
+
+# A weapons test is not an attack. A review the owner passed on (2026-10-16) found a ballistic
+# missile test shown as a "Drone or missile attack": about 15 tests that week (Iran's ballistic
+# launches, North Korea's and Russia's submarine-launched cruise missiles, France's M51) were drawn
+# as attacks because there was no kind for them. The prompt now has weapons_test; this catches tests
+# still filed as missile or drone attacks, new and stored, by their wording, when nothing is
+# reported hit, killed or intercepted. Runs after drone_strikes, which can turn a test filed as an
+# explosion into a missile attack ("test-fired").
+TEST_RE = re.compile(r"\btest[- ](?:fir|launch)\w*|\b(?:launch|firing|missile|rocket|weapons?|ICBM)\s+tests?\b|"
+                     r"\btested\b[^.;]{0,60}?\b(?:missiles?|rockets?|ICBMs?|warheads?|hypersonic|drones?|weapons?)\b", re.I)
+TEST_HIT_RE = re.compile(r"\b(?:struck|strik\w*|hits?|hitting|damag\w*|destroy\w*|kill\w*|injur\w*|wound\w*|dead|"
+                         r"casualt\w*|intercept\w*|shot down|downed|attack\w*|targets?|targeted|targeting)\b", re.I)
+
+
+def weapons_tests(events: list[dict]) -> int:
+    """Retype missile or drone attacks whose summary describes a weapons test and nothing hit
+    (new reports before merging, and stored events every run)."""
+    changed = 0
+    for e in events:
+        if e.get("type") != "missile_drone" or e.get("wave") or e.get("alert") or e.get("killed") or e.get("injured"):
+            continue
+        text = e.get("summary") or ""
+        if TEST_RE.search(text) and not TEST_HIT_RE.search(text):
+            e["type"] = "weapons_test"
+            changed += 1
+    if changed:
+        log(f"[merge] {changed} weapons tests filed as missile or drone attacks retyped")
     return changed
 
 

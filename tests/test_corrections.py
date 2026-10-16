@@ -104,3 +104,16 @@ def test_example_file_parses():
     raw = (__import__("yaml").safe_load(path.read_text(encoding="utf-8")) or {}).get("corrections") or []
     assert len(entries) == len(raw)                     # every entry in the real file is valid (id and note)
     assert all(e["id"] and e["note"] for e in entries)
+
+
+def test_edit_can_move_an_event_to_another_country_and_theater(tmp_path):
+    # 2026-10-16: North Korea's missile test filed as an arms transfer to Russia, in the Russia-Ukraine theater
+    fixes = load(tmp_path, [{"id": "e1", "note": "A North Korean missile test.",
+                             "edit": {"type": "weapons_test", "country": "kp", "theater": "indopac"}},
+                            {"id": "e2", "note": "Bad values.", "edit": {"country": "Korea", "theater": "atlantis"}}])
+    other = {**event("e3"), "theater": "indopac"}
+    out = corrections.publish([merge.public_event(event()), merge.public_event(event("e2")), merge.public_event(other)],
+                              fixes, extract.EVENT_TYPES)
+    assert (out[0]["type"], out[0]["country"], out[0]["theater"]) == ("weapons_test", "KP", "indopac")
+    assert (out[1]["country"], out[1]["theater"]) == ("UA", "ukraine")   # invalid values ignored
+    assert "corrected" not in out[1]
