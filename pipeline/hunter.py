@@ -31,7 +31,7 @@ SOURCE = {"name": "Google News (corroboration search)", "kind": "news", "group":
 SOURCE_ID = "rss:corroboration-search"
 
 KEYWORDS = {
-    "missile_drone": "drone OR missile", "airstrike": 'airstrike OR "air strike" OR bombing',
+    "missile_drone": "drone OR missile", "weapons_test": '"missile test" OR "test-fired" OR "test launch"', "airstrike": 'airstrike OR "air strike" OR bombing',
     "artillery": "shelling OR artillery", "ground": "fighting OR clashes OR attack",
     "territory": "captured OR advance OR control", "air_defense": 'intercepted OR "shot down" OR "air defense"',
     "naval": "ship OR vessel OR tanker", "explosion": "explosion OR blast",

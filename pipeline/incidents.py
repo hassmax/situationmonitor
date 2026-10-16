@@ -254,7 +254,7 @@ def repair_facility_sources(events, members, anchor, state, ask, settings, now, 
     theater, attacker (ISO alpha-2 or null), severity (1 minor, 2 substantial, 3 major), happened
     (UTC timestamp supported by occurrence evidence or null), killed, injured (supported numbers or null),
     lat, lon. Type: missile_drone, airstrike, explosion, air_defense, artillery, ground, territory,
-    naval, hybrid, incursion, deployment, diplomacy, legal, arms_transfer, production.
+    naval, hybrid, incursion, deployment, diplomacy, legal, arms_transfer, production, weapons_test.
     Use supplied facility coordinates for airport episodes. Use diplomacy for an actual policy decision.
     Return only this exact structure, with key INCLUDED and WITHOUT reports arrays:
     {"groups":[{"key":"earlier","type":"missile_drone","summary":"Reported earlier airport attack.",
@@ -564,7 +564,7 @@ location (not the reporter's dateline), country, and acting country's attacker c
 when stated; unknown casualties and attacker are null. Severity is 1 minor, 2 significant,
 3 major. Type must be one of: airstrike (military aircraft), missile_drone, explosion,
 air_defense, artillery, ground, territory, naval, hybrid, incursion, deployment, diplomacy,
-legal, arms_transfer, production. Use diplomacy or legal for an actual policy decision,
+legal, arms_transfer, production, weapons_test (a test launch where nothing is attacked). Use diplomacy or legal for an actual policy decision,
 not for a reaction that only comments on the attack. Keep suspicions and claims attributed.
 
 Use the input theater unless the evidence clearly concerns another configured theater.

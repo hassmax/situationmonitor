@@ -191,3 +191,50 @@ def test_a_bare_sea_name_is_not_looked_up():
     assert geo.pin_commands([wave, strait]) == 2
     assert (wave["targets"][0]["lat"], wave["targets"][0]["lon"]) == (40.0, 135.0)
     assert (strait["lat"], strait["lon"]) == geo.SEAS["taiwan strait"]
+
+
+NIGERIA = [{"id": "drc_sahel", "camera": {"lat": 12, "lng": 8, "altitude": 1.6}, "iso2": ["NG", "NE"]}]
+NIGER_STATE = [9.5833, 6.565]
+
+
+class NigerState(Session):
+    """Nominatim stand-in that finds Niger State only when asked within Nigeria."""
+    def get(self, url, params=None, timeout=None):
+        self.calls.append(params)
+        if url == geo.NOMINATIM_REVERSE:
+            return Resp({"error": "Unable to geocode"})
+        return Resp([{"lat": str(NIGER_STATE[0]), "lon": str(NIGER_STATE[1])}] if params.get("countrycodes") == "ng" else [])
+
+
+def niger_record(summary, type_="ground", text=None, place="Niger"):
+    rec = record(place, lat=17.7, lon=9.3, type_=type_, country="NE")
+    rec.update(summary=summary, theater="drc_sahel")
+    rec["item"]["text"] = text or summary
+    return rec
+
+
+def test_niger_in_nigerian_reporting_is_niger_state():
+    # 2026-10-15: four Nigerian papers' attack "in Niger" (Niger State) was pinned in the Sahara
+    rec = niger_record("A Nigerian Immigration Service officer was killed in an attack in Niger.")
+    c = geo.place_record(rec, geo.Geocoder({}, NigerState(), budget=10), NIGERIA)
+    assert (c["country"], c["place"], c["lat"], c["lon"]) == ("NG", "Niger State", *NIGER_STATE)
+    keep = [niger_record("Gunmen kill five people and kidnap 18 others in Niger."),          # nothing says which
+            niger_record("Nigeria and Niger agree on joint border patrols.", "diplomacy"),  # talks stay
+            niger_record("Nigerian troops repelled jihadists near Diffa in Niger.")]        # the Republic of Niger named
+    assert [geo.niger_state(r, [r["summary"]]) for r in keep] == [False, False, False]
+    # the outlet's name in a Google News headline is not where it happened
+    jihadists = niger_record("Jihadists killed 20 soldiers in Niger.", text="Jihadists kill 20 soldiers in Niger - Peoples Gazette Nigeria")
+    jihadists["item"]["source"] = "Peoples Gazette Nigeria (via Google News)"
+    c = geo.place_record(jihadists, geo.Geocoder({}, NigerState(), budget=10), NIGERIA)
+    assert c["country"] == "NE" and c["place"] == "Niger"
+
+
+def test_stored_events_filed_in_niger_move_to_niger_state():
+    e = {"id": "e1", "type": "ground", "country": "NE", "place": "Niger", "lat": 17.7, "lon": 9.3, "approx": False,
+         "summary": "An immigration officer was killed in an attack in Niger.",
+         "reports": [{"summary": "Gunmen kill immigration officer in Niger.",
+                      "title": "Gunmen attack immigration team in Niger State - Peoples Gazette Nigeria"}]}
+    other = {**e, "id": "e2", "reports": [{"summary": "s", "title": "Gunmen kill five in Niger - Peoples Gazette Nigeria"}]}
+    assert geo.repair_niger_state([e, other], geo.Geocoder({}, NigerState(), budget=10)) == 1
+    assert (e["country"], e["place"], e["lat"]) == ("NG", "Niger State", NIGER_STATE[0])
+    assert other["country"] == "NE"   # the outlet's name alone says nothing about where it happened

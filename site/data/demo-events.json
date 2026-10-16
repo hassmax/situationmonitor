@@ -2502,6 +2502,59 @@
 "status": "claimed",
 "sources_count": 1,
 "news_nearby": 0
+},
+{
+"id": "d3m0te5t0001",
+"theater": "indopac",
+"type": "weapons_test",
+"summary": "Sample weapons test near Sinpo, used to preview the layout.",
+"place": "Sinpo",
+"country": "KP",
+"lat": 40.03,
+"lon": 128.18,
+"approx": false,
+"severity": 2,
+"killed": null,
+"injured": null,
+"time": "2026-09-26T16:40:00Z",
+"updated": "2026-09-26T17:10:00Z",
+"reports": [
+{
+"source": "Sample OSINT source A",
+"platform": "bluesky",
+"kind": "osint",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/test/0",
+"time": "2026-09-26T16:40:00Z",
+"summary": "Sample report of a weapons test near Sinpo. Not a real event."
+},
+{
+"source": "Sample news outlet B",
+"platform": "rss",
+"kind": "news",
+"side": null,
+"claim": "report",
+"url": "https://example.com/sample/test/1",
+"time": "2026-09-26T17:10:00Z",
+"summary": "Sample report of a weapons test near Sinpo. Not a real event."
+},
+{
+"source": "Sample official channel C",
+"platform": "telegram",
+"kind": "official",
+"side": "X",
+"claim": "official_claim",
+"url": "https://example.com/sample/test/2",
+"time": "2026-09-26T17:10:00Z",
+"summary": "Sample report of a weapons test near Sinpo. Not a real event."
+}
+],
+"status": "corroborated",
+"sources_count": 3,
+"news_nearby": 4,
+"attacker": null,
+"origins": []
 }
 ],
 "heat": [

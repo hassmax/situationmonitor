@@ -25,6 +25,12 @@ Checks (the mistake that led to each, and the fix):
   Poland, the country it passed through, 2026-10-07; not a mistake)
 - duplicate_summary: two events with the same words at the same spot within five minutes (dedupe.py; the same outlet's
   Toulousa strike twice, a second apart, 2026-10-11)
+- test_with_hits: a weapons test whose summary reports something hit, killed or intercepted, so an attack filed
+  as a test (the reverse of the tests shown as attacks, 2026-10-16; merge.weapons_tests)
+- civilian_cargo: an arms transfer of fuel, food or other civilian goods with no weapons or forces named (Russian
+  diesel to Morocco, 2026-10-16; the prompt's arms_transfer rule)
+- niger_state_in_niger: an event filed in the Republic of Niger whose summary names Niger State, Nigeria (an
+  immigration team attacked in Niger State, pinned in the Sahara, 2026-10-15; geo.niger_state)
 """
 from __future__ import annotations
 
@@ -41,6 +47,11 @@ TOGETHER_KM = 300
 CRIMEA = (44.3, 46.3, 32.4, 36.7)     # lat min/max, lon min/max
 DUP_MINUTES = 5       # the same words at the same spot this close in time are one report twice
 HOME_KM = 80
+CIVILIAN_RE = re.compile(r"\b(?:diesel|fuel|petrol|gasoline|crude|oil|LNG|natural gas|grain|wheat|food|fertili[sz]ers?)\b", re.I)
+WEAPONS_RE = re.compile(r"\b(?:weapons?|arms|munitions?|ammunition|missiles?|drones?|rockets?|shells?|tanks?|artillery|"
+                        r"air defen[cs]e|aircraft|jets?|F-\d+|troops|forces|soldiers|military aid|warships?|frigates?|"
+                        r"helicopters?|bombers?|tankers? aircraft)\b", re.I)
+NIGER_STATE_RE = re.compile(r"\bNiger State\b|\bMinna\b", re.I)
 # ISO alpha-2 -> numeric, for the globe's country shapes (the same table as ISO_NUM in site/app.js)
 _ISO_NUM = dict((s[:2], s[2:]) for s in (
     "AD020,AE784,AF004,AG028,AL008,AM051,AO024,AR032,AT040,AU036,AZ031,BA070,BD050,BE056,BF854,BG100,BH048,"
@@ -83,7 +94,7 @@ def run(events: list[dict], fleet_rows: list[dict], state: dict, now) -> dict:
     {time, counts, examples}."""
     from fleet import _too_fast
     from geo import _command, region_anchor
-    from merge import ATTACK_RE, CARRIER_RE, CREWED_RE, DRONE_MISSILE_RE
+    from merge import ATTACK_RE, CARRIER_RE, CREWED_RE, DRONE_MISSILE_RE, TEST_HIT_RE
     found: dict[str, list] = {}
 
     def flag(check, e, detail):
@@ -112,6 +123,12 @@ def run(events: list[dict], fleet_rows: list[dict], state: dict, now) -> dict:
                     and _country_km(tr["supplier"], to["lat"], to["lon"]) == 0.0 \
                     and _country_km(tr["recipient"], to["lat"], to["lon"]) not in (0.0, None):
                 flag("route_end_in_supplier", e, f"{tr['supplier']}->{tr['recipient']} ends at {to.get('place')!r}: {summary}")
+        if e.get("type") == "weapons_test" and (TEST_HIT_RE.search(summary) or e.get("killed") or e.get("injured")):
+            flag("test_with_hits", e, summary)
+        if e.get("type") == "arms_transfer" and CIVILIAN_RE.search(summary) and not WEAPONS_RE.search(summary):
+            flag("civilian_cargo", e, summary)
+        if e.get("country") == "NE" and NIGER_STATE_RE.search(summary):
+            flag("niger_state_in_niger", e, f"at {e.get('place')!r}: {summary}")
         if e.get("attacker") in ANCHORED and e.get("type") == "explosion" and not e.get("alert") \
                 and DRONE_MISSILE_RE.search(summary) and ATTACK_RE.search(summary) and not CREWED_RE.search(summary):
             flag("strike_mistyped", e, f"{e['type']}: {summary}")

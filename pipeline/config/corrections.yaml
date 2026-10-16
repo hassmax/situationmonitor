@@ -7,7 +7,8 @@
 # and one of:
 #   hide: true          take the event off the dashboard, the brief, alerts, and the archive.
 #                       Its reports can never create or join an event again.
-#   edit: {...}         change any of: summary, place, lat, lon, type, severity (1-3)
+#   edit: {...}         change any of: summary, place, lat, lon, country (two letters, such as KP),
+#                       theater (an existing theater id, such as indopac), type, severity (1-3)
 #   drop_report: <url>  remove one report (copy its "Open the original post" link) from the
 #                       event; its confidence is recomputed without it
 #
@@ -87,3 +88,16 @@ corrections:
   - id: 660fbcc1c1dd
     edit: {type: airstrike}
     note: The Yemeni government's claim of at least 75 airstrikes on Houthi fighters and infrastructure in Taiz is an airstrike, not a drone or missile attack.
+  # From a review the owner passed on (2026-10-16).
+  - id: 34cee8546ef9
+    edit: {type: diplomacy}
+    note: Diesel fuel is civilian cargo, not an arms transfer. The shipment follows a US-Russia agreement, so it is filed as diplomacy.
+  - id: 8a069805ed16
+    edit: {type: deployment}
+    note: Not an arms transfer. Lithuania's offer to pay for a US base is diplomacy, and its army moved along its own border is a deployment.
+  - id: 82bc7d2bbabb
+    edit: {type: weapons_test, place: Pyongyang, lat: 39.04, lon: 125.76, country: KP, theater: indopac}
+    note: A North Korean missile test, not an arms transfer to Russia (the report only recalls earlier supplies). No launch site is named, so it is placed at Pyongyang, the testing country's capital.
+  - id: bc06603e253d
+    hide: true
+    note: Duplicate of b537dada5870, the attack on an immigration team in Niger State, Nigeria. Nigerian papers' "Niger" was taken for the Republic of Niger and the event pinned in the Sahara.

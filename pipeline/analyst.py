@@ -69,12 +69,13 @@ TYPES = {
     "naval": "naval incident", "explosion": "explosion", "deployment": "deployment or exercise",
     "diplomacy": "diplomacy", "ceasefire": "diplomacy", "hybrid": "sabotage or hybrid attack",
     "incursion": "airspace or border incursion", "arms_transfer": "arms or forces moved", "legal": "legal step",
-    "production": "arms production",
+    "production": "arms production", "weapons_test": "weapons test",
 }
 FAMILY = {
     "airstrike": "strikes", "missile_drone": "strikes", "artillery": "strikes", "explosion": "strikes", "air_defense": "strikes",
     "ground": "ground fighting", "territory": "ground fighting", "naval": "naval", "deployment": "force posture",
-    "arms_transfer": "force posture", "incursion": "force posture", "production": "force posture", "hybrid": "hybrid",
+    "arms_transfer": "force posture", "incursion": "force posture", "production": "force posture",
+    "weapons_test": "force posture", "hybrid": "hybrid",
     "diplomacy": "diplomacy", "ceasefire": "diplomacy", "legal": "diplomacy",
 }
 CONFIDENCE = {"corroborated": "corroborated by independent sources", "unconfirmed": "single-source report",

@@ -30,7 +30,8 @@ STATUS = {'corroborated': 'Corroborated', 'unconfirmed': 'Single source', 'claim
 TYPES = {'deployment': 'Deployment or preparation', 'airstrike': 'Airstrike', 'missile_drone': 'Drone or missile attack',
          'explosion': 'Explosion', 'artillery': 'Shelling', 'ground': 'Ground fighting', 'territory': 'Territorial change',
          'air_defense': 'Air defense', 'naval': 'Naval incident', 'hybrid': 'Hybrid attack', 'incursion': 'Incursion',
-         'diplomacy': 'Diplomacy', 'legal': 'Legal step', 'arms_transfer': 'Arms or forces moved', 'production': 'Arms production'}
+         'diplomacy': 'Diplomacy', 'legal': 'Legal step', 'arms_transfer': 'Arms or forces moved', 'production': 'Arms production',
+         'weapons_test': 'Weapons test'}
 
 
 @lru_cache(maxsize=12)

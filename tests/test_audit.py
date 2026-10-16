@@ -116,3 +116,29 @@ def test_a_country_or_an_air_base_is_no_carrier_position_and_crimea_is_ukraine()
     z = dict(x, id="z", time="2026-10-07T10:00:01Z")                       # a second later: the same report twice
     out = audit.run([crimea, x, y, z], [], {}, NOW)
     assert "pin_outside_country" not in out["counts"] and out["counts"] == {"duplicate_summary": 1}
+
+
+def test_weapons_tests_filed_as_attacks_get_their_kind():
+    # 2026-10-16: Iran's, North Korea's and France's missile tests were drawn as drone or missile attacks
+    mk = lambda i, s, **kw: ev(i, s, "missile_drone", **kw)
+    cases = [mk("1", "A ballistic missile test launch was recorded from Mianeh in East Azerbaijan Province, Iran."),
+             mk("2", "North Korea test-fired cruise missiles from a submarine, according to KCNA."),
+             mk("3", "North Korea tested strategic cruise missiles from a submarine in the Sea of Japan."),
+             mk("4", "French President Emmanuel Macron supervised the successful test-firing of an M51.3 ballistic missile."),
+             mk("5", "Koretskyi reveals the scale of Russia's latest strikes, testing air defenses around Kyiv."),
+             mk("6", "Russia test-fired a new missile at Dnipro, striking an industrial site."),
+             mk("7", "A reported missile test by Iran puts Israel on a state of alert.", alert=True),
+             mk("8", "A missile test launch went wrong and killed two soldiers.", killed=2)]
+    assert merge.weapons_tests(cases) == 4
+    assert [c["type"] for c in cases] == ["weapons_test"] * 4 + ["missile_drone"] * 4
+
+
+def test_attacks_filed_as_tests_civilian_cargo_and_niger_state_in_niger_are_flagged():
+    events = [ev("t1", "Russia test-fired a missile that struck a power plant.", "weapons_test"),
+              ev("t2", "North Korea test-fired two ballistic missiles into the sea.", "weapons_test"),
+              ev("c1", "A tanker carrying 40,000 tonnes of Russian diesel heads to Morocco."),
+              ev("c2", "A tanker carrying fuel and ammunition for Russian forces reached Tartus."),
+              ev("n1", "Gunmen attacked an immigration team in Niger State, killing an officer.", "ground", country="NE"),
+              ev("n2", "Gunmen attacked an immigration team in Niger State, killing an officer.", "ground", country="NG")]
+    counts = audit.run(events, [], {}, NOW)["counts"]
+    assert counts == {"test_with_hits": 1, "civilian_cargo": 1, "niger_state_in_niger": 1}

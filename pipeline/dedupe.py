@@ -84,7 +84,7 @@ Leave out candidates that are separate incidents that resemble it (two strikes o
 Times matter. Reports on different days are the same incident only when they clearly describe it again (follow-up coverage of the same strike, deal or move). Many kinds of report recur and are separate incidents each time: an air force's daily report of guided bombs or drones on a region, strikes on the same front, aircraft landing at the same airport, attacks on ships in the same waters. Different regions or provinces in the summaries mean different incidents.
 
 When you list any, also give:
-- "type": the kind, of those the event and the listed candidates were filed under, that best fits what happened (a missile test is "missile_drone", not arms production; an approved arms sale is "arms_transfer"; a strike that killed people is "airstrike" or "missile_drone" over "diplomacy").
+- "type": the kind, of those the event and the listed candidates were filed under, that best fits what happened (a missile test is "weapons_test", not an attack or arms production; an approved arms sale is "arms_transfer"; a strike that killed people is "airstrike" or "missile_drone" over "diplomacy").
 - "summary": one neutral sentence of at most 25 words stating what they agree on, with the most recent figures; only facts in the summaries, keeping attributions ("Russian MoD claims", "reportedly"); never add a number, place, or name they don't give.
 
 Reply with one JSON object and nothing else, one entry for every case; a case with none is just {"i": <case number>, "same": []}:
