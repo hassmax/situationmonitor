@@ -170,6 +170,10 @@ body::before { opacity: 0; }
 .mk-city.is-left span { left: auto; right: 6px; }  /* the right side was taken (app.js declutter) */
 .mk.label-off .mk-label { display: none; }     /* a label that would cover a symbol or a more important label */
 .mk-cvn.label-off .mk-in { padding: 0 3px; gap: 0; }  /* a carrier with its name hidden: just the icon */
+/* a 3D carrier (app.js setupShips): the model stands at the point, its name just below it */
+.mk-cvn.ship3d .mk-in { height: 18px; padding: 0 6px; gap: 0; transform: translate(calc(-50% + var(--dx, 0px)), calc(var(--ship-gap, 14px) + var(--dy, 0px))); }
+.mk-cvn.ship3d .mk-label { font-size: 10.5px; }
+.mk-cvn.ship3d.label-off .mk-in { display: none; }
 .map-note summary { cursor: pointer; color: var(--ink-2); }
 .map-note details[open] summary { margin-bottom: 4px; }
 

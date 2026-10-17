@@ -716,6 +716,22 @@
   // adds to the land: the colours are landColor's, as before. Until the map has loaded, or if it
   // can't be used, the picture is painted lit, as before.
   const landIds = { ready: false, failed: false, key: "", states: null, ctx: null };
+  // Terrain (the owner, 2026-10-17: "Add terrain"): the shading of hills and mountains from Natural
+  // Earth's shaded relief (scripts/make_relief.py; grey 128 is flat), blended into the land when the
+  // picture is painted, so it costs nothing per click. It is light and shade, not height: the globe
+  // stays a smooth sphere. Credited under Sources (mapCredits).
+  const RELIEF = 0.55;  // how strongly it shows
+  const reliefImg = new Image();
+  reliefImg.onload = () => { paintedBase = ""; paintLand(); };
+  reliefImg.src = `assets/relief-${PHONE ? 2048 : 4096}.jpg`;
+  function paintRelief(g, W, H) {
+    if (!reliefImg.complete || !reliefImg.naturalWidth) return;
+    g.save();
+    g.globalCompositeOperation = "soft-light";
+    g.globalAlpha = RELIEF;
+    g.drawImage(reliefImg, 0, 0, W, H);
+    g.restore();
+  }
   const idImg = new Image();
   idImg.onload = () => paintLand();
   idImg.onerror = () => { landIds.failed = true; };
@@ -804,6 +820,7 @@
         g.fill("evenodd");
         paintedColor.set(f, fill(f));
       }
+      paintRelief(g, W, H);  // within the repainted countries only (the clip)
       paintControl(g, X, Y, false);
       g.restore();
     } else {
@@ -837,6 +854,7 @@
         g.fill("evenodd");
         paintedColor.set(f, fill(f));
       }
+      paintRelief(g, W, H);
       paintControl(g, X, Y);
     }
     if (mat.map) { mat.map.image = landCanvas; mat.map.needsUpdate = true; return; }  // later repaints: no reload
@@ -932,6 +950,7 @@
   }
   world.onZoom(() => {
     if (!moving) applyZoomScale();
+    scaleShips();
     queueDeclutter();
     if (!camQueued) { camQueued = true; requestAnimationFrame(showCamera); }
   });
@@ -1062,7 +1081,9 @@
     const tone = c.at_home ? "port" : c.status === "departed" || c.status === "underway" ? "underway" : "deployed";
     el.className = `mk mk-cvn cvn-${tone}${c.hull === S.selectedHull ? " is-selected" : ""}${layoutClasses(el)}`;
     const btn = el.firstChild;
-    setHtml(el, `${svgIcon("carrier")}<span class="mk-label">${esc(c.short || c.hull)}</span>`);
+    // with the 3D ships (setupShips) the marker is the name under the ship; without, an icon and the name
+    if (ships.ready !== el.classList.contains("ship3d")) el.classList.toggle("ship3d", ships.ready);
+    setHtml(el, `${ships.ready ? "" : svgIcon("carrier")}<span class="mk-label">${esc(c.short || c.hull)}</span>`);
     btn.setAttribute("aria-label", `${c.name}, ${carrierStatus(c)}${c.place ? ", " + c.place : ""}`);
     const open = () => selectCarrier(c.hull, true);
     btn.onclick = (ev) => {
@@ -1074,8 +1095,139 @@
     btn.onmouseenter = () => { if (canHover()) showFly(el, tipCarrier(c)); };
     btn.onmouseleave = () => { if (canHover()) hideFly(); };
     c.el = el; c.key = `cvn:${c.hull}`; c.hAlt = 0.012; c.prio = 1;
-    c.cw = 35 + (c.short || c.hull).length * 6.3;  // the chip's rough width, its name inside (declutter)
+    c.cw = (ships.ready ? 14 : 35) + (c.short || c.hull).length * 6.3;  // the chip's rough width, its name inside (declutter)
+    if (ships.ready) {
+      c.ext = shipExtent(c);
+      const gap = `${Math.round(c.ext.hy + 3 + c.ext.stack * 19)}px`;
+      if (el.style.getPropertyValue("--ship-gap") !== gap) el.style.setProperty("--ship-gap", gap);
+    }
     return c;
+  }
+
+  // ------------------------------------------------------------------ carriers in 3D
+  // The owner, 2026-10-17: "make US aircraft carriers 3d". Each carrier at sea is a small model (hull,
+  // flight deck with its angled landing area, island on the starboard side) standing on the globe at
+  // its last reported position, lit by the scene, its name underneath. It keeps one size on screen
+  // whatever the zoom, like the other symbols, so it is a symbol, not to scale. Its bow points to the
+  // destination the reporting names, else along its last reported move, else north: never a
+  // measured heading. Built from the globe library's own classes (it doesn't export them); if they
+  // can't be found, carriers stay icons. Clicking the ship opens the carrier, as its name does.
+  const ships = { ready: false, failed: false, geom: null, mat: null, Mesh: null, byHull: new Map() };
+  const SHIP_PX = PHONE ? 44 : 56;  // the ship's length on screen
+  function shipModel(Geometry, Attr) {
+    // in the model's own frame: x to starboard, y to the bow, z up; length 1
+    const pos = [], nrm = [], col = [];
+    const rgb = (h) => hexRgb(h).map((v) => (v / 255) ** 2.2);  // vertex colours are in linear light
+    const tri = (a, b, c, n, color) => { for (const p of [a, b, c]) { pos.push(...p); nrm.push(...n); col.push(...color); } };
+    const prism = (poly, z0, z1, top, side) => {  // a convex outline, counter-clockwise seen from above
+      for (let i = 1; i + 1 < poly.length; i++) tri([...poly[0], z1], [...poly[i], z1], [...poly[i + 1], z1], [0, 0, 1], top);
+      poly.forEach(([ax, ay], i) => {
+        const [bx, by] = poly[(i + 1) % poly.length], len = Math.hypot(bx - ax, by - ay) || 1, n = [(by - ay) / len, -(bx - ax) / len, 0];
+        tri([ax, ay, z0], [bx, by, z0], [bx, by, z1], n, side);
+        tri([ax, ay, z0], [bx, by, z1], [ax, ay, z1], n, side);
+      });
+    };
+    prism([[-0.075, -0.5], [0.075, -0.5], [0.09, -0.3], [0.09, 0.25], [0.05, 0.45], [0, 0.5], [-0.05, 0.45], [-0.09, 0.25], [-0.09, -0.3]],
+      0, 0.07, rgb("#4b5562"), rgb("#3c4652"));                                                     // hull
+    prism([[-0.09, -0.48], [0.1, -0.48], [0.11, 0.3], [0.07, 0.47], [-0.04, 0.47], [-0.13, 0.05], [-0.13, -0.22]],
+      0.07, 0.085, rgb("#b7c1cc"), rgb("#6d7884"));                                                 // flight deck
+    const [x0, y0, x1, y1, w] = [-0.02, -0.46, -0.1, 0.1, 0.007], len = Math.hypot(x1 - x0, y1 - y0);
+    const [ox, oy] = [((y1 - y0) / len) * w, (-(x1 - x0) / len) * w];
+    prism([[x0 - ox, y0 - oy], [x0 + ox, y0 + oy], [x1 + ox, y1 + oy], [x1 - ox, y1 - oy]], 0.085, 0.087, rgb("#dfe5ec"), rgb("#dfe5ec"));  // landing line
+    prism([[0.065, -0.1], [0.1, -0.1], [0.1, 0.06], [0.065, 0.06]], 0.085, 0.15, rgb("#f2f5f8"), rgb("#c4cdd6"));   // island
+    prism([[0.075, -0.03], [0.09, -0.03], [0.09, -0.01], [0.075, -0.01]], 0.15, 0.2, rgb("#f2f5f8"), rgb("#c4cdd6")); // mast
+    const geom = new Geometry();
+    geom.setAttribute("position", new Attr(new Float32Array(pos), 3));
+    geom.setAttribute("normal", new Attr(new Float32Array(nrm), 3));
+    geom.setAttribute("color", new Attr(new Float32Array(col), 3));
+    return geom;
+  }
+  function setupShips() {
+    if (ships.ready || ships.failed) return ships.ready;
+    let globeMesh = null;
+    world.scene().traverse((o) => {
+      if (!globeMesh && o.isMesh && o.parent && o.parent.__globeObjType === "globe" && o.geometry && o.geometry.getAttribute && o.geometry.getAttribute("position")) globeMesh = o;
+    });
+    if (!globeMesh) return false;  // the library hasn't built its scene yet: next render
+    try {
+      const Geometry = Object.getPrototypeOf(globeMesh.geometry.constructor), Attr = globeMesh.geometry.getAttribute("position").constructor;
+      ships.geom = shipModel(Geometry, Attr);
+      // solid, not see-through: drawn before the lines, whose invisible hover twins would otherwise hide it
+      ships.mat = new mat.constructor({ vertexColors: true, shininess: 40 });
+      ships.Mesh = globeMesh.constructor;
+      world
+        .objectLat((c) => c.lat).objectLng((c) => c.lon).objectAltitude(0.004).objectFacesSurface(true)  // above the track lines
+        .objectRotation((c) => ({ z: -shipBearing(c) }))
+        .objectThreeObject((c) => {
+          const m = new ships.Mesh(ships.geom, ships.mat);
+          m.userData.c = c;
+          placeShip(m, shipLength());  // sized as it is made; scaleShips keeps it so as the camera moves
+          ships.byHull.set(c.hull, m);
+          return m;
+        })
+        .onObjectClick((c) => selectCarrier(c.hull, true))
+        .onObjectHover((c) => { globeEl.style.cursor = c ? "pointer" : ""; });
+      ships.ready = true;
+    } catch (err) {
+      console.error(err);
+      ships.failed = true;
+    }
+    return ships.ready;
+  }
+  // degrees clockwise from north: to the reported destination, else along the last reported move;
+  // carriers reported at one spot stand side by side, bows north (formation)
+  function shipBearing(c) {
+    if (c._side != null) return 0;
+    const to = c.heading_to && isFinite(c.heading_to.lat) ? c.heading_to : null;
+    const [a, b] = to ? [{ lat: c._lat ?? c.lat, lon: c._lon ?? c.lon }, to] : c.prev ? [c.prev, { lat: c._lat ?? c.lat, lon: c._lon ?? c.lon }] : [];
+    if (!a || km(a.lat, a.lon, b.lat, b.lon) < 50) return 0;
+    const f1 = toRad(a.lat), f2 = toRad(b.lat), dl = toRad(b.lon - a.lon);
+    return (Math.atan2(Math.sin(dl) * Math.cos(f2), Math.cos(f1) * Math.sin(f2) - Math.sin(f1) * Math.cos(f2) * Math.cos(dl)) * 180) / Math.PI;
+  }
+  // Several carriers reported at the same spot (USNI often places two in one sea: "Eastern Pacific",
+  // "Arabian Sea") would be drawn through one another: they stand side by side, bows north, a ship's
+  // width apart, with their names stacked underneath. A symbol's spacing, not their positions.
+  const SHIP_SEP = 0.34;  // in ship lengths
+  function formation(list) {
+    const at = new Map();
+    for (const c of list) {
+      const k = `${(c._lat ?? c.lat).toFixed(2)},${(c._lon ?? c.lon).toFixed(2)}`;
+      (at.get(k) || at.set(k, []).get(k)).push(c);
+    }
+    for (const group of at.values()) group.forEach((c, i) => {
+      c._side = group.length > 1 ? i - (group.length - 1) / 2 : null;
+      c._stack = group.length > 1 ? i : 0;
+    });
+  }
+  function placeShip(m, L) {
+    m.scale.setScalar(L);
+    m.position.set((m.userData.c && m.userData.c._side ? m.userData.c._side : 0) * SHIP_SEP * L, 0, 0);
+  }
+  // the ship's half-size and offset on screen (north up), for the layout: its name goes below it
+  function shipExtent(c) {
+    const b = toRad(shipBearing(c)), L = SHIP_PX / 2, W = SHIP_PX * 0.13;
+    return { hx: Math.abs(Math.sin(b)) * L + Math.abs(Math.cos(b)) * W, hy: Math.abs(Math.cos(b)) * L + Math.abs(Math.sin(b)) * W,
+      dx: (c._side || 0) * SHIP_SEP * SHIP_PX, stack: c._stack || 0 };
+  }
+  // one size on screen: the model's length in globe units for the camera's height
+  function shipLength() {
+    const H = globeEl.clientHeight || window.innerHeight;
+    return (SHIP_PX * 2 * world.pointOfView().altitude * world.getGlobeRadius() * Math.tan(toRad(world.camera().fov / 2))) / H;
+  }
+  function scaleShips() {
+    if (!ships.ready) return;
+    const L = shipLength();
+    for (const m of ships.byHull.values()) if (Math.abs(m.scale.x - L) > L * 0.01) placeShip(m, L);
+  }
+  function pushShips(list) {
+    if (!setupShips()) return;
+    formation(list);
+    const L = shipLength();
+    for (const c of list) { const m = ships.byHull.get(c.hull); if (m) { m.userData.c = c; placeShip(m, L); } }
+    world.objectsData(list);
+    // dimmed like the carrier names when a region is in focus and nothing is selected (darker, still solid)
+    ships.mat.color.setScalar(document.body.classList.contains("region-focused") && !focused() ? 0.4 : 1);
+    requestAnimationFrame(scaleShips);  // once the library has made the new ships
   }
 
   // Simple tooltip for HTML markers (3D layers use globe.gl's own).
@@ -1330,8 +1482,9 @@
       }
     }
     vis.forEach((v) => { if (v.d.isEvent) { setCluster(v.d, counts.get(v.d) || 0); setHidden(v.d, hidden.has(v)); } });
-    // Pass 2: everything still showing (events, count bubbles, carriers) fans out where it overlaps.
-    for (const g of group(vis.filter((v) => !hidden.has(v)))) {
+    // Pass 2: everything still showing (events, count bubbles, carriers) fans out where it overlaps;
+    // a 3D ship stays where it is (only its name gives way, below)
+    for (const g of group(vis.filter((v) => !hidden.has(v) && !(v.d.cw && v.d.ext)))) {
       const n = g.m.length;
       g.m.forEach((v, i) => {
         if (n === 1) { setOffset(v.d, 0, 0); return; }
@@ -1350,6 +1503,7 @@
     // is selected. A city name, capitals first, goes right of its dot, else left of it, else is left off.
     const shown = vis.filter((v) => !hidden.has(v)).map((v) => ({ d: v.d, x: v.x + (v.d._dx || 0), y: v.y + (v.d._dy || 0) }));
     const taken = shown.map(({ d, x, y }) => {
+      if (d.ext) return [x + d.ext.dx - d.ext.hx, y - d.ext.hy, x + d.ext.dx + d.ext.hx, y + d.ext.hy];  // a 3D ship
       const r = d.cw ? 13 : (d.s || 26) / 2;
       return [x - r, y - r, x + r, y + r];
     });
@@ -1357,7 +1511,11 @@
     for (const { d, x, y } of shown) {  // most important first; carriers come last
       if (!d.lw && !d.cw) continue;
       let boxes, keep = false;
-      if (d.cw) {
+      if (d.ext) {  // a 3D ship's name, below it
+        const top = y + d.ext.hy + 3 + d.ext.stack * 19;
+        boxes = [[x - d.cw / 2, top, x + d.cw / 2, top + 18]];
+        keep = d.hull === S.selectedHull;
+      } else if (d.cw) {
         boxes = [[x - d.cw / 2, y - 11, x - 13, y + 11], [x + 13, y - 11, x + d.cw / 2, y + 11]];
         keep = d.hull === S.selectedHull;
       } else {
@@ -2241,6 +2399,7 @@
       const t = Math.min(1, (now - t0) / dur);
       movers.forEach((c) => { const p = slerp(c._from, c._to, ease(t)); c.lat = p.lat; c.lon = p.lon; });
       world.htmlElementsData(S.html);
+      if (ships.ready) world.objectsData(world.objectsData());
       queueDeclutter();
       if (t < 1) requestAnimationFrame(step);
       else { sailing = false; movers.forEach((c) => { c.lat = c._lat; c.lon = c._lon; }); render(); }
@@ -2600,7 +2759,9 @@
     // city names, under the markers (first in the list)
     const html = citiesFor(mapEvents).map(cityMarker);
     mapEvents.forEach((e) => html.push(eventMarker(e, labelled.has(e.id), animated.has(e.id))));
-    S.fleet.filter(carrierOnMap).forEach((c) => html.push(carrierMarker(c)));
+    const fleetShown = S.fleet.filter(carrierOnMap);
+    pushShips(fleetShown);  // before the markers, which show only names once the ships exist
+    fleetShown.forEach((c) => html.push(carrierMarker(c)));
     S.html = html;
     if (!sailing) world.htmlElementsData(html);
 
@@ -3193,7 +3354,14 @@
       const quiet = s.ok && s.last_post && Date.now() - Date.parse(s.last_post) > 3 * DAY;
       const meta = s.ok ? `${PLATFORM[s.platform] || s.platform}, ${last}` : `${PLATFORM[s.platform] || s.platform}: ${s.error}`;
       return `<li><span class="dot ${s.ok ? (quiet ? "quiet" : "") : "bad"}" aria-hidden="true"></span><span><span class="name">${esc(s.name)}</span><span class="meta">${esc(meta)}</span></span></li>`;
-    }).join("") + wikiCredits();
+    }).join("") + wikiCredits() + mapCredits();
+  }
+
+  // The base map's own sources.
+  function mapCredits() {
+    const item = (name, meta) => `<li><span class="dot quiet" aria-hidden="true"></span><span><span class="name">${name}</span><span class="meta">${meta}</span></span></li>`;
+    return item('<a href="https://www.naturalearthdata.com/" target="_blank" rel="noopener noreferrer">Natural Earth</a>',
+      'Country shapes, and the terrain shading (its shaded relief, public domain, as packaged with matplotlib basemap under the MIT licence)');
   }
 
   // Wikipedia's conflict maps, read once to fill gaps in the front-line shading where the agents have
