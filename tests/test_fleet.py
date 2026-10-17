@@ -40,8 +40,11 @@ def test_impossible_jump_waits_for_a_second_report():
     fleet.update(state, [news("CVN-71", "Thailand", 13.1, 100.9, "2026-09-27T03:30:00Z")])
     fleet.update(state, [news("CVN-71", "Arabian Sea", 16.0, 63.0, "2026-09-27T12:00:00Z", url="u1")])
     assert state["fleet"]["CVN-71"]["place"] == "Thailand"               # 4,000 km in 9 hours: held
-    fleet.update(state, [news("CVN-71", "Arabian Sea", 15.5, 62.0, "2026-09-27T13:00:00Z", url="u2")])
-    assert state["fleet"]["CVN-71"]["place"] == "Arabian Sea"            # a second, different report confirms it
+    fleet.update(state, [{**news("CVN-71", "Arabian Sea", 15.6, 62.5, "2026-09-27T12:30:00Z", url="u1-other-link")}])
+    assert state["fleet"]["CVN-71"]["place"] == "Thailand"               # the same outlet again: one article, two links
+    fleet.update(state, [{**news("CVN-71", "Arabian Sea", 15.5, 62.0, "2026-09-27T13:00:00Z", url="u2"),
+                          "source": "Another outlet"}])
+    assert state["fleet"]["CVN-71"]["place"] == "Arabian Sea"            # a report from another outlet confirms it
     fleet.update(state, [news("CVN-71", "Arabian Sea", 17.0, 64.0, "2026-09-29T13:00:00Z", url="u3")])
     assert state["fleet"]["CVN-71"]["lat"] == 17.0                       # ordinary moves go through at once
 
@@ -69,11 +72,7 @@ def test_an_impossible_move_to_where_another_carrier_is_is_about_that_carrier():
                             "url": "usni", "trusted": True}
     state = {}
     fleet.update(state, [norfolk("CVN-69"), norfolk("CVN-78"),
-                         {**norfolk("CVN-77"), "place": "Arabian Sea", "lat": 16.0, "lon": 63.0, "status": "operating"}])
-    # the Bush is reported in Phuket (its tracker position was stale): two reports confirm it
-    fleet.update(state, [news("CVN-77", "Phuket, Thailand", 7.88, 98.39, "2026-10-05T19:55:00Z", url="a1"),
-                         news("CVN-77", "Phuket", 7.89, 98.40, "2026-10-05T20:10:00Z", url="a2")])
-    assert state["fleet"]["CVN-77"]["place"].startswith("Phuket")
+                         {**norfolk("CVN-77"), "place": "Phuket, Thailand", "lat": 7.88, "lon": 98.39, "status": "arrived"}])
     # "a second US carrier docks in Thailand", filed under the Ford, and a carrier roundup misread for the
     # Eisenhower, twice over: neither could have sailed there from Norfolk, and the Bush is there
     fleet.update(state, [news("CVN-78", "Thailand", 13.756, 100.502, "2026-10-05T20:59:00Z", url="y1"),
@@ -96,8 +95,10 @@ def test_repair_puts_back_carriers_moved_by_reports_about_another_carrier():
                    "as_of": "2026-10-05T20:59:55Z", "source": "Yeni Şafak", "trusted": False, "last_trusted": lt, "track": []}}}
     fleet.repair(state)
     f = state["fleet"]
-    assert f["CVN-77"]["place"] == "Phuket, Thailand"                     # the one really there stays
     assert f["CVN-69"]["place"] == f["CVN-78"]["place"] == "Norfolk, Va." and "prev" not in f["CVN-69"]
+    # since FLEET_VERSION 6 news never outranks the tracker, so the Bush, really in Phuket but put in the Arabian
+    # Sea by a misread tracker (fixed since, TRACKER_PARSER 5), goes back there too: the tracker's word, dated
+    assert f["CVN-77"]["place"] == "Arabian Sea"
 
 
 def test_an_old_tracker_cannot_say_who_is_home():
@@ -236,9 +237,9 @@ def test_a_report_that_fits_the_tracker_replaces_an_unconfirmed_one_it_contradic
     c = state["fleet"]["CVN-77"]
     assert c["place"] == "Strait of Malacca" and c["prev"]["place"] == "Arabian Sea"   # line from the tracker
     assert [t["place"] for t in c["track"]][-2:] == ["Arabian Sea", "Strait of Malacca"]   # Hormuz dropped
-    # a report too far even from the tracker's position is still held
+    # a report too far even from the tracker's position is ignored, not held for a second one
     fleet.update(state, [news("CVN-77", "Norfolk area", 37.5, -70.0, "2026-10-04T00:00:00Z")])
-    assert state["fleet"]["CVN-77"]["place"] == "Strait of Malacca"
+    assert state["fleet"]["CVN-77"]["place"] == "Strait of Malacca" and not state["fleet"]["CVN-77"].get("held")
 
 
 def test_a_held_report_is_released_when_it_fits_the_last_tracker_position():
@@ -302,3 +303,41 @@ def test_without_the_feed_the_last_mondays_edition_is_tried_by_its_address():
     assert asked[0].endswith("/2026/10/12/usni-news-fleet-and-marine-tracker-oct-12-2026")
     assert got["url"] == "https://news.usni.org/2026/10/05/usni-news-fleet-and-marine-tracker-oct-5-2026"
     assert got["time"] == "2026-10-05T12:00:00Z"
+
+
+TRACKER_13_OCT = {"tracker_time": "2026-10-13T19:11:00Z", "tracker_url": "usni-oct-13",
+                  "tracker_hulls": ["CVN-68", "CVN-71", "CVN-72", "CVN-73", "CVN-76", "CVN-77"]}
+
+
+def test_news_cannot_outrank_the_tracker_however_many_reports_agree():
+    # 2026-10-16: the tracker of 13 October did not list the Ford, so it was home at Norfolk; three days later
+    # two reports put it in the Persian Gulf, 11,000 km away, and "confirmed" each other
+    state = {"fleet_meta": dict(TRACKER_13_OCT)}
+    fleet.apply_home_baseline(state, datetime(2026, 10, 13, 20, tzinfo=timezone.utc))
+    gulf = lambda url, source, t: {**news("CVN-78", "Persian Gulf", 26.5, 52.0, t, status="underway", url=url), "source": source}
+    fleet.update(state, [gulf("g1", "Yahoo Finance (via Google News)", "2026-10-16T11:00:00Z"),
+                         gulf("g2", "Some outlet (via Google News)", "2026-10-16T14:15:14Z")])
+    ford = state["fleet"]["CVN-78"]
+    assert (ford["place"], ford["as_of"]) == ("Norfolk, Va.", "2026-10-13T19:11:00Z") and not ford.get("held")
+    # time settles it: two weeks later the voyage fits (and the next tracker edition would have said so first)
+    fleet.update(state, [gulf("g3", "Yahoo Finance (via Google News)", "2026-10-28T12:00:00Z")])
+    assert state["fleet"]["CVN-78"]["place"] == "Persian Gulf"
+
+
+def test_repair_puts_back_a_carrier_news_moved_beyond_its_tracker_position():
+    lt = {"lat": 36.95, "lon": -76.33, "place": "Norfolk, Va.", "as_of": "2026-10-13T19:11:00Z"}
+    state = {"fleet_version": 5, "fleet_meta": dict(TRACKER_13_OCT), "fleet": {
+        "CVN-78": {"hull": "CVN-78", "lat": 26.5, "lon": 52.0, "place": "Persian Gulf", "status": "underway",
+                   "as_of": "2026-10-16T14:15:14Z", "source": "Yahoo Finance (via Google News)", "trusted": False,
+                   "last_trusted": lt, "track": [{"lat": 36.95, "lon": -76.33, "place": "Norfolk, Va.", "time": lt["as_of"]},
+                                                 {"lat": 26.5, "lon": 52.0, "place": "Persian Gulf", "time": "2026-10-16T14:15:14Z"}]},
+        # the tracker put the Reagan at San Diego, another carrier's home port, and ship imagery saw it there: it stays
+        "CVN-76": {"hull": "CVN-76", "lat": 32.716, "lon": -117.161, "place": "San Diego", "status": "in port",
+                   "as_of": "2026-10-14T23:51:14Z", "source": "Flattop Fiesta (ship imagery)", "trusted": False,
+                   "last_trusted": {"lat": 32.7, "lon": -117.19, "place": "San Diego", "as_of": lt["as_of"]}, "track": []}}}
+    fleet.repair(state)
+    assert state["fleet"]["CVN-76"]["place"] == "San Diego"
+    fleet.apply_home_baseline(state, datetime(2026, 10, 17, 6, tzinfo=timezone.utc))   # the tracker is now too old
+    ford = state["fleet"]["CVN-78"]
+    assert (ford["place"], ford["as_of"], ford["status"]) == ("Norfolk, Va.", lt["as_of"], "in port")
+    assert ford["at_home"] and "prev" not in ford and [t["place"] for t in ford["track"]] == ["Norfolk, Va."]
