@@ -311,3 +311,7 @@ body::before { opacity: 0; }
   .brief-teaser .bt-line { grid-column: 2; grid-row: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .brief-teaser .bt-go { grid-column: 3; grid-row: 1; }
 }
+
+/* ?perf readout (app.js startPerf) */
+.perf-box { position: fixed; left: 8px; bottom: 8px; z-index: 9999; pointer-events: none; padding: 4px 8px; border-radius: 4px;
+  background: rgba(4, 6, 10, .85); border: 1px solid var(--line); color: var(--ink-2); font: 500 11px/1.4 var(--mono); }

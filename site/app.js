@@ -5,6 +5,9 @@
   const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const params = new URLSearchParams(location.search);
   const DEMO = params.has("demo");
+  // ?perf: frame rate, the slowest frame, and how long the last click, key or search took to show
+  // on the globe, measured on the device itself (see startPerf)
+  const PERF = params.has("perf") ? { from: 0, took: null } : null;
   // Freeze the asset root before event selection changes the address. Shared pages use ../../.
   const APP_ROOT = new URL(".", document.baseURI);
   const baseElement = document.querySelector("base");
@@ -504,7 +507,8 @@
     const p = countryCenter(iso);
     return !!p && isFinite(c._lat) && km(p.lat, p.lon, c._lat, c._lon) < 1500;
   }
-  const landColor = (f) => (S.briefNum && Number(f.id) === S.briefNum ? "#3a4e64" : S.active.has(f.id) ? "#283748" : S.hot.has(f.id) ? "#1c2734" : "#141b24");
+  const LAND_BASE = "#141b24";
+  const landColor = (f) => (S.briefNum && Number(f.id) === S.briefNum ? "#3a4e64" : S.active.has(f.id) ? "#283748" : S.hot.has(f.id) ? "#1c2734" : LAND_BASE);
   const OCEAN = "#060a10";
   // Territorial control (see controlNote): the source's shapes, painted onto the globe with the land.
   const CONTROL_FILL = { occupied: "rgba(214,174,110,0.55)", advance: "rgba(245,165,36,0.9)" };
@@ -703,24 +707,102 @@
   // whole 4096 x 2048 picture, which made every filter click lag.
   let paintedBase = "";
   const paintedColor = new Map();
+  // Lit countries without repainting the land picture (the owner, 2026-10-17, asked for the page to
+  // be "hyper responsive"): every time window, search, region or brief that changed which countries
+  // are lit repainted them and sent the whole 4096 x 2048 picture to the graphics chip again (32 MB;
+  // 300 ms of every click in a software-drawn test). Now the picture holds plain land, a fixed map of
+  // which country is at each point (assets/country-ids-*.png, scripts/make_country_ids.py) goes up
+  // once, and lighting countries rewrites a table of 1,024 colours (4 KB) that the globe's shader
+  // adds to the land: the colours are landColor's, as before. Until the map has loaded, or if it
+  // can't be used, the picture is painted lit, as before.
+  const landIds = { ready: false, failed: false, key: "", states: null, ctx: null };
+  const idImg = new Image();
+  idImg.onload = () => paintLand();
+  idImg.onerror = () => { landIds.failed = true; };
+  idImg.src = `assets/country-ids-${PHONE ? 2048 : 4096}.png`;
+  function setupLandIds() {
+    if (landIds.ready || landIds.failed || !mat.map || !idImg.complete || !idImg.naturalWidth) return false;
+    try {
+      const Tex = mat.map.constructor;  // the library's texture class (it doesn't export it)
+      const ids = new Tex(idImg);
+      const table = document.createElement("canvas");
+      table.width = 1024; table.height = 1;
+      landIds.ctx = table.getContext("2d");
+      const states = landIds.states = new Tex(table);
+      for (const t of [ids, states]) { t.magFilter = t.minFilter = 1003; t.generateMipmaps = false; t.flipY = mat.map.flipY; t.needsUpdate = true; }
+      ids.colorSpace = "";                    // ids, not colours
+      states.colorSpace = mat.map.colorSpace;  // decoded like the land picture, so the sums match
+      // each pixel's country, read at the four nearest points of the map and blended, so lit edges
+      // are as smooth as the painted ones; a colour's alpha says whether that country is lit
+      const LIT = `
+#ifdef USE_MAP
+  {
+    vec2 gsmSize = vec2(textureSize(gsmIds, 0));
+    vec2 gsmP = vMapUv * gsmSize - 0.5;
+    vec2 gsmF = fract(gsmP), gsmB = (floor(gsmP) + 0.5) / gsmSize, gsmD = 1.0 / gsmSize;
+    vec3 gsmBase = texture2D(gsmStates, vec2(0.5 / 1024.0, 0.5)).rgb;
+    vec3 gsmL[4];
+    for (int k = 0; k < 4; k++) {
+      vec4 gsmI = texture2D(gsmIds, gsmB + vec2(float(k % 2), float(k / 2)) * gsmD);
+      float gsmN = floor(gsmI.r * 255.0 + 0.5) + floor(gsmI.g * 255.0 + 0.5) * 256.0;
+      vec4 gsmS = gsmN > 0.5 ? texture2D(gsmStates, vec2((gsmN + 0.5) / 1024.0, 0.5)) : vec4(0.0);
+      gsmL[k] = (gsmS.rgb - gsmBase) * gsmS.a;
+    }
+    diffuseColor.rgb += mix(mix(gsmL[0], gsmL[1], gsmF.x), mix(gsmL[2], gsmL[3], gsmF.x), gsmF.y);
+  }
+#endif`;
+      mat.onBeforeCompile = (shader) => {
+        shader.uniforms.gsmIds = { value: ids };
+        shader.uniforms.gsmStates = { value: states };
+        shader.fragmentShader = "uniform sampler2D gsmIds;\nuniform sampler2D gsmStates;\n"
+          + shader.fragmentShader.replace("#include <map_fragment>", "#include <map_fragment>" + LIT);
+      };
+      mat.customProgramCacheKey = () => "gsm-lit-land";
+      mat.needsUpdate = true;
+      landIds.ready = true;
+      return true;
+    } catch (err) {
+      console.error(err);
+      landIds.failed = true;
+      return false;
+    }
+  }
+  function paintStates() {
+    const key = `${S.briefNum}|${[...S.active].sort()}|${[...S.hot].sort()}`;
+    if (key === landIds.key) return;
+    landIds.key = key;
+    const row = landIds.ctx.createImageData(1024, 1), d = row.data;
+    const put = (i, hex) => { const [r, g, b] = hexRgb(hex); d.set([r, g, b, 255], i * 4); };
+    put(0, LAND_BASE);  // the plain land the picture holds
+    for (const f of landShapes) {
+      const n = Number(f.id), c = landColor(f);
+      if (n > 0 && n < 1024 && c !== LAND_BASE) put(n, c);
+    }
+    landIds.ctx.putImageData(row, 0, 0);
+    landIds.states.needsUpdate = true;
+  }
   function paintLand() {
     if (!landShapes.length) return;
-    const base = [...S.hot].sort().join(",") + "|" + controlLayers().map((l) => l.id + l.as_of + (l.settlements || "")).join(",");
+    if (!landIds.ready && setupLandIds()) paintedBase = "";  // repaint once as plain land; the table lights it
+    if (landIds.ready) paintStates();
+    const fill = (f) => (landIds.ready ? LAND_BASE : landColor(f));
+    // with the table, which countries are lit never repaints the picture: only control areas do
+    const base = (landIds.ready ? "lit" : [...S.hot].sort().join(",")) + "|" + controlLayers().map((l) => l.id + l.as_of + (l.settlements || "")).join(",");
     const W = landCanvas.width, H = landCanvas.height, g = landCanvas.getContext("2d");
     const X = (lon) => ((lon + 180) / 360) * W, Y = (lat) => ((90 - lat) / 180) * H;
     if (base === paintedBase) {
-      const changed = landShapes.filter((f) => paintedColor.get(f) !== landColor(f));
+      const changed = landShapes.filter((f) => paintedColor.get(f) !== fill(f));
       if (!changed.length) return;
       g.save();
       g.beginPath();
       changed.forEach((f) => countryPath(g, f, X, Y));
       g.clip("evenodd");
       for (const f of changed) {
-        g.fillStyle = landColor(f);
+        g.fillStyle = fill(f);
         g.beginPath();
         countryPath(g, f, X, Y);
         g.fill("evenodd");
-        paintedColor.set(f, landColor(f));
+        paintedColor.set(f, fill(f));
       }
       paintControl(g, X, Y, false);
       g.restore();
@@ -749,11 +831,11 @@
       for (let lat = -88; lat <= 88; lat += 2) { g.moveTo(X(0) - tick, Y(lat)); g.lineTo(X(0) + tick, Y(lat)); }
       g.stroke();
       for (const f of landShapes) {
-        g.fillStyle = landColor(f);
+        g.fillStyle = fill(f);
         g.beginPath();
         countryPath(g, f, X, Y);
         g.fill("evenodd");
-        paintedColor.set(f, landColor(f));
+        paintedColor.set(f, fill(f));
       }
       paintControl(g, X, Y);
     }
@@ -763,6 +845,10 @@
       if (landUrl) URL.revokeObjectURL(landUrl);
       landUrl = URL.createObjectURL(blob);
       world.globeImageUrl(landUrl);  // the library drops the globe's own tint once the picture loads
+      // once the library has made the picture's texture, the country table can take over
+      let tries = 0;
+      const whenLoaded = () => { if (mat.map) paintLand(); else if (++tries < 300) requestAnimationFrame(whenLoaded); };
+      requestAnimationFrame(whenLoaded);
     });
   }
 
@@ -2486,6 +2572,13 @@
       afterPaint(() => { if (gen === renderGen) renderGlobe(frameData()); });
     });
   }
+  // The list alone: a search updates it as you type, and the globe (hundreds of markers and lines,
+  // all rebuilt) once you stop typing.
+  function renderListsSoon() {
+    if (!S.data) return;
+    const gen = renderGen;
+    afterPaint(() => { if (gen === renderGen) renderLists(frameData()); });
+  }
   function render() {
     if (!S.data) return;
     renderGen++;  // anything pending is covered by this
@@ -2546,6 +2639,11 @@
     pushArcs();
     updateActive(mapEvents);
     queueDeclutter();
+    if (PERF && PERF.from) {  // a click or key that redrew the globe: how long until it showed
+      const from = PERF.from;
+      PERF.from = 0;
+      if (performance.now() - from < 5000) requestAnimationFrame(() => { PERF.took = performance.now() - from; });
+    }
     if (!hoverLight) requestAnimationFrame(() => setTimeout(lightenHover, 0));  // once the new objects exist
     if (!touchQuiet) requestAnimationFrame(() => setTimeout(quietTouchHover, 0));
   }
@@ -2595,6 +2693,27 @@
     paintLand();  // repaints only when active or highlighted countries changed (or the control layer)
     renderControlNote();
   }
+
+  // ?perf: a small readout in the corner, for checking speed on a real phone or laptop (this site's
+  // test machines draw the globe in software, so their timings mean little).
+  function startPerf() {
+    if (!PERF) return;
+    const box = document.createElement("div");
+    box.className = "perf-box";
+    box.setAttribute("aria-hidden", "true");
+    document.body.appendChild(box);
+    let frames = 0, slowest = 0, last = performance.now(), longTasks = 0;
+    try { new PerformanceObserver((list) => { longTasks += list.getEntries().length; }).observe({ type: "longtask" }); } catch (_) { /* not supported here */ }
+    // typing a search isn't counted: the globe waits for a pause in the typing on purpose
+    ["pointerdown", "keydown"].forEach((t) => window.addEventListener(t, (ev) => { if (ev.target.id !== "search") PERF.from = performance.now(); }, { capture: true, passive: true }));
+    const frame = (now) => { frames++; slowest = Math.max(slowest, now - last); last = now; requestAnimationFrame(frame); };
+    requestAnimationFrame(frame);
+    setInterval(() => {
+      box.textContent = `${frames} fps · slowest frame ${Math.round(slowest)} ms · last update ${PERF.took == null ? "none yet" : `${Math.round(PERF.took)} ms`} · long tasks ${longTasks}`;
+      frames = 0; slowest = 0;
+    }, 1000);
+  }
+  startPerf();
 
   // The running UTC clock in the header, and world clocks beside it on wide screens (UTC first).
   const CLOCKS = [["UTC", "UTC"], ["Washington", "America/New_York"], ["London", "Europe/London"],
@@ -3579,11 +3698,13 @@
       $("#feedList").scrollTop = 0;
       renderSoon();
     });
-    let searchTimer;
+    let searchTimer, searchGlobeTimer;
     $("#search").addEventListener("focus", () => { if (isMobile()) setSheet(2); });
     $("#search").addEventListener("input", (ev) => {
       clearTimeout(searchTimer);
-      searchTimer = setTimeout(() => { S.query = ev.target.value; renderSoon(); }, 120);
+      clearTimeout(searchGlobeTimer);
+      searchTimer = setTimeout(() => { S.query = ev.target.value; renderListsSoon(); }, 120);
+      searchGlobeTimer = setTimeout(renderSoon, 450);
     });
     $("#filtersToggle").addEventListener("click", () => toggleFilters());
     document.addEventListener("pointerdown", (ev) => {
