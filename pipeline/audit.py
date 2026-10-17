@@ -20,6 +20,9 @@ Checks (the mistake that led to each, and the fix):
 - carrier_vague_place: a carrier placed at a region's name ("West Asia", which landed on the Dubai coast,
   2026-10-07; fleet.VAGUE)
 - carrier_too_fast: a carrier's move faster than it can sail (fleet._too_fast)
+- carrier_beyond_tracker: a carrier at a news position it couldn't have sailed to from its last tracker position
+  (two reports put the Ford in the Persian Gulf three days after the tracker had it at Norfolk, 2026-10-16;
+  fleet._check)
 - future_time: an event timed after the moment it was read (common.make_item clamps it)
 - (a delivery's pin may lie in its supplier or recipient too: Algeria's equipment for Moscow was filed under
   Poland, the country it passed through, 2026-10-07; not a mistake)
@@ -168,6 +171,11 @@ def run(events: list[dict], fleet_rows: list[dict], state: dict, now) -> dict:
         p = c.get("prev")
         if p and c.get("as_of") and p.get("as_of") and _too_fast(p, c):
             flag("carrier_too_fast", c, f"{c['name']}: {p.get('place')!r} to {c.get('place')!r} by {c['as_of'][:16]}")
+        stored = (state.get("fleet") or {}).get(c.get("hull")) or {}
+        lt = stored.get("last_trusted")
+        if lt and lt.get("as_of") and not stored.get("trusted") and c.get("as_of") and _too_fast(lt, c):
+            flag("carrier_beyond_tracker", c, f"{c['name']}: {c.get('place')!r} by {c['as_of'][:16]}, "
+                                             f"from the tracker's {lt.get('place')!r} of {lt['as_of'][:10]}")
 
     out = {"time": iso(now), "counts": {k: len(v) for k, v in sorted(found.items())},
            "examples": {k: v[:EXAMPLES] for k, v in sorted(found.items())}}

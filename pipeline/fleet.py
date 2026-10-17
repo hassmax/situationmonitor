@@ -14,8 +14,11 @@ News reports are checked before they move a carrier (the tracker is trusted):
   - a vague place ("Middle East", "the Pacific") is not a position; it is ignored
   - a carrier reported at another carrier's home port (Ford "departing San Diego") is almost
     always a report about the other carrier; it is ignored
-  - a move faster than a carrier can sail since its last report is held until a second,
-    different report puts it in the same area (one misread article can't teleport it)
+  - a move faster than a carrier can sail from its last tracker position is ignored, however
+    many reports agree (the tracker, or enough time for the voyage, settles it)
+  - a move faster than a carrier can sail since its last report, with no tracker position to go by,
+    is held until a second report from another outlet puts it in the same area (one misread article
+    can't teleport it)
 """
 from __future__ import annotations
 
@@ -58,7 +61,7 @@ FLEET_TRACKER_FEED = "https://news.usni.org/category/fleet-tracker/feed"
 USNI_FEED = "https://news.usni.org/feed"
 MOVE_KM = 150          # smaller changes are treated as the same position
 TRACK_LEN = 12
-FLEET_VERSION = 5      # bump to re-check stored positions against the rules below
+FLEET_VERSION = 6      # bump to re-check stored positions against the rules below
 MAX_KM_PER_DAY = 900   # about 20 knots, a fast sustained transit
 SLACK_KM = 400         # rough coordinates for sea areas and ports
 HOME_KM = 60           # "at" a home port
@@ -162,9 +165,16 @@ def _check(c: dict, r: dict, hull: str, fleet: dict | None = None) -> str | None
         other = _other_there(fleet, hull, r)
         if other:
             return f"{other} was reported there; the report is probably about it"
+        if lt and lt.get("as_of") and _too_fast(lt, r):
+            # News doesn't outrank the tracker, however many reports agree: on 2026-10-16 two Persian Gulf
+            # reports (Yahoo Finance via Google News, the second) "confirmed" each other and moved the Ford
+            # there three days after the tracker had it at Norfolk, 11,000 km away. The Ford was in the
+            # region from February to May; the next tracker edition, or time, settles it.
+            return f"too far from its last tracker position ({lt.get('place')}, {lt['as_of'][:10]}) to have sailed there"
         held = [h for h in c.get("held", []) if _days(h["time"], r["time"]) * 86400 <= HOLD.total_seconds()]
-        if any(h["url"] != r.get("url") and haversine_km(h["lat"], h["lon"], r["lat"], r["lon"]) < CONFIRM_KM
-               for h in held):
+        # a second report from another outlet (one article found by two Google News searches comes with two links)
+        if any(h["url"] != r.get("url") and h.get("source") != r.get("source")
+               and haversine_km(h["lat"], h["lon"], r["lat"], r["lon"]) < CONFIRM_KM for h in held):
             c.pop("held", None)
             return None  # a second report confirms the move
         held.append({"lat": r["lat"], "lon": r["lon"], "place": r.get("place"), "time": r["time"], "url": r.get("url"),
@@ -685,6 +695,16 @@ def drop_held(state: dict, urls: set[str]) -> None:
                 c.pop("held")
 
 
+def _back_to_tracker(state: dict, hull: str, c: dict, lt: dict) -> None:
+    """Put a carrier back at its last tracker position, with no line to it and no track after it."""
+    c.update(lat=lt["lat"], lon=lt["lon"], place=lt.get("place"), as_of=lt["as_of"], trusted=True, heading_to=None,
+             source="USNI News Fleet and Marine Tracker", url=(state.get("fleet_meta") or {}).get("tracker_url"),
+             status="in port" if HOME.get(hull) and haversine_km(HOME[hull][1], HOME[hull][2], lt["lat"], lt["lon"]) < HOME_KM else "operating")
+    for k in ("prev", "moved_at", "held"):
+        c.pop(k, None)
+    c["track"] = [t for t in c.get("track", []) if t.get("time", "") <= lt["as_of"]][-TRACK_LEN:]
+
+
 def repair(state: dict) -> None:
     """Once per FLEET_VERSION: re-check stored positions against the rules for news reports.
     A carrier whose position fails them goes back to its home-port baseline; a previous position
@@ -700,29 +720,24 @@ def repair(state: dict) -> None:
             # a region's name ("West Asia", 2026-10-07: the George Washington put on the Dubai coast) is no
             # place: back to the last tracker position
             log(f"[fleet] {CARRIERS[hull][0]}: stored position {c.get('place')!r} is only a region; back to {lt.get('place')}")
-            c.update(lat=lt["lat"], lon=lt["lon"], place=lt.get("place"), as_of=lt["as_of"], trusted=True, heading_to=None,
-                     source="USNI News Fleet and Marine Tracker", url=(state.get("fleet_meta") or {}).get("tracker_url"),
-                     status="in port" if HOME.get(hull) and haversine_km(HOME[hull][1], HOME[hull][2], lt["lat"], lt["lon"]) < HOME_KM else "operating")
-            for k in ("prev", "moved_at", "held"):
-                c.pop(k, None)
-            c["track"] = [t for t in c.get("track", []) if t.get("time", "") <= lt["as_of"]][-TRACK_LEN:]
+            _back_to_tracker(state, hull, c, lt)
             continue
-        if _vague(c.get("place")) or _other_home(hull, c["lat"], c["lon"]):
+        # another carrier's home port is a misattribution, unless the tracker put it there too (the Reagan at
+        # San Diego, by USNI's tracker and ship imagery, 2026-10-13/14)
+        tracker_there = lt and lt.get("lat") is not None and haversine_km(lt["lat"], lt["lon"], c["lat"], c["lon"]) < MOVE_KM
+        if _vague(c.get("place")) or (_other_home(hull, c["lat"], c["lon"]) and not tracker_there):
             log(f"[fleet] {CARRIERS[hull][0]}: stored position {c.get('place')!r} fails the checks; back to home port")
             fleet.pop(hull)
             continue
         if lt and not c.get("trusted") and _too_fast(lt, c):
+            # a news position the carrier couldn't have sailed to from its last tracker position (the Ford in the
+            # Persian Gulf, 2026-10-16, FLEET_VERSION 6), whether or not another carrier was reported there
             other = _other_there({h: o for h, o in fleet.items() if o is not c}, hull, {**c, "time": c["as_of"]})
-            if other:
-                log(f"[fleet] {CARRIERS[hull][0]}: stored position {c.get('place')!r} is where {other} was reported, "
-                    f"and too far from its last tracker position ({lt.get('place')}); back to that")
-                c.update(lat=lt["lat"], lon=lt["lon"], place=lt.get("place"), as_of=lt["as_of"], trusted=True, heading_to=None,
-                         source="USNI News Fleet and Marine Tracker", url=(state.get("fleet_meta") or {}).get("tracker_url"),
-                         status="in port" if HOME.get(hull) and haversine_km(HOME[hull][1], HOME[hull][2], lt["lat"], lt["lon"]) < HOME_KM else "operating")
-                for k in ("prev", "moved_at", "held"):
-                    c.pop(k, None)
-                c["track"] = [t for t in c.get("track", []) if t.get("time", "") <= lt["as_of"]][-TRACK_LEN:]
-                continue
+            log(f"[fleet] {CARRIERS[hull][0]}: stored position {c.get('place')!r} is "
+                + (f"where {other} was reported, and " if other else "")
+                + f"too far from its last tracker position ({lt.get('place')}); back to that")
+            _back_to_tracker(state, hull, c, lt)
+            continue
         p = c.get("prev")
         if p and (_vague(p.get("place")) or _too_fast(p, c)):
             for k in ("prev", "moved_at"):

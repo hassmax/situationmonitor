@@ -142,3 +142,13 @@ def test_attacks_filed_as_tests_civilian_cargo_and_niger_state_in_niger_are_flag
               ev("n2", "Gunmen attacked an immigration team in Niger State, killing an officer.", "ground", country="NG")]
     counts = audit.run(events, [], {}, NOW)["counts"]
     assert counts == {"test_with_hits": 1, "civilian_cargo": 1, "niger_state_in_niger": 1}
+
+
+def test_a_carrier_beyond_its_last_tracker_position_is_flagged():
+    lt = {"lat": 36.95, "lon": -76.33, "place": "Norfolk, Va.", "as_of": "2026-10-13T19:11:00Z"}
+    row = {"hull": "CVN-78", "name": "U.S.S. Gerald R. Ford", "lat": 26.5, "lon": 52.0, "place": "Persian Gulf",
+           "as_of": "2026-10-16T14:15:14Z", "at_home": False}
+    state = {"fleet": {"CVN-78": {**row, "trusted": False, "last_trusted": lt}}}
+    assert audit.run([], [row], state, NOW)["counts"] == {"carrier_beyond_tracker": 1}
+    state["fleet"]["CVN-78"]["last_trusted"] = {**lt, "as_of": "2026-10-01T19:11:00Z"}   # two weeks: it could have
+    assert audit.run([], [row], state, NOW)["counts"] == {}
