@@ -32,7 +32,7 @@ This file is the short version. **`docs/NOTES.md` holds the full history** (why 
 - `flights.py`: adsb.lol military flights; not drawn on the map; movements feed the analyst; C-17/KC-135 surges become air routes and Telegram alerts.
 - `frontline/` + `config/frontlines.yaml`: this site's own settlement-level control assessment (scout, standing, isw, heat, social, claims, assess, review, wikipedia fill-in, cartographer); imagery agent off. `control.py`: published control layers, **none active** (ISW and Critical Threats licences forbid reuse; don't add a source without checking its licence).
 - `config/theaters.yaml`, `config/sources.yaml`: if a theater is added or renamed, update the list in `SYSTEM_PROMPT` too.
-- `site/`: `index.html`, `styles.css`, `command.css` (briefing look, loaded last), `app.js` (vanilla JS, no build step), `vendor/globe.gl.min.js` (2.46.2), `assets/countries-110m.json`, `assets/country-ids-*.png` (which country is at each point, for lighting countries; `scripts/make_country_ids.py`), `data/demo-events.json` (`?demo`), `?perf` readout.
+- `site/`: `index.html`, `styles.css`, `command.css` (briefing look, loaded last), `app.js` (vanilla JS, no build step), `vendor/globe.gl.min.js` (2.46.2), `assets/countries-110m.json`, `assets/country-ids-*.png` (which country is at each point, for lighting countries; `scripts/make_country_ids.py`), `assets/relief-*.jpg` (terrain shading; `scripts/make_relief.py`), 3D carriers (`setupShips`), `data/demo-events.json` (`?demo`), `?perf` readout.
 
 ## Testing before you push
 
