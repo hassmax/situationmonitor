@@ -61,7 +61,7 @@ def test_misplaced_pins_and_routes_ending_in_the_supplier_are_flagged():
 
 def test_carrier_checks_and_no_line_from_a_position_it_couldnt_have_sailed_from():
     away = lambda hull, name, place, lat, lon: {"hull": hull, "name": name, "lat": lat, "lon": lon, "place": place, "at_home": False}
-    rows = [away("CVN-77", "Bush", "Phuket", 7.88, 98.39), away("CVN-78", "Ford", "Thailand", 9.0, 99.0),
+    rows = [away("CVN-77", "Bush", "Phuket", 7.88, 98.39), away("CVN-78", "Ford", "Surat Thani", 9.0, 99.0),
             away("CVN-68", "Nimitz", "Norfolk", 36.95, -76.33), away("CVN-69", "Eisenhower", "Norfolk", 36.94, -76.3)]
     assert audit.run([], rows, {}, NOW)["counts"] == {"carriers_together": 1}     # not the two at their home port
     state = {"fleet": {"CVN-76": {"hull": "CVN-76", "lat": 7.88, "lon": 98.39, "place": "Phuket", "status": "arrived",
@@ -152,3 +152,11 @@ def test_a_carrier_beyond_its_last_tracker_position_is_flagged():
     assert audit.run([], [row], state, NOW)["counts"] == {"carrier_beyond_tracker": 1}
     state["fleet"]["CVN-78"]["last_trusted"] = {**lt, "as_of": "2026-10-01T19:11:00Z"}   # two weeks: it could have
     assert audit.run([], [row], state, NOW)["counts"] == {}
+
+
+def test_a_carrier_in_a_country_or_far_inland_is_flagged():
+    row = lambda place, lat, lon: {"hull": "CVN-78", "name": "U.S.S. Gerald R. Ford", "lat": lat, "lon": lon, "place": place,
+                                   "as_of": "2026-10-18T04:00:00Z", "at_home": False}
+    assert audit.run([], [row("Mexico", 23.634, -102.553)], {}, NOW)["counts"] == {"carrier_vague_place": 1}
+    assert audit.run([], [row("Zacatecas", 23.634, -102.553)], {}, NOW)["counts"] == {"carrier_inland": 1}
+    assert audit.run([], [row("Gulf of Mexico", 25.0, -90.0)], {}, NOW)["counts"] == {}

@@ -11,7 +11,8 @@ animate the move), a stated destination if any, and a short track of past positi
 Positions are never extrapolated: the map shows the last report and its date.
 
 News reports are checked before they move a carrier (the tracker is trusted):
-  - a vague place ("Middle East", "the Pacific") is not a position; it is ignored
+  - a vague place ("Middle East", "the Pacific", a whole country) is not a position, and nor is a spot
+    far inland; it is ignored
   - a carrier reported at another carrier's home port (Ford "departing San Diego") is almost
     always a report about the other carrier; it is ignored
   - a move faster than a carrier can sail from its last tracker position is ignored, however
@@ -22,8 +23,12 @@ News reports are checked before they move a carrier (the tracker is trusted):
 """
 from __future__ import annotations
 
+import json
+import math
 import re
 from datetime import datetime, timedelta
+from functools import lru_cache
+from pathlib import Path
 
 from common import UTC, clean_text, haversine_km, iso, log
 
@@ -61,7 +66,7 @@ FLEET_TRACKER_FEED = "https://news.usni.org/category/fleet-tracker/feed"
 USNI_FEED = "https://news.usni.org/feed"
 MOVE_KM = 150          # smaller changes are treated as the same position
 TRACK_LEN = 12
-FLEET_VERSION = 6      # bump to re-check stored positions against the rules below
+FLEET_VERSION = 7      # bump to re-check stored positions against the rules below
 MAX_KM_PER_DAY = 900   # about 20 knots, a fast sustained transit
 SLACK_KM = 400         # rough coordinates for sea areas and ports
 HOME_KM = 60           # "at" a home port
@@ -99,9 +104,57 @@ def _hull(v) -> str | None:
 _FACILITY_RE = re.compile(r"\b(?:air base|airbase|air force base|afb|airport|airfield)\b", re.I)
 
 
+SHAPES = Path(__file__).resolve().parents[1] / "site" / "assets" / "countries-110m.json"
+INLAND_KM = 200  # this far from the sea in every direction is no ship's position (the globe's coarse map puts Bremerton 120 km inland)
+
+
+@lru_cache(maxsize=1)
+def _countries() -> frozenset:
+    """Every country's name on the globe's map, lower case: a whole country is no place at sea (2026-10-18: El País
+    put the Ford "in Mexico", which the map placed in the desert at the country's centre)."""
+    try:
+        return frozenset(str(g["properties"]["name"]).lower()
+                         for g in json.loads(SHAPES.read_text(encoding="utf-8"))["objects"]["countries"]["geometries"])
+    except (OSError, ValueError, KeyError):
+        return frozenset()
+
+
 def _vague(place) -> bool:
     p = re.sub(r"\s*\(.*?\)", "", str(place or "")).strip().lower()
-    return not p or p in VAGUE or bool(_FACILITY_RE.search(p))
+    return not p or p in VAGUE or p in _countries() or bool(_FACILITY_RE.search(p))
+
+
+@lru_cache(maxsize=1)
+def _land_shapes() -> list:
+    """(lon min, lon max, lat min, lat max, rings) for each country on the globe's map."""
+    from frontline import land
+    out = []
+    for rings in land._rings().values():
+        if rings:
+            xs, ys = [float(x) for r in rings for x in r[:, 0]], [float(y) for r in rings for y in r[:, 1]]
+            out.append((min(xs), max(xs), min(ys), max(ys), rings))
+    return out
+
+
+def _on_land(lat: float, lon: float) -> bool:
+    from frontline import land
+    lon = (lon + 540) % 360 - 180
+    return any(x0 <= lon <= x1 and y0 <= lat <= y1 and land.inside(rings, lon, lat) for x0, x1, y0, y1, rings in _land_shapes())
+
+
+def _inland(lat: float, lon: float) -> bool:
+    """On land, with no sea within INLAND_KM in any of 16 directions: a carrier can't be there, whatever the
+    place's name (a city or province far from the coast)."""
+    if lat is None or lon is None or not _on_land(lat, lon):
+        return False
+    f1, l1, d = math.radians(lat), math.radians(lon), INLAND_KM / 6371
+    for k in range(16):
+        b = math.radians(k * 22.5)
+        f2 = math.asin(math.sin(f1) * math.cos(d) + math.cos(f1) * math.sin(d) * math.cos(b))
+        l2 = l1 + math.atan2(math.sin(b) * math.sin(d) * math.cos(f1), math.cos(d) - math.sin(f1) * math.sin(f2))
+        if not _on_land(math.degrees(f2), math.degrees(l2)):
+            return False
+    return True
 
 
 def _known(c: dict) -> bool:
@@ -151,6 +204,8 @@ def _check(c: dict, r: dict, hull: str, fleet: dict | None = None) -> str | None
     """Why a news report can't move this carrier now (None: it can)."""
     if _vague(r.get("place")):
         return f"'{r.get('place')}' is not a position"
+    if _inland(r["lat"], r["lon"]):
+        return f"'{r.get('place')}' is inland, not at sea or in port"
     port = _other_home(hull, r["lat"], r["lon"])
     if port and not (c.get("lat") is not None and haversine_km(c["lat"], c["lon"], r["lat"], r["lon"]) < MOVE_KM):
         return f"{port} is another carrier's home port; the report is probably about that carrier"
@@ -716,16 +771,18 @@ def repair(state: dict) -> None:
         if hull not in CARRIERS or not _known(c) or str(c.get("source", "")).startswith(("USNI News Fleet", "Home port")):
             continue
         lt = c.get("last_trusted")
-        if _vague(c.get("place")) and lt and lt.get("lat") is not None and not _vague(lt.get("place")):
-            # a region's name ("West Asia", 2026-10-07: the George Washington put on the Dubai coast) is no
-            # place: back to the last tracker position
-            log(f"[fleet] {CARRIERS[hull][0]}: stored position {c.get('place')!r} is only a region; back to {lt.get('place')}")
+        nowhere = _vague(c.get("place")) or _inland(c["lat"], c["lon"])
+        if nowhere and lt and lt.get("lat") is not None and not _vague(lt.get("place")):
+            # a region's name ("West Asia", 2026-10-07: the George Washington put on the Dubai coast), a country's
+            # ("Mexico", 2026-10-18: the Ford, FLEET_VERSION 7) or a spot far inland is no place: back to the last
+            # tracker position
+            log(f"[fleet] {CARRIERS[hull][0]}: stored position {c.get('place')!r} is no place at sea; back to {lt.get('place')}")
             _back_to_tracker(state, hull, c, lt)
             continue
         # another carrier's home port is a misattribution, unless the tracker put it there too (the Reagan at
         # San Diego, by USNI's tracker and ship imagery, 2026-10-13/14)
         tracker_there = lt and lt.get("lat") is not None and haversine_km(lt["lat"], lt["lon"], c["lat"], c["lon"]) < MOVE_KM
-        if _vague(c.get("place")) or (_other_home(hull, c["lat"], c["lon"]) and not tracker_there):
+        if nowhere or (_other_home(hull, c["lat"], c["lon"]) and not tracker_there):
             log(f"[fleet] {CARRIERS[hull][0]}: stored position {c.get('place')!r} fails the checks; back to home port")
             fleet.pop(hull)
             continue

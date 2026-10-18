@@ -37,11 +37,11 @@ def test_another_carriers_home_port_is_ignored():
 
 def test_impossible_jump_waits_for_a_second_report():
     state = home_state()
-    fleet.update(state, [news("CVN-71", "Thailand", 13.1, 100.9, "2026-09-27T03:30:00Z")])
+    fleet.update(state, [news("CVN-71", "Laem Chabang, Thailand", 13.1, 100.9, "2026-09-27T03:30:00Z")])
     fleet.update(state, [news("CVN-71", "Arabian Sea", 16.0, 63.0, "2026-09-27T12:00:00Z", url="u1")])
-    assert state["fleet"]["CVN-71"]["place"] == "Thailand"               # 4,000 km in 9 hours: held
+    assert state["fleet"]["CVN-71"]["place"].startswith("Laem Chabang")   # 4,000 km in 9 hours: held
     fleet.update(state, [{**news("CVN-71", "Arabian Sea", 15.6, 62.5, "2026-09-27T12:30:00Z", url="u1-other-link")}])
-    assert state["fleet"]["CVN-71"]["place"] == "Thailand"               # the same outlet again: one article, two links
+    assert state["fleet"]["CVN-71"]["place"].startswith("Laem Chabang")   # the same outlet again: one article, two links
     fleet.update(state, [{**news("CVN-71", "Arabian Sea", 15.5, 62.0, "2026-09-27T13:00:00Z", url="u2"),
                           "source": "Another outlet"}])
     assert state["fleet"]["CVN-71"]["place"] == "Arabian Sea"            # a report from another outlet confirms it
@@ -341,3 +341,33 @@ def test_repair_puts_back_a_carrier_news_moved_beyond_its_tracker_position():
     ford = state["fleet"]["CVN-78"]
     assert (ford["place"], ford["as_of"], ford["status"]) == ("Norfolk, Va.", lt["as_of"], "in port")
     assert ford["at_home"] and "prev" not in ford and [t["place"] for t in ford["track"]] == ["Norfolk, Va."]
+
+
+def test_a_country_or_a_spot_far_inland_is_no_carrier_position():
+    # 2026-10-18: El País (via Google News) put the Ford "in Mexico", which the map drew in the desert at the
+    # country's centre; a whole country is no place at sea, and nor is a city far from the coast
+    state = {"fleet_meta": dict(TRACKER_13_OCT)}
+    fleet.apply_home_baseline(state, datetime(2026, 10, 13, 20, tzinfo=timezone.utc))
+    fleet.update(state, [news("CVN-78", "Mexico", 23.634, -102.553, "2026-10-18T04:00:00Z", status="underway"),
+                         news("CVN-78", "Japan", 36.2, 138.25, "2026-10-18T05:00:00Z"),
+                         news("CVN-78", "Mexico City", 19.43, -99.13, "2026-10-18T06:00:00Z")])
+    assert state["fleet"]["CVN-78"]["place"] == "Norfolk, Va."
+    # ports and sea areas, even those the coarse map draws a little inland, still count
+    fleet.update(state, [news("CVN-78", "Mayport, Fla.", 30.39, -81.40, "2026-10-18T07:00:00Z")])
+    assert state["fleet"]["CVN-78"]["place"] == "Mayport, Fla."
+    assert not any(fleet._inland(lat, lon) for _, _, lat, lon in fleet.TRACKER_PLACES)
+    assert not any(fleet._inland(lat, lon) for _, lat, lon in fleet.HOME.values())
+
+
+def test_repair_puts_back_a_carrier_stored_in_a_country():
+    lt = {"lat": 36.95, "lon": -76.33, "place": "Norfolk, Va.", "as_of": "2026-10-13T19:11:00Z"}
+    state = {"fleet_version": 6, "fleet_meta": dict(TRACKER_13_OCT), "fleet": {
+        "CVN-78": {"hull": "CVN-78", "lat": 23.634, "lon": -102.553, "place": "Mexico", "status": "underway",
+                   "as_of": "2026-10-18T04:00:00Z", "source": "El País (via Google News)", "trusted": False,
+                   "last_trusted": lt, "prev": dict(lt), "moved_at": "2026-10-18T04:00:00Z",
+                   "track": [{"lat": 36.95, "lon": -76.33, "place": "Norfolk, Va.", "time": lt["as_of"]},
+                             {"lat": 23.634, "lon": -102.553, "place": "Mexico", "time": "2026-10-18T04:00:00Z"}]}}}
+    fleet.repair(state)
+    ford = state["fleet"]["CVN-78"]
+    assert (ford["place"], ford["as_of"], ford["status"]) == ("Norfolk, Va.", lt["as_of"], "in port")
+    assert "prev" not in ford and [t["place"] for t in ford["track"]] == ["Norfolk, Va."]

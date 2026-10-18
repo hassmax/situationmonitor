@@ -20,6 +20,8 @@ Checks (the mistake that led to each, and the fix):
 - carrier_vague_place: a carrier placed at a region's name ("West Asia", which landed on the Dubai coast,
   2026-10-07; fleet.VAGUE)
 - carrier_too_fast: a carrier's move faster than it can sail (fleet._too_fast)
+- carrier_inland: a carrier on land far from any sea (El País put the Ford "in Mexico", drawn in the desert at
+  the country's centre, 2026-10-18; fleet._inland; a country's name is a carrier_vague_place too since then)
 - carrier_beyond_tracker: a carrier at a news position it couldn't have sailed to from its last tracker position
   (two reports put the Ford in the Persian Gulf three days after the tracker had it at Norfolk, 2026-10-16;
   fleet._check)
@@ -164,10 +166,12 @@ def run(events: list[dict], fleet_rows: list[dict], state: dict, now) -> dict:
         for b in away[i + 1:]:
             if haversine_km(a["lat"], a["lon"], b["lat"], b["lon"]) < TOGETHER_KM:
                 flag("carriers_together", a, f"{a['name']} and {b['name']} both at {a.get('place')!r} / {b.get('place')!r}")
-    from fleet import _vague
+    from fleet import _inland, _vague
     for c in fleet_rows:
         if c.get("lat") is not None and not c.get("at_home") and _vague(c.get("place")):
             flag("carrier_vague_place", c, f"{c['name']} placed at {c.get('place')!r}, a region, not a place")
+        elif c.get("lat") is not None and not c.get("at_home") and _inland(c["lat"], c["lon"]):
+            flag("carrier_inland", c, f"{c['name']} placed at {c.get('place')!r}, far inland")
         p = c.get("prev")
         if p and c.get("as_of") and p.get("as_of") and _too_fast(p, c):
             flag("carrier_too_fast", c, f"{c['name']}: {p.get('place')!r} to {c.get('place')!r} by {c['as_of'][:16]}")
