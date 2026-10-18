@@ -1113,7 +1113,9 @@
   // measured heading. Built from the globe library's own classes (it doesn't export them); if they
   // can't be found, carriers stay icons. Clicking the ship opens the carrier, as its name does.
   const ships = { ready: false, failed: false, geom: null, mat: null, Mesh: null, byHull: new Map() };
-  const SHIP_PX = PHONE ? 44 : 56;  // the ship's length on screen
+  // the ship's length on screen: tiny, about one dash of a launch or carrier line at the opening view (the owner,
+  // 2026-10-18: "keep the aircraft carriers tiny like roughly length of missile flight path (one bar)")
+  const SHIP_PX = PHONE ? 12 : 14;
   function shipModel(Geometry, Attr) {
     // in the model's own frame: x to starboard, y to the bow, z up; length 1
     const pos = [], nrm = [], col = [];
