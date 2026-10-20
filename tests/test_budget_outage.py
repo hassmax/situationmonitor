@@ -129,3 +129,37 @@ def test_depleted_credits_cost_nothing_keep_posts_and_are_rechecked_hourly(monke
     assert calls == []
     extract.run(left, state, settings, NOW + timedelta(hours=1, minutes=5))   # an hour on: one probe
     assert calls == ["m1"] and state["llm_calls"]["count"] == 10
+
+
+def test_a_model_out_of_its_quota_hands_the_batch_to_the_next(monkeypatch):
+    """2026-10-20: Flash-Lite refused every batch for its quota (HTTP 429) for ten hours while other free
+    Gemini models answered; a refused batch now goes to the next model, uncounted, and a model out of its
+    day's quota is skipped until Google's reset (midnight Pacific time); a retired model (404) is passed over."""
+    sent = []
+
+    def post(url, body, token):
+        sent.append(body["model"])
+        if body["model"] == "lite":
+            return Resp(429, '{"error": {"code": 429, "message": "You exceeded your current quota", '
+                             '"details": [{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]}}')
+        if body["model"] == "old":
+            return Resp(404, "This model models/old is no longer available to new users")
+        return Ok()
+    monkeypatch.setattr(extract, "_post", post)
+    monkeypatch.setattr(extract.time, "sleep", lambda s: None)
+    monkeypatch.setenv("LLM_API_KEY", "key")
+    settings = {**SETTINGS, "llm_models": ["lite", "old"], "llm_fallback_models": ["flash"], "extraction_reserve": 0,
+                "batch_max_items": 1, "batch_token_budget": 10000, "max_output_tokens": 1000, "max_item_age_hours": 36,
+                "pending_max": 400, "seconds_between_calls": 0}
+    state = {"llm_calls": {"date": "2026-09-28", "count": 0},
+             "llm_model": {"url": "https://example.com", "model": "lite", "json_mode": True,
+                           "checked": NOW.strftime("%Y-%m-%dT%H:%M:%SZ")}}
+    items = [{"id": f"i{n}", "source": "s", "platform": "rss", "time": "2026-09-28T11:00:00Z", "text": "Drone strike on Kyiv",
+              "url": f"u{n}", "weight": 1} for n in range(2)]
+    records, leftover, used, _ = extract.run(items, state, settings, NOW)
+    assert sent == ["lite", "old", "flash", "flash"] and leftover == [] and used == 2
+    assert state["llm_model"]["model"] == "flash" and list(state["llm_quota_out"]) == ["lite"]
+    assert not any(it.get("attempts") for it in items)
+    # the next run skips Flash-Lite until Google's day turns over (07:00 UTC in October)
+    assert extract._quota_out(state, NOW) == {"lite"}
+    assert extract._quota_out(state, datetime(2026, 9, 29, 7, 30, tzinfo=timezone.utc)) == set()

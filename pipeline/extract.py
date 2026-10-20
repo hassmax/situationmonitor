@@ -167,6 +167,22 @@ class RateLimited(Exception):
     pass
 
 
+def _quota_out(state: dict, now: datetime) -> set:
+    """Gemini models Google refused for their daily quota since its last reset (midnight Pacific
+    time). Each free model has its own daily limit: on 2026-10-19/20 Flash-Lite's ran out at about
+    21:00 UTC and extraction stopped for ten hours while the others sat unused."""
+    from zoneinfo import ZoneInfo
+    reset = now.astimezone(ZoneInfo("America/Los_Angeles")).replace(hour=0, minute=0, second=0, microsecond=0)
+    out = {m: t for m, t in (state.get("llm_quota_out") or {}).items() if parse_time(t) and parse_time(t) >= reset}
+    state["llm_quota_out"] = out
+    return set(out)
+
+
+def _daily_quota(text: str) -> bool:
+    """A 429 for the day's quota (Google names the limit: "...PerDay...") rather than the minute's."""
+    return bool(re.search(r"per ?day|daily", text or "", re.I))
+
+
 class Busy(RuntimeError):
     """The provider is overloaded or down (HTTP 5xx). Such calls do nothing and are not counted
     against the daily budget; an outage used to drain it with failed attempts."""
@@ -583,7 +599,7 @@ def _call_model(batch: list[dict], token: str, chosen: dict, settings: dict, sta
         body["response_format"] = {"type": "json_object"}
     r = _post(chosen["url"], body, token)
     if r.status_code == 429:
-        raise RateLimited(r.text[:200])
+        raise RateLimited(r.text[:3000])
     if r.status_code == 402:
         raise OutOfCredit(r)
     if r.status_code >= 500:
@@ -829,13 +845,14 @@ def _gemini(todo: list[list[dict]], token: str, state: dict, settings: dict, now
     (so they may go elsewhere), else None."""
     chosen = state.get("llm_model")
     checked = parse_time(chosen.get("checked")) if chosen else None
+    out = _quota_out(state, now)
     stale = (not chosen or not checked or now - checked > timedelta(hours=24)
              or chosen.get("url") != settings["llm_url"] or chosen.get("model") not in _candidates(settings)
-             or (chosen.get("fallback") and now - checked > FALLBACK_RECHECK))
+             or chosen.get("model") in out or (chosen.get("fallback") and now - checked > FALLBACK_RECHECK))
     if stale:
         before = state.setdefault("llm_calls", {"count": 0})["count"]
         try:
-            chosen = _find_model(token, settings, state)
+            chosen = _find_model(token, settings, state, skip=out)  # a model out of its day's quota still answers tiny probes
         except RateLimited as exc:
             log(f"[extract] rate limited while checking models: {exc}")
             return "Gemini is rate-limited"
@@ -847,6 +864,7 @@ def _gemini(todo: list[list[dict]], token: str, state: dict, settings: dict, now
     failures = 0
     switched = False
     n = 0
+    tried = {chosen["model"]}
     while n < len(todo):
         batch = todo[n]
         if n:
@@ -855,7 +873,21 @@ def _gemini(todo: list[list[dict]], token: str, state: dict, settings: dict, now
         try:
             out = _call_model(batch, token, chosen, settings, state)
         except RateLimited as exc:
-            log(f"[extract] rate limited, stopping for this run: {exc}")
+            _spend(state, "extract", -1)  # refused: nothing was done
+            text = str(exc)
+            if _daily_quota(text):
+                state.setdefault("llm_quota_out", {})[chosen["model"]] = iso(now)
+            # another free Gemini model has its own limit: the same batch goes to it
+            nxt = next((m for m in _candidates(settings) if m not in tried and m not in _quota_out(state, now)), None)
+            if nxt:
+                log(f"[extract] {chosen['model']} refused for its {'daily' if _daily_quota(text) else 'rate'} limit; "
+                    f"trying {nxt}")
+                tried.add(nxt)
+                chosen = {"url": settings["llm_url"], "model": nxt, "json_mode": True,
+                          "fallback": nxt not in settings["llm_models"], "checked": iso(now)}
+                state["llm_model"] = chosen
+                continue
+            log(f"[extract] rate limited, stopping for this run: {text[:300]}")
             return "Gemini is rate-limited"
         except OutOfCredit as exc:
             _spend(state, "extract", -1)  # not counted: refused for billing, the posts keep their place
@@ -876,6 +908,16 @@ def _gemini(todo: list[list[dict]], token: str, state: dict, settings: dict, now
             log(f"[extract] the model is busy, stopping for this run (not counted): {exc}")
             return "Gemini is busy"
         except Exception as exc:  # noqa: BLE001
+            nxt = next((m for m in _candidates(settings) if m not in tried and m not in _quota_out(state, now)), None)
+            if str(exc).startswith("HTTP 404") and nxt:
+                # a retired model ("no longer available", gemini-2.5-flash, 2026-10-20): not counted, the next one
+                _spend(state, "extract", -1)
+                log(f"[extract] {chosen['model']} is gone ({str(exc)[:120]}); trying {nxt}")
+                tried.add(nxt)
+                chosen = {"url": settings["llm_url"], "model": nxt, "json_mode": True,
+                          "fallback": nxt not in settings["llm_models"], "checked": iso(now)}
+                state["llm_model"] = chosen
+                continue
             log(f"[extract] batch failed: {exc}")
             for it in batch:
                 it["attempts"] = int(it.get("attempts", 0)) + 1
