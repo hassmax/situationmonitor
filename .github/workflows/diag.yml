@@ -1,0 +1,37 @@
+name: Diagnose model access (temporary)
+on:
+  push:
+    branches: [claude/diag-pipeline]
+jobs:
+  probe:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - name: Probe Gemini and Cerebras (status and error text only, never keys)
+        env:
+          LLM_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          CEREBRAS_API_KEY: ${{ secrets.CEREBRAS_API_KEY }}
+        run: |
+          python3 - <<'PY'
+          import json, os, urllib.request, urllib.error
+          def call(name, url, key, body=None):
+              req = urllib.request.Request(url, data=json.dumps(body).encode() if body else None,
+                                           headers={"Authorization": f"Bearer {key}", "Content-Type": "application/json"})
+              try:
+                  with urllib.request.urlopen(req, timeout=60) as r:
+                      txt = r.read().decode()[:600]
+                      print(f"{name}: HTTP {r.status} {txt}")
+              except urllib.error.HTTPError as e:
+                  print(f"{name}: HTTP {e.code} {e.read().decode()[:800]}")
+              except Exception as e:
+                  print(f"{name}: {type(e).__name__} {e}")
+          g, c = os.environ.get("LLM_API_KEY", ""), os.environ.get("CEREBRAS_API_KEY", "")
+          print("gemini key set:", bool(g), " cerebras key set:", bool(c))
+          msg = [{"role": "user", "content": "Reply with the JSON {\"ok\": true}"}]
+          for m in ("gemini-3.5-flash-lite", "gemini-flash-lite-latest", "gemini-3.5-flash"):
+              call(f"gemini {m}", "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", g,
+                   {"model": m, "messages": msg, "max_tokens": 20})
+          call("cerebras models", "https://api.cerebras.ai/v1/models", c)
+          call("cerebras gpt-oss-120b", "https://api.cerebras.ai/v1/chat/completions", c,
+               {"model": "gpt-oss-120b", "messages": msg, "max_tokens": 50})
+          PY
