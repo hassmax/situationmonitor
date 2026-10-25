@@ -27,8 +27,10 @@ class Model:
         for c in cases:
             i = c["event"]["id"]
             same = [f["id"] for f in c["candidates"] if f["id"] in self.same.get(i, ())]
-            out.append({"i": c["i"], "same": same, "type": None, "summary": None,
-                        "old": i in self.old, "match": self.old.get(i)})
+            old = self.old.get(i)
+            earlier = old.get("earlier") if isinstance(old, dict) else None
+            out.append({"i": c["i"], "same": same, "type": None, "summary": None, "old": i in self.old,
+                        "match": None if isinstance(old, dict) else old, "earlier": earlier})
         return {"results": out}
 
 
@@ -231,3 +233,62 @@ def test_reports_folded_across_days_are_read_again_once():
     assert [i["url"] for i in items] == ["u-late"] and [r["url"] for r in old["reports"]] == ["u-a"]
     assert items[0]["text"] == "A drone sank a ship off Byala." and items[0]["max_age_h"] == 720
     assert gate.take_back_late_folds([old], state) == []
+
+
+def riyadh():
+    """25 Oct 2026: Khmer Times relisted the 17 October Riyadh airport strike as a new attack."""
+    old = ev("a", "Houthi missile and drone attacks on Riyadh airport resulted in 13 deaths and 17 injuries.",
+             "missile_drone", "SA", "Riyadh", 24 * 8, 24.7, 46.7, killed=13, injured=17)
+    new = news(ev("n", "An attack on Riyadh airport results in 13 deaths and 300 injuries.", "missile_drone", "SA",
+                  "Riyadh", 1, 24.6, 46.7, severity=3, dated={"published": "x", "how": "listed", "tries": 1}, killed=13, injured=300))
+    new["reports"][0]["group"] = "google-news"
+    return old, new
+
+
+def test_old_strike_relisted_days_later_is_shown_and_dropped(monkeypatch):
+    no_meaning(monkeypatch)
+    no_search(monkeypatch, ([], []))  # the older search (two weeks and more) found nothing
+    old, new = riyadh()
+    state = {}
+    model = Model(old={"n": {"earlier": 0}})
+    out, folded = gate.check(background() + [old, new], {"n"}, None, model, state, SETTINGS, NOW, set(), [])
+    case = model.calls[0]["cases"][0]
+    assert [f["summary"][:13] for f in case["earlier"]] == ["Houthi missil"] and not case["candidates"]
+    assert "n" not in {e["id"] for e in out} and not folded
+    assert "a" in state["dropped_as_old"][0]["match"]
+
+
+def test_earlier_events_come_from_the_archive_too(monkeypatch):
+    no_meaning(monkeypatch)
+    no_search(monkeypatch, ([], []))
+    old, new = riyadh()
+    model = Model(old={"n": {"earlier": 0}})
+    out, _ = gate.check(background() + [new], {"n"}, None, model, {}, SETTINGS, NOW, set(), [old])
+    assert "n" not in {e["id"] for e in out}
+
+
+def test_relisted_strike_judged_new_is_held_until_a_second_source(monkeypatch):
+    no_meaning(monkeypatch)
+    no_search(monkeypatch, ([], []))
+    old, new = riyadh()
+    out, _ = gate.check(background() + [old, new], {"n"}, None, Model(), {}, SETTINGS, NOW, set(), [])
+    n = next(e for e in out if e["id"] == "n")
+    assert n["gate"] == "ok" and n["coverage"]["earlier"] == 1 and n["coverage"]["repeats"] == 1
+    assert recency.held({**n, "status": "unconfirmed"})
+    # a similar strike with figures of its own: another attack on the airport, not flagged
+    assert not recency.held({**n, "status": "unconfirmed", "coverage": {**n["coverage"], "repeats": 0}})
+    # its own page dated it today: a new attack on the same airport, not flagged
+    assert not recency.held({**n, "status": "unconfirmed", "dated": {"published": "x", "how": "page"}})
+
+
+def test_live_posts_and_unlike_incidents_get_no_earlier_events(monkeypatch):
+    no_meaning(monkeypatch)
+    no_search(monkeypatch, ([], []))
+    old, new = riyadh()
+    other = news(ev("m", "Saudi air defenses intercepted drones over Jizan port.", "missile_drone", "SA", "Jizan", 1,
+                    16.9, 42.6))
+    live = ev("t", "Missile attack on Riyadh airport kills 13, 300 wounded.", "missile_drone", "SA", "Riyadh", 1,
+              24.6, 46.7)  # a Telegram post: not news-only
+    model = Model()
+    gate.check(background() + [old, other, live], {"m", "t"}, None, model, {}, SETTINGS, NOW, set(), [])
+    assert all(not c.get("earlier") for call in model.calls for c in call["cases"])

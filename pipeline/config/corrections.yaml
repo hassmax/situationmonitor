@@ -31,6 +31,9 @@
 #    note: This article is about a different meeting.
 
 corrections:
+  - id: 2739fabc9795
+    hide: true
+    note: Old news. A Khmer Times article listed on 25 October 2026 ("13 dead, 300 injured in Riyadh airport attack") repeats the Houthi strike on Riyadh airport reported on 17 October; no new attack on the airport was reported that day.
   - id: 58e6202fce6b
     hide: true
     note: Old news. These Israeli strikes on targets east of Tehran date from March 2026; the reports resurfaced with fresh dates.
