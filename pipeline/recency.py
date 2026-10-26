@@ -160,15 +160,24 @@ def held(e: dict) -> bool:
     read. A March report of Houthi missiles at Israel, relisted in September by a site that blocks
     the date check, had one "current" match. More than that is current coverage, dated or not:
     until 2026-10-06 an unreadable date flagged stories with 11 to 17 current headlines (all 12
-    B-1B bombers leaving RAF Fairford, explosions in the Korean DMZ), half of the 88 flagged."""
+    B-1B bombers leaving RAF Fairford, explosions in the Korean DMZ), half of the 88 flagged.
+    Also flagged: an incident like one the map showed days before with the same death or injury
+    count, from an outlet whose article date couldn't be read, with at most one current headline
+    (gate._earlier)."""
     cov = e.get("coverage") or {}
     dated = e.get("dated") or {}
     undated = int(dated.get("tries", 0)) >= UNDATED_TRIES and not dated.get("published")
     current = int(cov.get("current") or 0)
     groups = {r.get("group") or r.get("source") for r in e.get("reports", [])}
+    # An incident like one already on the map days before (gate.EARLIER_DAYS), giving the same death
+    # or injury count, from one outlet whose page and address gave no date: Khmer Times relisted the
+    # 17 October Riyadh airport strike (13 dead) on 25 October, dated by its listing, with one
+    # "current" headline about the airport. A similar incident alone isn't enough: strikes on the
+    # same places recur, and it would have faded 13 of 171 news-only incidents on 24-25 October.
+    relisted = int(cov.get("repeats") or 0) >= 1 and current <= 1 and dated.get("how") not in ("page", "address")
     # One older on-topic headline is thin evidence for a recurring kind of story (Saudi airstrikes
     # in Saada); and a corroborated event (GDELT's nearby coverage counts) isn't flagged at all.
-    return (int(cov.get("older") or 0) >= HOLD_MIN_OLDER and (current == 0 or (undated and current <= 1))
+    return ((int(cov.get("older") or 0) >= HOLD_MIN_OLDER and (current == 0 or (undated and current <= 1)) or relisted)
             and int(e.get("severity") or 1) >= HOLD_MIN_SEVERITY and len(groups) < 2 and not e.get("alert")
             and e.get("status") != "corroborated")
 

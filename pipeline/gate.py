@@ -15,15 +15,22 @@ exhaustively analyzed to make sure its not duplicate or old"):
    (dedupe.automatic).
 2. Older coverage (no model): an event resting only on news reports gets recency.py's two
    Google News searches (coverage around its date, and two weeks and more before), SEARCH_WORKERS
-   at a time.
+   at a time. A strike, attack or other incident resting only on news reports is also shown the
+   map's own events like it from PAIR_WINDOW to EARLIER_DAYS before it, near it ("earlier"): the
+   searches and the candidates both missed those days. On 2026-10-25 a Khmer Times article, "13
+   dead, 300 injured in Riyadh airport attack", relisted the Houthi strike on Riyadh airport the
+   map had shown on 17 October (13 dead): eight days on, it was too late to be a candidate (a new
+   attack days later is its own incident, dedupe.different_times) and too recent for the older
+   search (recency.AGE_DAYS), so it went on the map as a new attack.
 3. One question (CASES_PER_CALL events a call, at most MAX_CALLS a run) for the events with
-   candidates or older coverage: is it the same incident as a candidate, and is it an old story
-   that resurfaced? Gemini first, Cerebras if Gemini gives no answer (extract.GEMINI_FIRST), within
-   the share `gate_daily_max`. Events with neither pass at once.
+   candidates, older coverage or earlier events: is it the same incident as a candidate, and is
+   it an old story that resurfaced (an older headline or an earlier event on the map)? Gemini
+   first, Cerebras if Gemini gives no answer (extract.GEMINI_FIRST), within the share
+   `gate_daily_max`. Events with neither pass at once.
 4. A duplicate is folded into the event it repeats (the earliest keeps its id), so it never
    appears as new and never alerts; an old story is dropped (state["dropped_as_old"], as
-   recency.py does) when the model names the matching older headline. Answers are recorded where
-   the two checks keep theirs, so neither asks again.
+   recency.py does) when the model names the matching older headline or earlier event. Answers
+   are recorded where the two checks keep theirs, so neither asks again.
 
 An event the step could not finish (no model answered, or more new events than one run takes) is
 published at once, marked `unchecked`: on the map, but no banner or Telegram alert. It is checked
@@ -48,6 +55,8 @@ GIVE_UP = timedelta(hours=6)
 EMB_NEAR = 0.82         # meaning similarity for a candidate in the same country or sea ...
 EMB_FAR = 0.90          # ... and anywhere else
 CANDIDATES = 5
+EARLIER = 3             # earlier map events shown for the old-story question ...
+EARLIER_DAYS = recency.AGE_DAYS  # ... from PAIR_WINDOW up to this many days before (the older search starts here)
 
 _DEDUPE_RULES = dedupe.PROMPT.split("\n\n", 1)[1].rsplit("\n\nWhen you list any", 1)[0]
 _OLD_RULES = recency.PROMPT.split("\n\n", 2)[2].rsplit("\n\nReply with", 1)[0]
@@ -55,12 +64,14 @@ _OLD_RULES = recency.PROMPT.split("\n\n", 2)[2].rsplit("\n\nReply with", 1)[0]
 PROMPT = f"""You check new events on a live conflict map before they are published. Each case is one new event (its id, kind, summary, place, time and report excerpts) with:
 - "candidates": events already on the map that look like it, each with an id, kind, summary, place and time. Events are often filed under different kinds and places by different outlets: one strike as an airstrike, a missile attack and shelling; a missile test as arms production; an arms sale as diplomacy; a city, the base it is about, the capital that spoke, or the whole country. The kind and the place don't decide it.
 - "recent" and "older": headlines a news search found for its key words, around the event's date and weeks or months before (either may be missing).
+- "earlier": incidents already on the map from 2 to 14 days before it, near it, that look like it (may be missing).
 
 Question 1, duplicates: list the candidates that describe the same specific incident or statement as the event.
 {_DEDUPE_RULES}
 
-Question 2, old news (only when "older" headlines are given): is the event an old story that resurfaced with a fresh date?
+Question 2, old news (only when "older" headlines or "earlier" events are given): is the event an old story that resurfaced with a fresh date?
 {_OLD_RULES}
+The same goes for the "earlier" events: outlets relist wire stories days later with a fresh date. Answer "old": true with "earlier": <its number> when the event reports the same specific incident as an earlier one (the same strike on the same site, with the same or nearly the same figures, or only new details about it) and nothing in its reports or the recent headlines shows it happening again now. Another attack on the same place is not old: a report of a new attack, a new date, or a new wave is a new incident.
 If the event is the same incident as a candidate, answer "old": false: it is coverage of an event already on the map.
 
 When you list any candidates, also give:
@@ -68,7 +79,11 @@ When you list any candidates, also give:
 - "summary": one neutral sentence of at most 25 words stating what they agree on, with the most recent figures; only facts in the summaries, keeping attributions ("Russian MoD claims", "reportedly"); never add a number, place, or name they don't give.
 
 Reply with one JSON object and nothing else, one entry for every case:
-{{"results": [{{"i": <case number>, "same": ["<candidate id>", ...], "type": "<kind or null>", "summary": "<one sentence or null>", "old": true or false, "match": <number of the matching older headline, or null>}}]}}"""
+{{"results": [{{"i": <case number>, "same": ["<candidate id>", ...], "type": "<kind or null>", "summary": "<one sentence or null>", "old": true or false, "match": <number of the matching older headline, or null>, "earlier": <number of the matching earlier event, or null>}}]}}"""
+
+
+def _index(v, items: list) -> int | None:
+    return v if isinstance(v, int) and not isinstance(v, bool) and 0 <= v < len(items) else None
 
 
 def _pending(e: dict) -> bool:
@@ -100,6 +115,36 @@ def _meaning_candidates(e: dict, pool: list[dict], vecs: dict | None) -> list[tu
     return out[:CANDIDATES]
 
 
+def _earlier(e: dict, pool: list[dict], vec: dict) -> list[dict]:
+    """The map's incidents like e, near it, from PAIR_WINDOW to EARLIER_DAYS before it, for an incident
+    resting only on news reports: an old story relisted days later. Shown for the old-story
+    question only, never folded into (a new attack days later is its own incident)."""
+    if not _needs_search(e) or dedupe._family(e) not in dedupe.VIOLENCE:
+        return []
+    t = parse_time(e.get("time"))
+    out = []
+    for f in pool:
+        ft = parse_time(f.get("time"))
+        if (f["id"] == e["id"] or f.get("alert") or not t or not ft or dedupe._family(f) not in dedupe.VIOLENCE
+                or not dedupe.PAIR_WINDOW < t - ft <= timedelta(days=EARLIER_DAYS)
+                or not dedupe.near(e, f) or dedupe.apart(e, f)):
+            continue
+        a, b = vec.get(e["id"], [{}]), vec.get(f["id"], [{}])
+        if a[0].keys().isdisjoint(b[0]):
+            continue
+        s = dedupe._score(a, b)  # word overlap, as for late follow-ups: meaning vectors cover PAIR_WINDOW only
+        if s >= dedupe.LATE_FLOOR:
+            out.append((s, f))
+    out.sort(key=lambda x: -x[0])
+    return [f for _, f in out[:EARLIER]]
+
+
+def _same_figures(e: dict, f: dict) -> bool:
+    """The same death or injury count as an earlier incident: the Riyadh airport relisting gave the
+    17 October strike's 13 dead."""
+    return any(isinstance(e.get(k), int) and e[k] > 0 and e[k] == f.get(k) for k in ("killed", "injured"))
+
+
 def _window(e: dict, pool: list[dict]) -> list[dict]:
     t = parse_time(e.get("time"))
     return [f for f in pool if t and parse_time(f.get("time")) and abs(parse_time(f["time"]) - t) <= dedupe.PAIR_WINDOW]
@@ -110,8 +155,11 @@ def _needs_search(e: dict) -> bool:
             and all(r.get("platform") == "rss" for r in e["reports"]))
 
 
-def _show(e: dict, cands: list, found) -> dict:
+def _show(e: dict, cands: list, found, earlier: list | None = None) -> dict:
     case = {"event": dedupe._show(e), "candidates": [dedupe._show(f) for _, f in cands]}
+    if earlier:
+        case["earlier"] = [{"n": k, "kind": f.get("type"), "summary": f.get("summary"), "place": f.get("place"),
+                            "time": (f.get("time") or "")[:16]} for k, f in enumerate(earlier)]
     if found:
         recent, older = found
         day = lambda r: r["when"].strftime("%Y-%m-%d")  # noqa: E731
@@ -213,7 +261,7 @@ def check(events: list[dict], new_ids: set[str], session, ask, state: dict, sett
                 auto.append((e, f, s))
             else:
                 mine.append((s, f))
-        cases[e["id"]] = [e, mine, None]
+        cases[e["id"]] = [e, mine, None, _earlier(e, pool + history, vec)]
 
     folded: list[dict] = []
     if auto:
@@ -227,6 +275,7 @@ def check(events: list[dict], new_ids: set[str], session, ask, state: dict, sett
             cases.pop(i)
         else:
             cases[i][1] = [(s, f) for s, f in cases[i][1] if f["id"] not in gone]
+            cases[i][3] = [f for f in cases[i][3] if f["id"] not in gone]
 
     # older coverage, for events resting on news reports only (two searches each, a few at a time)
     search = [c for c in cases.values() if _needs_search(c[0])][:MAX_SEARCHED]
@@ -242,17 +291,21 @@ def check(events: list[dict], new_ids: set[str], session, ask, state: dict, sett
             if not older:
                 c[0]["checked"] = recency.CHECK_VERSION
                 c[2] = None
+    for e, _, _, earlier in cases.values():
+        if earlier:
+            e.setdefault("coverage", {})["earlier"] = len(earlier)
+            e["coverage"]["repeats"] = sum(_same_figures(e, f) for f in earlier)  # recency.held reads it
 
-    questions = [c for c in cases.values() if c[1] or c[2]]
-    for e, cands, found in cases.values():
+    questions = [c for c in cases.values() if c[1] or c[2] or c[3]]
+    for e, cands, found, earlier in cases.values():
         # nothing like it on the map and no older coverage (or none needed); an event whose search
         # failed or didn't fit this run stays pending
-        if not cands and not found and not _needs_search(e):
+        if not cands and not found and not earlier and not _needs_search(e):
             e["gate"] = "ok"
     drop, calls = set(), 0
     while questions and calls < MAX_CALLS:
         batch, questions = questions[:CASES_PER_CALL], questions[CASES_PER_CALL:]
-        payload = [{"i": n, **_show(e, cands, found)} for n, (e, cands, found) in enumerate(batch)]
+        payload = [{"i": n, **_show(e, cands, found, earlier)} for n, (e, cands, found, earlier) in enumerate(batch)]
         reply = ask(PROMPT, json.dumps({"cases": payload}, ensure_ascii=False), state, settings, now,
                     max_tokens=8000, purpose="gate")
         calls += 1
@@ -267,7 +320,7 @@ def check(events: list[dict], new_ids: set[str], session, ask, state: dict, sett
             if n is None or not 0 <= n < len(batch) or n in answered:
                 continue
             answered.add(n)
-            e, cands, found = batch[n]
+            e, cands, found, earlier = batch[n]
             ids = {str(i).strip() for i in (res.get("same") or []) if isinstance(i, (str, int))}
             members = [e]
             for _, f in cands:
@@ -284,17 +337,20 @@ def check(events: list[dict], new_ids: set[str], session, ask, state: dict, sett
                 kind = res.get("type")
                 if isinstance(kind, str) and kind in {m.get("type") for m in members}:
                     kinds[e["id"]] = kind
-            elif found:
-                recent, older = found
-                e["checked"] = recency.CHECK_VERSION
-                m = res.get("match")
-                if res.get("old") is True and isinstance(m, int) and not isinstance(m, bool) and 0 <= m < len(older):
-                    when = older[m]["when"].strftime("%Y-%m-%d")
+            elif found or earlier:
+                older = found[1] if found else []
+                if found:
+                    e["checked"] = recency.CHECK_VERSION
+                m, k = _index(res.get("match"), older), _index(res.get("earlier"), earlier)
+                match = (older[m]["title"], older[m]["when"].strftime("%Y-%m-%d")) if m is not None else (
+                    (f"the map's event {earlier[k]['id']}: {earlier[k].get('summary')}", (earlier[k].get("time") or "")[:10])
+                    if k is not None else None)
+                if res.get("old") is True and match:
                     drop.add(e["id"])
-                    log(f"[gate] old news, dropped: {e['summary']!r} matches {older[m]['title']!r} ({when})")
+                    log(f"[gate] old news, dropped: {e['summary']!r} matches {match[0]!r} ({match[1]})")
                     state.setdefault("dropped_as_old", []).append({
-                        "summary": e["summary"], "listed": e.get("time"), "match": older[m]["title"],
-                        "match_date": when, "at": iso(now), "version": recency.CHECK_VERSION, "event": e})
+                        "summary": e["summary"], "listed": e.get("time"), "match": match[0],
+                        "match_date": match[1], "at": iso(now), "version": recency.CHECK_VERSION, "event": e})
             if not _needs_search(e):
                 e["gate"] = "ok"  # else its search failed or didn't fit: searched next run
         events, more = dedupe._fold(events, same, skip, history, kinds)
