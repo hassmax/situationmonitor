@@ -38,7 +38,11 @@ jobs:
               --jq '.workflow_runs[] | "\(.id) \(.created_at)"' 2>/dev/null | while read -r id created; do
               if [ $(( $(date +%s) - $(date -d "$created" +%s) )) -ge 900 ]; then
                 echo "$(date -u +%H:%M) update run $id has been waiting since $created; cancelling it"
-                gh api -X POST "repos/$REPO/actions/runs/$id/cancel" >/dev/null || echo "could not cancel run $id"
+                # A run stuck at the check can refuse a normal cancel ("has not been queued yet", 409;
+                # 2026-11-05 to 11-09 the site stopped for four days), so force-cancel it then.
+                gh api -X POST "repos/$REPO/actions/runs/$id/cancel" >/dev/null \
+                  || gh api -X POST "repos/$REPO/actions/runs/$id/force-cancel" >/dev/null \
+                  || echo "could not cancel run $id"
               fi
             done
             last=$(gh api "repos/$REPO/actions/workflows/update.yml/runs?per_page=1" --jq '.workflow_runs[0].created_at' || true)
