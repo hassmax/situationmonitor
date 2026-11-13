@@ -17,7 +17,10 @@ permissions:
   models: read      # free GitHub Models access for event extraction
 
 concurrency:
-  group: update
+  # Renamed from "update" on 2026-11-13: run 42067608200 has been stuck "waiting" at the
+  # github-pages check since 2026-11-05 and GitHub refuses to cancel or force-cancel it
+  # (HTTP 409), so it held the old queue and every update behind it was cancelled.
+  group: update-2
   cancel-in-progress: false
 
 jobs:
