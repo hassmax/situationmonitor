@@ -220,16 +220,3 @@ body { background: radial-gradient(ellipse 60% 70% at 50% 50%, #0d1014 0%, #0709
 /* the alert banner covers the clocks behind it completely */
 .alert-banner { background: #230b0a; }
 
-/* off the record (app.js offRecord): one note above the list that is not a conflict event */
-.off-record { position: relative; display: grid; gap: 5px; margin: 0 0 4px; padding: 13px 30px 13px 8px; border-bottom: 1px solid var(--line-strong); }
-.off-record .intel-kicker { color: var(--ink-3); }
-.or-head { font-size: 13.5px; font-weight: 600; line-height: 1.4; color: var(--ink); }
-.or-body { font-size: 12.5px; line-height: 1.5; color: var(--ink-2); }
-.or-foot { display: flex; gap: 14px; align-items: baseline; font-size: 11.5px; }
-.or-foot a { color: var(--ink-2); text-underline-offset: 2px; }
-.or-foot a:hover { color: var(--ink); }
-.or-foot .linkish { font-size: 11.5px; padding: 0; }
-.or-close { all: unset; cursor: pointer; position: absolute; top: 9px; right: 6px; width: 24px; height: 24px; text-align: center; font-size: 16px; line-height: 24px; color: var(--ink-3); }
-.or-close:hover { color: var(--ink); }
-.or-close:focus-visible { outline: 1px solid var(--select); }
-.off-record + .brief-teaser button { border-top: 0; }
