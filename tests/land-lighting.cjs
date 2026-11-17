@@ -20,10 +20,10 @@ vm.runInContext(section('  function paintStates', '  function paintLand'), ctx);
 ctx.paintStates();
 
 const at = (n) => [...row.data.slice(n * 4, n * 4 + 4)];
-assert.deepEqual(at(0), [0x14, 0x1b, 0x24, 255], 'entry 0 is the plain land the picture holds');
-assert.deepEqual(at(643), [0x3a, 0x4e, 0x64, 255], 'the country whose brief is open');
-assert.deepEqual(at(804), [0x28, 0x37, 0x48, 255], 'a country with events');
-assert.deepEqual(at(112), [0x1c, 0x27, 0x34, 255], "a country of the chosen region");
+assert.deepEqual(at(0), [0x20, 0x25, 0x2c, 255], 'entry 0 is the plain land the picture holds');
+assert.deepEqual(at(643), [0x5a, 0x63, 0x70, 255], 'the country whose brief is open');
+assert.deepEqual(at(804), [0x39, 0x41, 0x4c, 255], 'a country with events');
+assert.deepEqual(at(112), [0x2a, 0x30, 0x39, 255], "a country of the chosen region");
 assert.deepEqual(at(250), [0, 0, 0, 0], 'other countries are left as painted');
 assert.ok(ctx.landIds.states.needsUpdate && puts === 1, 'the table goes up to the graphics chip');
 

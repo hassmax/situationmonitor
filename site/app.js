@@ -354,12 +354,12 @@
     .backgroundColor("rgba(0,0,0,0)")
     .showGraticules(false)
     .showAtmosphere(true)
-    .atmosphereColor("#2f8fe0")
-    .atmosphereAltitude(0.16)
+    .atmosphereColor("#aebccd")   // a thin pale rim, not a glow
+    .atmosphereAltitude(0.085)
     .pointOfView({ lat: 18, lng: 10, altitude: 3.1 });
   const mat = world.globeMaterial();
-  mat.color.set("#05090f");
-  if (mat.emissive) mat.emissive.set("#04080d");
+  mat.color.set("#06080b");
+  if (mat.emissive) mat.emissive.set("#05070a");
   mat.shininess = 5;
   const controls = world.controls();
   controls.autoRotate = false;
@@ -507,9 +507,44 @@
     const p = countryCenter(iso);
     return !!p && isFinite(c._lat) && km(p.lat, p.lon, c._lat, c._lon) < 1500;
   }
-  const LAND_BASE = "#141b24";
-  const landColor = (f) => (S.briefNum && Number(f.id) === S.briefNum ? "#3a4e64" : S.active.has(f.id) ? "#283748" : S.hot.has(f.id) ? "#1c2734" : LAND_BASE);
-  const OCEAN = "#060a10";
+  const LAND_BASE = "#20252c";
+  const landColor = (f) => (S.briefNum && Number(f.id) === S.briefNum ? "#5a6370" : S.active.has(f.id) ? "#39414c" : S.hot.has(f.id) ? "#2a3039" : LAND_BASE);
+  const OCEAN = "#07090c";
+  // Night (the plate look, 2026-11-17): the half of the Earth where it is night now is shaded, from
+  // the sun's position worked out in the page (NOAA's short formulas: good to a fraction of a
+  // degree), moved once a minute. Done inside the globe's own shader (a few lines added to it, as
+  // the lit countries are below): nothing extra is drawn. A separate see-through sphere was tried
+  // first and broke up into bands on small screens. It shows the hour, nothing more.
+  const night = { sun: new Float32Array([0, 0, 1]) };
+  function sunPoint(d) {
+    const start = Date.UTC(d.getUTCFullYear(), 0, 1), hours = d.getUTCHours() + d.getUTCMinutes() / 60 + d.getUTCSeconds() / 3600;
+    const g = (2 * Math.PI / 365.24) * (Math.floor((d - start) / 864e5) + (hours - 12) / 24);
+    const decl = 0.006918 - 0.399912 * Math.cos(g) + 0.070257 * Math.sin(g) - 0.006758 * Math.cos(2 * g) + 0.000907 * Math.sin(2 * g)
+      - 0.002697 * Math.cos(3 * g) + 0.00148 * Math.sin(3 * g);
+    const eot = 229.18 * (0.000075 + 0.001868 * Math.cos(g) - 0.032077 * Math.sin(g) - 0.014615 * Math.cos(2 * g) - 0.040849 * Math.sin(2 * g));  // minutes
+    let lng = -15 * (hours - 12 + eot / 60);
+    lng = ((lng + 540) % 360) - 180;
+    return { lat: decl * 180 / Math.PI, lng };
+  }
+  function moveSun() {
+    const p = sunPoint(new Date()), c = world.getCoords(p.lat, p.lng, 0), n = Math.hypot(c.x, c.y, c.z) || 1;
+    night.sun[0] = c.x / n; night.sun[1] = c.y / n; night.sun[2] = c.z / n;
+  }
+  // full dark from 12° past the line (the end of nautical twilight), easing in from a little before sunset
+  function nightShader(shader) {
+    shader.uniforms.gsmSun = { value: night.sun };
+    shader.vertexShader = "varying vec3 gsmDir;\n" + shader.vertexShader.replace("#include <begin_vertex>",
+      "#include <begin_vertex>\n  gsmDir = normalize((modelMatrix * vec4(position, 1.0)).xyz);");
+    shader.fragmentShader = "uniform vec3 gsmSun;\nvarying vec3 gsmDir;\n" + shader.fragmentShader.replace("#include <color_fragment>",
+      "#include <color_fragment>\n  diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.012, 0.016, 0.022), (1.0 - smoothstep(-0.21, 0.05, dot(normalize(gsmDir), gsmSun))) * 0.5);");
+  }
+  try {
+    moveSun();
+    setInterval(moveSun, 60000);
+    mat.onBeforeCompile = nightShader;
+    mat.customProgramCacheKey = () => "gsm-night";
+    mat.needsUpdate = true;
+  } catch (err) { console.error(err); }
   // Territorial control (see controlNote): the source's shapes, painted onto the globe with the land.
   const CONTROL_FILL = { occupied: "rgba(214,174,110,0.55)", advance: "rgba(245,165,36,0.9)" };
   const CONTROL_LINE = "rgba(236,212,160,0.75)";
@@ -517,7 +552,7 @@
   const hexRgb = (h) => [1, 3, 5].map((i) => parseInt(String(h || "#999999").slice(i, i + 2), 16));
   const AREA_ALPHA = { occupied: 0.5, claimed: 0.22 };
   const pathColorOf = (p) => (p.control ? (p.color ? rgba(hexRgb(p.color), p.faint ? 0.45 : 0.85) : CONTROL_LINE) : borderColor(p.fid));
-  const BORDER_RGBA = { active: [214, 226, 240, 0.75], hot: [170, 190, 215, 0.4], base: [150, 170, 195, 0.2] };
+  const BORDER_RGBA = { active: [232, 232, 228, 0.7], hot: [190, 196, 204, 0.4], base: [165, 172, 182, 0.2] };
   const borderRgba = (id) => (S.active.has(id) ? BORDER_RGBA.active : S.hot.has(id) ? BORDER_RGBA.hot : BORDER_RGBA.base);
   const borderColor = (id) => { const c = borderRgba(id); return `rgba(${c[0]},${c[1]},${c[2]},${c[3]})`; };
 
@@ -768,6 +803,7 @@
   }
 #endif`;
       mat.onBeforeCompile = (shader) => {
+        nightShader(shader);
         shader.uniforms.gsmIds = { value: ids };
         shader.uniforms.gsmStates = { value: states };
         shader.fragmentShader = "uniform sampler2D gsmIds;\nuniform sampler2D gsmStates;\n"
@@ -2719,6 +2755,7 @@
   function renderLists({ events }) {
     renderCounts();
     renderTally(events);
+    renderPulse();
     renderSideLists();
     if ($("#detail").hidden) renderFeed(events);
   }
@@ -2904,6 +2941,45 @@
   }
   tickClock();
   setInterval(tickClock, 1000);
+
+  // The pulse (the plate look, 2026-11-17): events an hour over the last 7 days, drawn along the
+  // bottom of the map; the hours inside the chosen time window are lit. It counts what the list
+  // would hold with the window at 7 days (same region, filters and search), by when each event
+  // happened (`time`). A click on it picks the shortest window that reaches the hour clicked.
+  const PULSE_H = 168;
+  let pulseKey = "";
+  function renderPulse() {
+    const el = document.getElementById("pulse");
+    if (!el || !S.data || !el.getClientRects().length) return;  // hidden on phones
+    const now = Date.now(), end = Math.ceil(now / HOUR) * HOUR, bins = new Array(PULSE_H).fill(0);
+    const was = S.windowH;
+    S.windowH = PULSE_H;
+    let total = 0;
+    for (const e of S.data.events) {
+      if (!onMap(e) || !passes(e)) continue;
+      const i = PULSE_H - 1 - Math.floor((end - 1 - e._t) / HOUR);
+      if (i >= 0 && i < PULSE_H) { bins[i]++; total++; }
+    }
+    S.windowH = was;
+    const key = bins.join(",") + "|" + was + "|" + end;
+    if (key === pulseKey) return;
+    pulseKey = key;
+    const max = Math.max(1, ...bins), W = PULSE_H * 3, H = 34, lit = PULSE_H - was;
+    let bars = "", ticks = "";
+    bins.forEach((n, i) => {
+      if (!n) return;
+      const h = Math.max(2, Math.round(Math.sqrt(n / max) * H));
+      bars += `<rect x="${i * 3}" y="${H - h}" width="2" height="${h}"${i >= lit ? ' class="on"' : ""}/>`;
+    });
+    const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+    for (let i = 0; i < PULSE_H; i++) {
+      const t = end - (PULSE_H - i) * HOUR;  // the start of this hour
+      if (new Date(t).getUTCHours() === 0) ticks += `<path d="M${i * 3 - 0.5} ${H + 2}v4"/><text x="${i * 3 + 3}" y="${H + 12}">${days[new Date(t).getUTCDay()]}</text>`;
+    }
+    const span = { 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[was];
+    el.innerHTML = `<svg viewBox="0 0 ${W} ${H + 14}" width="${W}" height="${H + 14}" role="img" aria-label="Events an hour over the last 7 days: ${total} in all. The last ${span} are lit.">
+      <rect class="pulse-win" x="${lit * 3 - 2}" y="0" width="${was * 3 + 2}" height="${H}"/><path class="pulse-base" d="M0 ${H + 0.5}H${W}"/>${bars}<g class="pulse-days">${ticks}</g></svg>`;
+  }
 
   let tallyWas = null;
   function renderTally(events) {
@@ -3791,6 +3867,13 @@
         const pov = world.pointOfView();
         world.pointOfView({ ...pov, altitude: clamp(pov.altitude * scale, 0.12, 5.4) }, reduceMotion ? 0 : 300);
       });
+    });
+    $("#pulse").addEventListener("click", (ev) => {
+      const box = ev.currentTarget.getBoundingClientRect();
+      const hoursAgo = (1 - clamp((ev.clientX - box.left) / box.width, 0, 1)) * PULSE_H;
+      const pick = WINDOWS.find(([, h]) => h >= hoursAgo) || WINDOWS[WINDOWS.length - 1];
+      setWindow(pick[1]);
+      renderSoon();
     });
     $("#windowSeg").addEventListener("click", (ev) => {
       const b = ev.target.closest("[data-window]");

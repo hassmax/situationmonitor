@@ -1,0 +1,221 @@
+/* The plate (the owner, 2026-11-17: "make this visually stunning. next level UI"): the globe fills
+   the screen and the rest is set around it like the margins of an atlas plate. No cards: the two
+   columns are type on the dark, held apart from the map by one hairline each; only things that
+   float over the map (cards beside a marker, alerts, notes) keep a housing, and it is square and
+   plain. Near-black and bone white instead of navy; deep red still means alert and new, white
+   still means selected, and the event colours keep their meanings. Loaded last, over command.css.
+   Phones keep solid panels (frosted or see-through ones stuttered there) with the same colours. */
+:root {
+  --sea-edge: #030405; --sea: #07090c; --sea-glow: #0e1116;
+  --panel: rgba(7, 9, 12, .94);
+  --panel-solid: #0b0d11;
+  --line: rgba(236, 232, 224, .1);
+  --line-strong: rgba(236, 232, 224, .24);
+  --ink: #efece6; --ink-2: #b1aea8; --ink-3: #807e7a;
+  --select: #f4f1eb;
+  --signal: #d9d6cf; --signal-rgb: 217, 214, 207;
+  --land-hot: #c9c6bf;
+  --accent: #d8483a; --accent-rgb: 216, 72, 58;
+  --r: 2px;
+}
+body { background: radial-gradient(ellipse 60% 70% at 50% 50%, #0d1014 0%, #07090c 55%, #030405 100%); }
+::selection { background: rgba(var(--accent-rgb), .45); color: #fff; }
+
+/* everything square: the same small corner on every control and housing */
+.panel, .feed, .filters, .brand-row, .status-cluster, .region-focus, .map-dock, .region-btn, .region-actions button,
+.legend-item, .check, .chip, .icon-btn, .filters-toggle, .seg, .seg::before, .seg button, .search input, .brief, .item,
+.tip, .fly, .fly-rows button, .fly-zoom, .region-focus button, .focus-toast, kbd, .map-dock .seg, .map-dock .seg::before,
+.target, .chip-badge, .alert-banner, .alert-card, .alert-banner button, .alert-card button, .bf-row, .bf-hot button,
+.brief-teaser button, .sort-toggle, .feed-count, .side-row, .perf-box { border-radius: var(--r); }
+.alert-card { clip-path: inset(0 100% 100% 0); }
+.alert-card.is-open { clip-path: inset(0 0 0 0); }
+:focus-visible { outline: 1px solid var(--select); outline-offset: 2px; border-radius: var(--r); }
+
+/* things that float over the map: one plain housing */
+.tip, .fly, .focus-toast, .alert-card, .region-focus {
+  background: #0b0d11; border: 1px solid var(--line-strong); box-shadow: 0 18px 44px rgba(0, 0, 0, .6);
+}
+.focus-toast { color: var(--ink-2); }
+.mk-label { background: rgba(8, 10, 13, .92); }
+.mk.cluster-lead .mk-count { background: #0b0d11; }
+
+/* the event view: ruled, not boxed */
+.event-times > div, .evidence-stats > div { background: none; border: 0; border-left: 1px solid var(--line-strong); border-radius: 0; padding: 1px 0 1px 12px; }
+.evidence-stats strong, .evidence-stats b { font-family: var(--mono); font-weight: 400; }
+.verdict { background: none; border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); border-radius: 0; padding: 13px 0; }
+.legal-basis, .cite, .fleet-row, .flow-row, .spotbar, .live-note, .demo-banner, .focus-toast, .empty pre.err, .lens, .lens button { border-radius: var(--r); }
+.cite { background: none; border-color: var(--line-strong); }
+
+/* numbers */
+.tally strong, .clock time, .feed-count, .region-btn .count, .item-meta time { font-feature-settings: "zero" 0; }
+
+/* list rows */
+.item { padding: 15px 6px 15px 8px; border: 0; border-top: 1px solid var(--line); border-radius: 0; }
+.feed-list > li:first-child .item, .brief-teaser + li .item { border-top-color: transparent; }
+.item:hover { background: rgba(var(--signal-rgb), .04); border-color: var(--line); transform: none; }
+.item[aria-current="true"] { background: rgba(var(--signal-rgb), .06); box-shadow: inset 2px 0 0 var(--select); }
+.item-type { color: var(--ink-2); font-weight: 600; }
+.item-summary { font-size: 13.5px; line-height: 1.5; font-weight: 400; color: var(--ink); }
+.item.sev-3 .item-summary, .item.sev-4 .item-summary, .item.sev-5 .item-summary { font-weight: 600; }
+.item-meta time { color: var(--ink-3); }
+.item-foot { color: var(--ink-3); }
+.item.is-new .item-type::after { background: none; padding: 0; color: var(--accent); letter-spacing: .14em; }
+
+/* the line that opens the intelligence brief: a rule and a red kicker, not a card */
+.brief-teaser button { margin: 0 0 4px; padding: 13px 6px 13px 8px; background: none; border: 0; border-bottom: 1px solid var(--line-strong); border-radius: 0; }
+.brief-teaser button:hover { background: rgba(var(--signal-rgb), .04); }
+.intel-kicker { color: var(--accent); }
+.brief-teaser .bt-go { font-size: 16px; color: var(--ink-2); }
+
+/* search: a ruled line to write on */
+.search input { background: none; border: 0; border-bottom: 1px solid var(--line-strong); border-radius: 0; padding-left: 0; height: 38px; }
+.search input:focus { border-bottom-color: var(--select); box-shadow: none; outline: none; }
+.sort-toggle, .feed-count { border-color: var(--line-strong); }
+
+/* region list */
+.region-btn { border: 0; border-radius: 0; }
+.region-btn:hover { background: rgba(var(--signal-rgb), .04); }
+.region-btn[aria-pressed=true] { background: rgba(var(--signal-rgb), .06); border: 0; box-shadow: inset 2px 0 0 var(--select); }
+.region-btn[aria-pressed=true] .region-mark { background: var(--select); box-shadow: none; }
+.region-mark { background: var(--ink-3); }
+.region-btn .spark rect { fill: var(--ink-3); }
+.region-btn .spark rect.today { fill: var(--ink); }
+.region-actions button { border-color: var(--line-strong); }
+.region-actions button[aria-pressed=true] { background: var(--select); color: #0b0d11; border-color: var(--select); }
+.rotation-toggle[data-rotating="true"], .dock-button:hover, .zoom-controls button:hover { color: var(--ink); }
+.live-tag { color: var(--accent); }
+.detail h2 { color: var(--ink-3); }
+.brand-orbit .orbit-point { fill: var(--accent); }
+
+/* the time window: words with a rule under the chosen one */
+.map-dock .seg { background: none; border: 0; padding: 0; gap: 0; width: 176px; }
+.map-dock .seg::before { top: auto; bottom: 0; height: 2px; left: calc(var(--seg-i, 1) * 25% + 8px); width: calc(25% - 16px); background: var(--select); box-shadow: none; border-radius: 0; }
+.map-dock .seg button { font: 500 11.5px/1 var(--mono); letter-spacing: .02em; color: var(--ink-3); background: none; }
+.map-dock .seg button:hover { color: var(--ink-2); }
+.map-dock .seg button[aria-pressed=true] { color: var(--ink); background: none; }
+
+/* the pulse (app.js renderPulse): events an hour over 7 days; the chosen window is lit */
+.pulse { display: none; }
+.pulse svg { display: block; overflow: visible; }
+.pulse rect { fill: var(--ink-3); opacity: .5; }
+.pulse rect.on { fill: var(--ink); opacity: 1; }
+.pulse .pulse-win { fill: rgba(var(--signal-rgb), .05); opacity: 1; }
+.pulse .pulse-base, .pulse .pulse-days path { stroke: var(--line-strong); stroke-width: 1; fill: none; }
+.pulse .pulse-days text { font: 500 8.5px/1 var(--font); letter-spacing: .12em; text-transform: uppercase; fill: var(--ink-3); }
+
+/* ---------------------------------------------------------------- wide screens: the plate */
+@media (min-width: 1024px) {
+  :root { --gap: 22px; --left-w: 248px; --right-w: 372px; --pad: 26px; }
+  .hud { padding: var(--pad); gap: var(--gap); grid-template-rows: 78px minmax(0, 1fr) 94px; }
+
+  /* no cards */
+  .panel, .brand-row, .status-cluster, .filters, .feed, .map-dock, .clocks {
+    background: none; border: 0; box-shadow: none; border-radius: 0; backdrop-filter: none; -webkit-backdrop-filter: none;
+  }
+  /* the margins: the dark gathers behind each column and one hairline stands between it and the map */
+  body::after {
+    --l: calc(var(--pad) + var(--left-w) + var(--gap) / 2);
+    --r: calc(var(--pad) + var(--right-w) + var(--gap) / 2);
+    background:
+      linear-gradient(90deg, transparent calc(var(--l) - 1px), var(--line) calc(var(--l) - 1px), var(--line) var(--l), transparent var(--l)),
+      linear-gradient(270deg, transparent calc(var(--r) - 1px), var(--line) calc(var(--r) - 1px), var(--line) var(--r), transparent var(--r)),
+      linear-gradient(90deg, rgba(5, 6, 8, .93) 0, rgba(5, 6, 8, .9) var(--l), rgba(5, 6, 8, 0) calc(var(--l) + 110px)),
+      linear-gradient(270deg, rgba(5, 6, 8, .95) 0, rgba(5, 6, 8, .93) var(--r), rgba(5, 6, 8, 0) calc(var(--r) + 110px)),
+      linear-gradient(180deg, rgba(5, 6, 8, .88) 0, rgba(5, 6, 8, .6) 70px, rgba(5, 6, 8, 0) 150px),
+      linear-gradient(0deg, rgba(5, 6, 8, .92) 0, rgba(5, 6, 8, .7) 90px, rgba(5, 6, 8, 0) 190px);
+  }
+  .panels-hidden::after { background: linear-gradient(180deg, rgba(5, 6, 8, .88) 0, rgba(5, 6, 8, .6) 70px, rgba(5, 6, 8, 0) 150px), linear-gradient(0deg, rgba(5, 6, 8, .92) 0, rgba(5, 6, 8, .7) 90px, rgba(5, 6, 8, 0) 190px); }
+
+  /* masthead */
+  .brand-row { height: 78px; padding: 0; align-items: flex-start; gap: 10px; }
+  .brand-title > .eyebrow { font-size: 8.5px; letter-spacing: .2em; color: var(--accent); }
+  .wordmark { margin-top: 6px; font-size: 21px; line-height: 1.08; font-weight: 700; letter-spacing: -.025em; white-space: normal; }
+  .wordmark span { display: inline; font-weight: 300; color: var(--ink); }
+  .byline { margin-top: 6px; font-size: 10px; letter-spacing: .04em; color: var(--ink-3); }
+  .panels-toggle { margin-top: 2px; border-color: transparent; color: var(--ink-3); background: none; }
+  .panels-toggle:hover { color: var(--ink); border-color: var(--line-strong); }
+
+  /* the count */
+  .status-cluster { height: 78px; padding: 0; flex-direction: row; align-items: flex-start; justify-content: space-between; gap: 16px; }
+  .status-cluster .tally { order: 0; justify-content: flex-start; gap: 28px; flex: none; }
+  .status-cluster .stat { flex-direction: column; align-items: flex-start; gap: 5px; }
+  .status-cluster .tally strong { font: 300 40px/.9 var(--mono); letter-spacing: -.06em; color: var(--ink); }
+  .status-cluster .stat:nth-child(2) strong { color: var(--ink-2); }
+  .status-cluster .stat > span { font-size: 8.5px; letter-spacing: .16em; color: var(--ink-3); }
+  .status-cluster .freshness { order: 1; flex: 1; min-width: 0; margin-top: 3px; flex-wrap: wrap; justify-content: flex-end; gap: 4px 6px; font-size: 10px; line-height: 1.35; text-align: right; color: var(--ink-3); }
+  .status-cluster #freshText { flex: 0 1 auto; min-width: 0; white-space: normal; }
+  .status-cluster .beacon { margin-top: 4px; align-self: flex-start; }
+  .status-cluster .live-clock { margin-left: 0; width: 100%; justify-content: flex-end; }
+  .beacon { width: 6px; height: 6px; box-shadow: none !important; }
+
+  /* clocks: type on the sky */
+  .clocks { top: var(--pad); height: 44px; padding: 0; }
+  .clock { padding: 0 16px; border-left: 0; text-align: center; }
+  .clock span { font-size: 8px; letter-spacing: .18em; }
+  .clock time { margin-top: 5px; font-size: 14px; font-weight: 400; color: var(--ink-3); }
+  .clock.is-utc time { font-size: 14px; color: var(--ink); }
+  .clock.is-utc span { color: var(--accent); }
+
+  /* left column */
+  .filters { padding: 0; }
+  .filters section { padding: 16px 0; }
+  .filters section:first-child { padding-top: 0; }
+  .filters h2 { font-size: 9px; letter-spacing: .18em; color: var(--ink-3); }
+  .region-btn { padding: 7px 6px 7px 8px; min-height: 38px; font-size: 12px; color: var(--ink-2); }
+  .legend-item { padding: 6px 2px; color: var(--ink-2); }
+  .side-title { font-size: 9px; letter-spacing: .18em; }
+
+  /* right column */
+  .feed-head { padding: 0 0 12px; gap: 10px; background: none; border-bottom: 0; }
+  .feed-top .eyebrow { font-size: 8.5px; letter-spacing: .2em; }
+  .feed-head h2 { font-size: 30px; font-weight: 300; letter-spacing: -.035em; line-height: 1.05; margin-top: 4px; }
+  .feed-list { padding: 0 6px 0 0; }
+  .detail { padding: 2px 8px 20px 0; }
+  .intel h3 { font-size: 30px; font-weight: 300; letter-spacing: -.035em; }
+  .detail h3 { font-weight: 500; }
+
+  /* the dock: the pulse over a row of plain controls */
+  .map-dock { display: grid; grid-template-columns: auto auto auto auto; justify-content: center; align-items: center; column-gap: 18px; row-gap: 6px; padding: 0; align-self: end; }
+  .pulse { display: block; grid-column: 1 / -1; grid-row: 1; justify-self: center; cursor: pointer; }
+  .dock-time > .eyebrow { display: none; }
+  .dock-button { flex-direction: row; gap: 6px; min-height: 28px; font: 500 10px/1 var(--font); letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); }
+  .dock-button svg { width: 15px; height: 15px; }
+  .map-dock .seg button { min-height: 28px; }
+  .zoom-controls { border-left: 0; padding-left: 0; }
+  .zoom-controls button { min-height: 28px; width: 24px; font: 400 16px/1 var(--mono); color: var(--ink-3); }
+  .map-hint { display: none; }
+  .scope-read { left: 6px; right: 6px; bottom: -4px; font-size: 9px; letter-spacing: .08em; opacity: .8; }
+  .focus-toast { top: 96px; }
+  .region-focus { margin-top: 0; }
+}
+@media (min-width: 1600px) {
+  :root { --left-w: 272px; --right-w: 408px; --gap: 26px; --pad: 32px; }
+  .hud { padding: var(--pad); gap: var(--gap); }
+  .wordmark { font-size: 23px; }
+}
+@media (min-width: 1024px) and (max-width: 1190px) {
+  :root { --left-w: 218px; --right-w: 318px; --pad: 18px; --gap: 18px; }
+  .status-cluster .tally strong { font-size: 32px; }
+  .status-cluster .freshness #freshText { max-width: 110px; }
+  .wordmark { font-size: 18px; }
+  .pulse { display: none; }
+}
+@media (min-width: 1024px) and (max-height: 700px) { .pulse { display: none; } .hud { grid-template-rows: 78px minmax(0, 1fr) 50px; } }
+
+/* ---------------------------------------------------------------- phones and tablets: solid, same colours */
+@media (max-width: 1023px) {
+  .panel { background: #0a0c10; box-shadow: none; }
+  .brand-row, .status-cluster .freshness, .filters-toggle, .map-dock { background: #0a0c10; }
+  .feed { border-color: var(--line-strong); }
+  .sheet-handle::after { background: var(--ink-3); width: 32px; height: 2px; border-radius: 0; }
+  .feed-head { background: none; }
+  .feed-head h2 { font-weight: 300; letter-spacing: -.03em; font-size: 24px; }
+  .item { padding: 14px 6px; }
+  .brief-teaser button { padding: 11px 6px; }
+  .brand-title > .eyebrow { color: var(--accent); letter-spacing: .16em; }
+  .wordmark span { font-weight: 300; color: var(--ink); }
+  .map-dock .seg { width: 176px; }
+}
+
+/* the alert banner covers the clocks behind it completely */
+.alert-banner { background: #230b0a; }

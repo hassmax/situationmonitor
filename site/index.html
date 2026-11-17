@@ -6,7 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Global Situation Monitor</title>
   <meta name="description" content="A live globe of armed-conflict events, built from public OSINT posts and news feeds.">
-  <meta name="theme-color" content="#060a10">
+  <meta name="theme-color" content="#07090c">
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%230c2239' stroke='%237aa9d6' stroke-width='2'/%3E%3Ccircle cx='20' cy='12' r='4' fill='%23ff5b3a'/%3E%3C/svg%3E">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -14,6 +14,7 @@
   <link rel="stylesheet" href="styles.css?v=__BUILD__">
   <link rel="stylesheet" href="observatory.css?v=__BUILD__">
   <link rel="stylesheet" href="command.css?v=__BUILD__">
+  <link rel="stylesheet" href="plate.css?v=__BUILD__">
   <script>
     // Start downloading the events and the country shapes now, alongside the globe library, and
     // show the newest events in the feed as soon as they arrive, before the globe has loaded.
@@ -116,6 +117,7 @@
         <ul class="source-list" id="sourcesList" hidden></ul>
         <p class="fineprint">Built automatically from public posts and news feeds. Summaries are machine-written, so open the sources before relying on any report.</p>
         <p class="fineprint">Places geocoded with <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> data. Corroboration also checks news coverage logged by <a href="https://www.gdeltproject.org/">GDELT</a>. Carrier positions from USNI News.</p>
+        <p class="fineprint">The darker half of the globe is where it is night now. The bars under the map count events an hour over the last 7 days.</p>
       </section>
     </aside>
 
@@ -149,6 +151,7 @@
     </div>
     <nav class="map-dock panel" aria-label="Globe controls">
       <button type="button" id="overviewBtn" class="dock-button" title="View the whole globe"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><circle cx="10" cy="10" r="7"/><ellipse cx="10" cy="10" rx="3" ry="7"/><path d="M3 10h14"/></svg><span>Overview</span></button>
+      <div class="pulse" id="pulse" title="Events an hour, last 7 days. Click to set the time window."></div>
       <div class="dock-time"><span class="eyebrow">Time window</span><div class="seg" role="group" aria-label="Time window" id="windowSeg"></div></div>
       <button type="button" id="rotationBtn" class="dock-button rotation-toggle" aria-label="Pause automatic rotation" aria-pressed="true" title="Automatic rotation starts after 30 seconds"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M16 7A6.5 6.5 0 1 0 16 13M16 3v4h-4"/><path d="M8 7v6M11 7v6"/></svg></button>
       <div class="zoom-controls"><button type="button" id="zoomOutBtn" aria-label="Zoom out">−</button><button type="button" id="zoomInBtn" aria-label="Zoom in">+</button></div>
