@@ -3209,6 +3209,25 @@
   }
 
   // A short line at the top of the list that opens the brief.
+  // Off the record (the owner, 2026-11-17, "as a gag"): one note that is not a conflict event,
+  // shown above the list in the Worldwide view until a week after the news. It is never an event:
+  // no marker, not in the counts, no alert. A reader can put it away (remembered on this device).
+  const OFF_RECORD = {
+    id: "carney-2026-11", until: Date.UTC(2026, 10, 24),
+    head: "Pizza Hut co-founder Dan Carney has died at 95",
+    body: "He and his brother Frank opened the first Pizza Hut in 1958 near Wichita State University, on a $600 loan from their mother, and sold the chain to PepsiCo in 1977. Wichita State announced his death. Not a conflict event; the pizza index carries on.",
+    link: "https://www.cnn.com/2026/11/16/us/dan-carney-pizza-hut-co-founder-death-hnk", source: "CNN",
+    at: { lat: 37.719, lng: -97.293, altitude: 0.9 },  // Wichita State University, where the first one opened
+  };
+  let offRecordGone = false;
+  try { offRecordGone = localStorage.getItem("gsm_offRecord") === OFF_RECORD.id; } catch (_) { /* storage blocked */ }
+  function offRecord() {
+    if (offRecordGone || Date.now() > OFF_RECORD.until || S.region !== "world" || S.country || String(S.query || "").trim()) return "";
+    const o = OFF_RECORD;
+    return `<li class="off-record"><span class="intel-kicker">Off the record</span><button type="button" class="or-close" data-or-close aria-label="Put this note away">×</button>
+      <strong class="or-head">${esc(o.head)}</strong><span class="or-body">${esc(o.body)}</span>
+      <span class="or-foot"><a href="${esc(o.link)}" target="_blank" rel="noopener">${esc(o.source)} report</a><button type="button" class="linkish" data-or-fly>Show where it began</button></span></li>`;
+  }
   function briefTeaser() {
     // A brief covers all events, never just a search's results (a review the owner passed on,
     // 2026-10-16: the "Worldwide" brief stayed above search results as if it were about them).
@@ -3245,7 +3264,7 @@
   function renderFeed(events) {
     const list = $("#feedList");
     const names = Object.fromEntries(S.theaters.map((t) => [t.id, t.name]));
-    const top = briefTeaser();
+    const top = offRecord() + briefTeaser();
     $("#feedCount").textContent = `${events.length}`;
     $("#feedTitle").textContent = S.feedSort === "important" ? "Most important" : "Latest";
     if (!events.length) {
@@ -3932,6 +3951,13 @@
     }, true);
     $("#feedList").addEventListener("click", (ev) => {
       if (ev.target.closest("[data-more]")) { S.feedLimit += FEED_PAGE; render(); return; }
+      if (ev.target.closest("[data-or-close]")) {
+        offRecordGone = true;
+        try { localStorage.setItem("gsm_offRecord", OFF_RECORD.id); } catch (_) { /* storage blocked */ }
+        ev.target.closest(".off-record").remove();
+        return;
+      }
+      if (ev.target.closest("[data-or-fly]")) { flyTo(OFF_RECORD.at); return; }
       const brief = ev.target.closest("[data-brief]");
       if (brief) { openBrief(brief.dataset.brief ? { iso: brief.dataset.brief } : { world: true }); return; }
       const b = ev.target.closest("[data-id]");
