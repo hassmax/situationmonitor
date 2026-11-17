@@ -4792,5 +4792,283 @@
 "text": "Flight data: adsb.lol contributors, open data under the ODbL 1.0 licence",
 "url": "https://opendatacommons.org/licenses/odbl/1-0/"
 }
+},
+"tension": {
+"computed_at": "2026-09-26T17:54:00Z",
+"window_hours": 24,
+"baseline_days": 30,
+"levels": [
+{
+"from": 0.0,
+"word": "Low"
+},
+{
+"from": 0.25,
+"word": "Guarded"
+},
+{
+"from": 0.6,
+"word": "Elevated"
+},
+{
+"from": 0.85,
+"word": "High"
+},
+{
+"from": 0.97,
+"word": "Severe"
+}
+],
+"regions": [
+{
+"theater": "ukraine",
+"name": "Russia–Ukraine",
+"days": 30,
+"level": "Elevated",
+"reading": 0.82,
+"raw": 0.82,
+"prev": 0.74,
+"score": 17.8,
+"usual": 6.2,
+"events": 9,
+"reasons": [
+{
+"id": "713163914c2c",
+"points": 6.0,
+"why": "missile drone"
+},
+{
+"id": "2b370ab73e04",
+"points": 2.5,
+"why": "territory"
+},
+{
+"id": "3fb55a726b74",
+"points": 2.5,
+"why": "ground"
+},
+{
+"id": "e894c3e65814",
+"points": 1.9,
+"why": "airstrike"
+},
+{
+"id": "9f1c4df770ef",
+"points": 1.9,
+"why": "naval"
+}
+],
+"analyst": []
+},
+{
+"theater": "nato_east",
+"name": "NATO flank and hybrid",
+"days": 30,
+"level": "Guarded",
+"reading": 0.41,
+"raw": 0.41,
+"prev": 0.47,
+"score": 3.2,
+"usual": 4.2,
+"events": 2,
+"reasons": [
+{
+"id": "demoextra3",
+"points": 1.7,
+"why": "hybrid"
+},
+{
+"id": "demoextra2",
+"points": 1.5,
+"why": "incursion"
+}
+],
+"analyst": []
+},
+{
+"theater": "mideast",
+"name": "Middle East",
+"days": 30,
+"level": "High",
+"reading": 0.95,
+"raw": 0.89,
+"prev": 0.71,
+"score": 25.4,
+"usual": 8.9,
+"events": 10,
+"reasons": [
+{
+"id": "09e581c7eecc",
+"points": 6.0,
+"why": "airstrike"
+},
+{
+"id": "0fb181ef6dd2",
+"points": 6.0,
+"why": "naval"
+},
+{
+"id": "34c69d36e34b",
+"points": 4.2,
+"why": "air defense"
+},
+{
+"id": "0e609817115e",
+"points": 2.5,
+"why": "airstrike"
+},
+{
+"id": "6249cd9d78a0",
+"points": 1.9,
+"why": "ground"
+}
+],
+"analyst": [
+{
+"headline": "Sample: US increasing force posture in the Gulf",
+"trend": "escalating",
+"ids": [
+"34c69d36e34b",
+"0fb181ef6dd2"
+]
+}
+]
+},
+{
+"theater": "horn",
+"name": "Sudan and Horn of Africa",
+"days": 30,
+"level": "Elevated",
+"reading": 0.68,
+"raw": 0.68,
+"prev": 0.66,
+"score": 17.6,
+"usual": 14.1,
+"events": 6,
+"reasons": [
+{
+"id": "e77bd0a462ed",
+"points": 6.0,
+"why": "artillery"
+},
+{
+"id": "e4bda9facae1",
+"points": 4.5,
+"why": "airstrike"
+},
+{
+"id": "3bc1f40627c3",
+"points": 2.5,
+"why": "missile drone"
+},
+{
+"id": "2648df878bc2",
+"points": 1.9,
+"why": "missile drone"
+},
+{
+"id": "98f02cd96032",
+"points": 1.5,
+"why": "explosion"
+}
+],
+"analyst": []
+},
+{
+"theater": "drc_sahel",
+"name": "Eastern DRC and Sahel",
+"days": 30,
+"level": "Guarded",
+"reading": 0.52,
+"raw": 0.52,
+"prev": 0.55,
+"score": 7.6,
+"usual": 6.1,
+"events": 3,
+"reasons": [
+{
+"id": "5ba0dcddb1c9",
+"points": 4.5,
+"why": "ground"
+},
+{
+"id": "1d0722fb1f26",
+"points": 1.9,
+"why": "ground"
+},
+{
+"id": "1e5fd683d05b",
+"points": 1.2,
+"why": "ground"
+}
+],
+"analyst": []
+},
+{
+"theater": "indopac",
+"name": "Indo-Pacific",
+"days": 30,
+"level": "Guarded",
+"reading": 0.33,
+"raw": 0.33,
+"prev": 0.3,
+"score": 5.5,
+"usual": 7.2,
+"events": 4,
+"reasons": [
+{
+"id": "ef43231d7beb",
+"points": 2.5,
+"why": "naval"
+},
+{
+"id": "d3m0te5t0001",
+"points": 1.5,
+"why": "weapons test"
+},
+{
+"id": "ce1850eb12a0",
+"points": 1.2,
+"why": "deployment"
+},
+{
+"id": "97dece23ebc3",
+"points": 0.2,
+"why": "deployment"
+}
+],
+"analyst": []
+},
+{
+"theater": "latam",
+"name": "Latin America",
+"days": 30,
+"level": "Low",
+"reading": 0.14,
+"raw": 0.14,
+"prev": 0.22,
+"score": 3.8,
+"usual": 4.9,
+"events": 3,
+"reasons": [
+{
+"id": "demolatam2",
+"points": 1.9,
+"why": "airstrike"
+},
+{
+"id": "demox3",
+"points": 1.0,
+"why": "legal"
+},
+{
+"id": "demolatam1",
+"points": 0.9,
+"why": "deployment"
+}
+],
+"analyst": []
+}
+]
 }
 }

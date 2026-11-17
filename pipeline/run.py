@@ -21,6 +21,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import alerts  # noqa: E402
 import analyst  # noqa: E402
+import tension  # noqa: E402
 import archive  # noqa: E402
 import audit  # noqa: E402
 import config as config_mod  # noqa: E402
@@ -402,6 +403,14 @@ def main() -> int:
     written = archive.update(state_dir, published, taken_down, fleet.public(state, t0), t0, events)
     log(f"[archive] {written} files updated")
 
+    # Tension needles: each region's last 24 hours against its own last 30 days (tension.py, no model)
+    try:
+        needles = tension.update(state_dir, published, cfg.theaters, state, t0)
+        log("[tension] " + ", ".join(f"{r['theater']} {r['level'] or 'learning'}" for r in needles["regions"]))
+    except Exception as exc:  # noqa: BLE001 - a reading must never stop the update
+        log(f"[tension] failed: {exc}")
+        needles = None
+
     # 11. Write
     save_json(state_dir / "state.json", state)
     save_json(state_dir / "events.json", {"events": events, "cells": cells})
@@ -413,6 +422,7 @@ def main() -> int:
         "theaters": theaters_meta(cfg.theaters),
         "events": published,
         "analysis": state.get("analysis"),
+        "tension": needles,
         "heat": public_cells(cells),
         "control": control.public(state, control_layers, t0),
         "frontline": frontline.public(state, cfg.frontlines, t0),
