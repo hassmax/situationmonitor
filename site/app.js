@@ -1787,7 +1787,8 @@
     world.width(window.innerWidth).height(window.innerHeight);
     if (isMobile()) {
       const sheet = $("#feed").getBoundingClientRect();
-      const top = $(".brand").getBoundingClientRect().bottom;
+      const strip = document.getElementById("tension");
+      const top = (strip && !strip.hidden ? strip : $(".brand")).getBoundingClientRect().bottom;  // the needles sit under the header
       world.globeOffset([0, (top - (window.innerHeight - sheet.top)) / 2]);
     } else if (document.body.classList.contains("panels-hidden")) {
       world.globeOffset([0, 0]);
@@ -2091,6 +2092,7 @@
     const move = (s) => (s ? new Date(Date.parse(s) + shift).toISOString() : s);
     data.generated_at = move(data.generated_at);
     if (data.analysis) data.analysis.generated_at = move(data.analysis.generated_at);
+    if (data.tension) data.tension.computed_at = move(data.tension.computed_at);
     (data.events || []).forEach((e) => {
       e.time = move(e.time); e.updated = move(e.updated);
       (e.reports || []).forEach((r) => { r.time = move(r.time); });
@@ -2756,6 +2758,7 @@
     renderCounts();
     renderTally(events);
     renderPulse();
+    renderTension();
     renderSideLists();
     if ($("#detail").hidden) renderFeed(events);
   }
@@ -2979,6 +2982,157 @@
     const span = { 6: "6 hours", 24: "24 hours", 72: "3 days", 168: "7 days" }[was];
     el.innerHTML = `<svg viewBox="0 0 ${W} ${H + 14}" width="${W}" height="${H + 14}" role="img" aria-label="Events an hour over the last 7 days: ${total} in all. The last ${span} are lit.">
       <rect class="pulse-win" x="${lit * 3 - 2}" y="0" width="${was * 3 + 2}" height="${H}"/><path class="pulse-base" d="M0 ${H + 0.5}H${W}"/>${bars}<g class="pulse-days">${ticks}</g></svg>`;
+  }
+
+  // Tension needles (pipeline/tension.py; the owner, 2026-11-17: "NYT-like needles for tension in
+  // each region. It goes up or goes down based on threats, activities and escalation"). One dial
+  // per region over the globe: where its last 24 hours fall among its own last 30 days, nudged by
+  // the analyst's escalating or de-escalating judgments. Worked out in the pipeline, no model
+  // call. The needle glides to a new reading when the data updates, then holds still; the faint
+  // tick is the reading a day before. Pointing at a dial (or tapping it on a phone) lists what
+  // moved it; a click focuses the map on that region, as the Theaters list does.
+  const TN_SHORT = { ukraine: "Ukraine", nato_east: "NATO flank", mideast: "Middle East", horn: "Sudan and Horn",
+    drc_sahel: "DRC and Sahel", indopac: "Indo-Pacific", latam: "Latin America" };
+  const TN_BANDS = [0, 0.25, 0.6, 0.85, 0.97, 1];  // pipeline/tension.py LEVELS
+  const TN_STEP = 0.1;  // a day's change this big shows an arrow
+  const needleAngle = (x) => -90 + clamp(Number(x) || 0, 0, 1) * 180;
+  function tnArc(a, b, r) {
+    const pt = (x) => { const t = Math.PI * (1 - x); return `${(60 + r * Math.cos(t)).toFixed(2)} ${(56 - r * Math.sin(t)).toFixed(2)}`; };
+    return `M${pt(a)}A${r} ${r} 0 0 1 ${pt(b)}`;
+  }
+  const tnRows = () => {
+    const t = S.data && S.data.tension;
+    return t && Array.isArray(t.regions) ? t.regions.filter((r) => r && r.theater) : [];
+  };
+  const tnMove = (r) => {
+    const d = r.level && r.prev != null ? r.reading - r.prev : 0;
+    return d >= TN_STEP ? "up" : d <= -TN_STEP ? "down" : "";
+  };
+  function dialHtml(r) {
+    const bands = TN_BANDS.slice(0, -1).map((a, i) => `<path class="tn-band b${i}" d="${tnArc(a + (i ? 0.006 : 0), TN_BANDS[i + 1] - (i < 4 ? 0.006 : 0), 46)}"/>`).join("");
+    const hand = r.level ? `<path class="tn-prev" d="M60 7v6"/><g class="tn-needle"><path d="M60 56L60 15"/></g><circle class="tn-hub" cx="60" cy="56" r="2.6"/>` : "";
+    return `<button type="button" class="tn" data-tension="${esc(r.theater)}"><svg viewBox="0 0 120 60" aria-hidden="true">${bands}${hand}</svg>
+      <span class="tn-name">${esc(TN_SHORT[r.theater] || r.name || r.theater)}</span><span class="tn-level"></span></button>`;
+  }
+  function setDial(el, r, glide) {
+    const lv = r.level ? r.level.toLowerCase() : "none", move = tnMove(r), sel = S.region === r.theater;
+    el.className = `tn lv-${lv}${sel ? " is-sel" : ""}`;
+    el.setAttribute("aria-pressed", String(sel));
+    el.querySelector(".tn-level").innerHTML = r.level ? `${esc(r.level)}${move ? `<i aria-hidden="true">${move === "up" ? "▲" : "▼"}</i>` : ""}` : "No reading yet";
+    el.setAttribute("aria-label", r.level
+      ? `${r.name || r.theater}: tension ${r.level}${move === "up" ? ", up on the day before" : move === "down" ? ", down on the day before" : ""}. Judged against this region's own last 30 days.`
+      : `${r.name || r.theater}: no tension reading yet, not enough history.`);
+    const needle = el.querySelector(".tn-needle"), prev = el.querySelector(".tn-prev");
+    if (needle) {
+      const to = `rotate(${needleAngle(r.reading)}deg)`;
+      if (glide) requestAnimationFrame(() => requestAnimationFrame(() => { needle.style.transform = to; }));
+      else needle.style.transform = to;
+    }
+    if (prev) { prev.style.transform = `rotate(${needleAngle(r.prev)}deg)`; prev.style.opacity = r.prev == null ? "0" : ""; }
+  }
+  let tnKey = "";
+  function renderTension() {
+    const box = document.getElementById("tension");
+    if (!box) return;
+    const rows = tnRows();
+    box.hidden = !rows.length;
+    if (!rows.length) { tnKey = ""; hideTensionCard(true); return; }
+    const key = rows.map((r) => r.theater + (r.level ? "" : "?")).join("|");
+    const fresh = key !== tnKey;
+    if (fresh) {
+      tnKey = key;
+      box.innerHTML = rows.map(dialHtml).join("") + `<p class="tn-note">Each region against its own last ${esc(String(S.data.tension.baseline_days || 30))} days</p>`;
+      if (isMobile()) layout();
+    }
+    rows.forEach((r) => {
+      const el = box.querySelector(`[data-tension="${CSS.escape(r.theater)}"]`);
+      if (el) setDial(el, r, fresh && !reduceMotion);  // a new strip starts upright and swings to its reading
+    });
+    if (tnCardFor) { const r = rows.find((x) => x.theater === tnCardFor); if (r) fillTensionCard(r); else hideTensionCard(true); }
+  }
+  function tensionCardHtml(r) {
+    const byId = new Map(S.data.events.map((e) => [e.id, e]));
+    const days = r.days || 30;
+    if (!r.level) return `<p class="intel-kicker">Tension</p><h3>${esc(r.name || r.theater)}</h3><p class="tc-line">No reading yet: a needle needs at least 10 days of this region's history to compare with (${days} so far).</p>`;
+    const pct = Math.round((r.raw != null ? r.raw : r.reading) * 100);
+    const lead = pct >= 50 ? `Busier than ${pct}% of the region's last ${days} days` : `Quieter than ${100 - pct}% of the region's last ${days} days`;
+    const move = tnMove(r);
+    const sign = (x) => (x > 0 ? `+${x.toFixed(1)}` : `−${Math.abs(x).toFixed(1)}`);
+    const rows = (r.reasons || []).map((x) => {
+      const e = byId.get(x.id);
+      if (!e) return "";
+      return `<li><button type="button" data-id="${esc(e.id)}">${eventIcon(e)}<span><b>${esc(typeLabel(e))}</b> ${esc(e.place || "")}<small>${esc(STATUS[e.status].label)} · severity ${esc(String(e.severity))}${x.why === "calming step" || x.why === "pullback" ? ` · ${esc(x.why)}` : ""}</small></span><em class="${x.points < 0 ? "is-down" : ""}">${sign(x.points)}</em></button></li>`;
+    }).join("");
+    const judged = (r.analyst || []).map((j) => `<li class="tc-an"><span aria-hidden="true">${j.trend === "escalating" ? "▲" : "▼"}</span><span>The analyst judges it ${esc(j.trend)}: ${esc(j.headline)}</span><em class="${j.trend === "escalating" ? "" : "is-down"}">${j.trend === "escalating" ? "up" : "down"}</em></li>`).join("");
+    return `<p class="intel-kicker">Tension · last ${esc(String(S.data.tension.window_hours || 24))} hours</p>
+      <h3>${esc(r.name || r.theater)} <span class="tc-level lv-${esc(r.level.toLowerCase())}">${esc(r.level)}</span></h3>
+      <p class="tc-line">${esc(lead)}${move ? `; ${move === "up" ? "up" : "down"} on the day before` : ""}. ${r.events} ${r.events === 1 ? "event" : "events"} in the last day, scoring ${esc(String(r.score))} against a usual ${esc(String(r.usual))}.</p>
+      ${canHover() ? "" : `<button type="button" class="tc-focus" data-tn-focus="${esc(r.theater)}">${S.region === r.theater ? "Show worldwide" : "Focus the map on this region"}</button>`}
+      ${rows || judged ? `<p class="tc-h">What moved it</p><ul class="tc-rows">${rows}${judged}</ul>` : ""}
+      <p class="tc-how">Attacks and fighting count most, buildups, incursions and threats less; ceasefires, talks and pullbacks count against. Weighted by severity and confidence. Compared only with this region's own past, not with other regions.</p>`;
+  }
+  let tnCardFor = null, tnHide = 0;
+  function fillTensionCard(r) {
+    const card = $("#tensionCard");
+    card.innerHTML = tensionCardHtml(r);
+    const dial = document.querySelector(`#tension [data-tension="${CSS.escape(r.theater)}"]`);
+    if (!dial) return;
+    const b = dial.getBoundingClientRect(), w = Math.min(330, window.innerWidth - 20);
+    card.style.width = `${w}px`;
+    card.style.left = `${clamp(b.left + b.width / 2 - w / 2, 10, window.innerWidth - w - 10)}px`;
+    card.style.top = `${Math.round((isMobile() ? document.getElementById("tension").getBoundingClientRect().bottom : b.bottom) + 6)}px`;
+  }
+  function showTensionCard(id) {
+    clearTimeout(tnHide);
+    const r = tnRows().find((x) => x.theater === id);
+    if (!r) return;
+    tnCardFor = id;
+    fillTensionCard(r);
+    $("#tensionCard").hidden = false;
+    document.querySelectorAll("#tension .tn").forEach((x) => x.classList.toggle("is-open", x.dataset.tension === id));
+  }
+  function hideTensionCard(now) {
+    clearTimeout(tnHide);
+    const go = () => {
+      tnCardFor = null;
+      $("#tensionCard").hidden = true;
+      document.querySelectorAll("#tension .tn.is-open").forEach((x) => x.classList.remove("is-open"));
+    };
+    if (now) go(); else tnHide = setTimeout(go, 300);
+  }
+  function wireTension() {
+    const box = $("#tension"), card = $("#tensionCard");
+    box.addEventListener("pointerover", (ev) => {
+      if (ev.pointerType !== "mouse") return;
+      const d = ev.target.closest(".tn");
+      if (d && d.dataset.tension !== tnCardFor) showTensionCard(d.dataset.tension); else if (d) clearTimeout(tnHide);
+    });
+    box.addEventListener("pointerleave", (ev) => { if (ev.pointerType === "mouse") hideTensionCard(); });
+    card.addEventListener("pointerenter", () => clearTimeout(tnHide));
+    card.addEventListener("pointerleave", (ev) => { if (ev.pointerType === "mouse") hideTensionCard(); });
+    // keyboard focus shows it too (a tap also focuses the dial: that is the click's business, below)
+    box.addEventListener("focusin", (ev) => { const d = ev.target.closest(".tn"); if (d && d.matches(":focus-visible")) showTensionCard(d.dataset.tension); });
+    let openAtDown = null;
+    box.addEventListener("pointerdown", () => { openAtDown = tnCardFor; });
+    box.addEventListener("focusout", (ev) => { if (!card.contains(ev.relatedTarget) && !box.contains(ev.relatedTarget)) hideTensionCard(); });
+    box.addEventListener("click", (ev) => {
+      const d = ev.target.closest(".tn");
+      if (!d) return;
+      const id = d.dataset.tension;
+      // a phone's first tap shows what moved it; the card's own button focuses the map
+      if (!canHover() && openAtDown !== id) { openAtDown = id; showTensionCard(id); return; }
+      hideTensionCard(true);
+      selectRegion(S.region === id ? "world" : id);
+    });
+    card.addEventListener("click", (ev) => {
+      const f = ev.target.closest("[data-tn-focus]");
+      if (f) { hideTensionCard(true); selectRegion(S.region === f.dataset.tnFocus ? "world" : f.dataset.tnFocus); return; }
+      const b = ev.target.closest("[data-id]");
+      if (b) { hideTensionCard(true); S.lastFocus = b.dataset.id; select(b.dataset.id, true); }
+    });
+    document.addEventListener("pointerdown", (ev) => { if (tnCardFor && !box.contains(ev.target) && !card.contains(ev.target)) hideTensionCard(true); });
+    document.addEventListener("keydown", (ev) => { if (ev.key === "Escape" && tnCardFor) hideTensionCard(true); }, true);
+    box.addEventListener("scroll", () => { if (tnCardFor) hideTensionCard(true); }, { passive: true });
   }
 
   let tallyWas = null;
@@ -3858,6 +4012,7 @@
 
   function wire() {
     setupIdleRotation(controls, $("#rotationBtn"));
+    wireTension();
     $("#overviewBtn").addEventListener("click", () => {
       selectRegion("world");
       world.pointOfView({ lat: 22, lng: 28, altitude: isMobile() ? 4.2 : 2.4 }, reduceMotion ? 0 : 900);

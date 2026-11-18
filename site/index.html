@@ -72,6 +72,7 @@
       <button class="filters-toggle" id="filtersToggle" type="button" aria-expanded="false" aria-controls="filters">Filters</button>
     </header>
     <div class="clocks panel" id="clocks" role="group" aria-label="World clocks"></div>
+    <div class="tension" id="tension" role="group" aria-label="Tension in each region, against its own last 30 days" hidden></div>
 
     <div class="region-focus panel" id="regionFocus" role="region" aria-label="Focus" hidden>
       <div><span class="region-kicker" id="regionKicker">Region focus</span><strong id="regionName"></strong></div>
@@ -161,6 +162,7 @@
 
 
   <div class="focus-toast" id="focusToast" role="status" hidden></div>
+  <div class="tension-card" id="tensionCard" role="region" aria-label="What moved the needle" hidden></div>
 
   <script src="vendor/globe.gl.min.js?v=2.46.2" fetchpriority="low"></script>
   <script src="vendor/topojson-client.min.js?v=3.1.0"></script>
