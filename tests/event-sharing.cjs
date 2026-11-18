@@ -48,11 +48,15 @@ console.log('PASS: share URL, base paths, old links and trailing commas, demo li
   const key = 'Ramstein>US>UA|aid|RAF Fairford>Ramstein';
   let b = sharing(root, root);
   assert.equal(b.routeLink(key), root + '#route=' + encodeURIComponent(key));
-  assert.equal(b.needleLink('mideast'), root + '#tension=mideast');
+  assert.equal(b.needleLink('mideast'), root + 'needles/mideast/', 'a needle link is its own page, with a preview of the dial');
   assert.equal(b.INITIAL_LINK, null);
   b = sharing(b.routeLink(key), root);
   assert.deepEqual({ ...b.INITIAL_LINK }, { kind: 'route', id: key }, 'a route link opens that route');
   assert.equal(b.INITIAL_EVENT_ID, '', 'and is not taken for an event id');
+  b = sharing(root + 'needles/horn/', root);
+  assert.deepEqual({ ...b.INITIAL_LINK }, { kind: 'tension', id: 'horn' }, 'the needle page opens that needle');
+  assert.equal(b.APP_ROOT.href, root, 'from the site root');
+  assert.equal(b.INITIAL_EVENT_ID, '');
   b = sharing(root + '#tension=drc_sahel', root);
   assert.deepEqual({ ...b.INITIAL_LINK }, { kind: 'tension', id: 'drc_sahel' });
   assert.equal(b.INITIAL_EVENT_ID, '');
@@ -60,5 +64,5 @@ console.log('PASS: share URL, base paths, old links and trailing commas, demo li
   b = sharing(root + '?demo', root, null, true);
   assert.equal(b.needleLink('ukraine'), root + '?demo#tension=ukraine', 'demo links stay on the demo');
   assert.equal(b.routeLink('US>UA'), root + '?demo#route=US%3EUA');
-  console.log('PASS: route and needle links built, read on arrival, kept apart from event ids, demo kept.');
+  console.log('PASS: route links and needle pages built, read on arrival (old #tension links too), kept apart from event ids, demo kept.');
 }

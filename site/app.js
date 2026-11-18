@@ -17,6 +17,8 @@
   };
   // Links to a supply route (#route=<key>) or a region's tension needle (#tension=<region id>)
   const INITIAL_LINK = (() => {
+    const page = location.pathname.match(/\/needles\/([a-z][a-z0-9_]{1,30})\/$/);  // a needle's share page (pipeline/share.py)
+    if (page) return { kind: "tension", id: page[1] };
     const m = /^(route|tension)=(.+)$/.exec(location.hash.slice(1));
     if (!m) return null;
     try { return { kind: m[1], id: decodeURIComponent(m[2]) }; } catch { return null; }
@@ -25,7 +27,9 @@
   const eventLink = (id) => /^[a-f0-9]{12}$/.test(id) && !DEMO
     ? new URL(`events/${id}/`, APP_ROOT).href : `${APP_ROOT.href}${DEMO ? "?demo" : ""}#${encodeURIComponent(id)}`;
   const routeLink = (key) => `${APP_ROOT.href}${DEMO ? "?demo" : ""}#route=${encodeURIComponent(key)}`;
-  const needleLink = (id) => `${APP_ROOT.href}${DEMO ? "?demo" : ""}#tension=${encodeURIComponent(id)}`;
+  // a needle's own page carries a preview picture of the dial for chat apps; the demo stays on the main page
+  const needleLink = (id) => /^[a-z][a-z0-9_]{1,30}$/.test(id) && !DEMO
+    ? new URL(`needles/${id}/`, APP_ROOT).href : `${APP_ROOT.href}${DEMO ? "?demo" : ""}#tension=${encodeURIComponent(id)}`;
   let sharedSnapshot = null;
   try { sharedSnapshot = JSON.parse(document.getElementById("sharedEvent")?.textContent || "null"); } catch { /* live data still opens */ }
   // This page's own version: the commit stamped into its script address by the update workflow
@@ -3059,12 +3063,17 @@
     });
     if (tnCardFor) { const r = rows.find((x) => x.theater === tnCardFor); if (r) fillTensionCard(r); else hideTensionCard(true); }
   }
+  // How the day compares with the region's month (the same words as pipeline/share.py compare_words)
+  const tnCompare = (pct, days) => pct >= 100 ? `Busier than any of the region's last ${days} days`
+    : pct <= 0 ? `Quieter than any of the region's last ${days} days`
+    : pct >= 45 && pct <= 55 ? `About a usual day for the region over its last ${days} days`
+    : pct > 55 ? `Busier than ${pct}% of the region's last ${days} days` : `Quieter than ${100 - pct}% of the region's last ${days} days`;
   function tensionCardHtml(r) {
     const byId = new Map(S.data.events.map((e) => [e.id, e]));
     const days = r.days || 30;
     if (!r.level) return `<p class="intel-kicker">Tension</p><h3>${esc(r.name || r.theater)}</h3><p class="tc-line">No reading yet: a needle needs at least 10 days of this region's history to compare with (${days} so far).</p>`;
     const pct = Math.round((r.raw != null ? r.raw : r.reading) * 100);
-    const lead = pct >= 50 ? `Busier than ${pct}% of the region's last ${days} days` : `Quieter than ${100 - pct}% of the region's last ${days} days`;
+    const lead = tnCompare(pct, days);
     const move = tnMove(r);
     const sign = (x) => (x > 0 ? `+${x.toFixed(1)}` : `−${Math.abs(x).toFixed(1)}`);
     const rows = (r.reasons || []).map((x) => {
