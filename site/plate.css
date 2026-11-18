@@ -303,3 +303,5 @@ body { background: radial-gradient(ellipse 60% 70% at 50% 50%, #0d1014 0%, #0709
 }
 @media (max-height: 540px) and (max-width: 1023px) { .tension { display: none; } }
 @media (prefers-reduced-motion: reduce) { .tn-needle, .tn-prev { transition: none; } }
+.tc-share { margin: 8px 0 0; font-size: 11.5px; display: flex; gap: 14px; }
+.tc-share .linkish { font-size: 11.5px; padding: 0; }
