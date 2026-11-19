@@ -158,5 +158,72 @@ class ShareTests(unittest.TestCase):
                 share.build(self.data, self.archive, self.out, self.cache, base)
 
 
+
+class NeedlePageTests(unittest.TestCase):
+    """2026-11-18: a needle's link previews the dial (the owner: "have preview link show the needle")."""
+    REGIONS = [
+        {'theater': 'mideast', 'name': 'Middle East', 'days': 30, 'level': 'Severe', 'reading': 1.0, 'raw': 1.0, 'prev': 0.82,
+         'analyst': [{'headline': 'h', 'trend': 'escalating', 'ids': []}]},
+        {'theater': 'horn', 'name': 'Sudan and Horn of Africa', 'days': 30, 'level': 'Guarded', 'reading': 0.5, 'raw': 0.5, 'prev': 0.48, 'analyst': []},
+        {'theater': 'latam', 'name': 'Latin America', 'days': 4, 'level': None},
+        {'theater': '../evil', 'name': 'Bad', 'level': 'Low', 'reading': 0.1},
+    ]
+
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temp.cleanup)
+        self.root = Path(self.temp.name)
+        self.data, self.out = self.root / 'data', self.root / 'site'
+        self.out.mkdir()
+        (self.out / 'index.html').write_text((Path(__file__).parent.parent / 'site/index.html').read_text())
+        publish.write(self.data, {'generated_at': '2026-11-18T03:35:00Z', 'events': [],
+                                  'tension': {'computed_at': '2026-11-18T03:35:20Z', 'regions': deepcopy(self.REGIONS)}})
+
+    def build(self):
+        return share.build_needles(self.data, self.out, 'https://hassmax.github.io/situationmonitor/')
+
+    def test_each_region_gets_a_page_whose_preview_is_its_dial(self):
+        self.assertEqual(self.build(), 3)  # the badly named region is left out
+        self.assertFalse((self.out / 'needles' / '..' / 'evil').exists())
+        folder = self.out / 'needles' / 'mideast'
+        text = (folder / 'index.html').read_text()
+        meta = Metadata(text).values
+        self.assertEqual(meta['og:title'], 'Middle East tension: Severe')
+        self.assertEqual(meta['og:url'], 'https://hassmax.github.io/situationmonitor/needles/mideast/')
+        self.assertTrue(meta['og:image'].startswith('https://hassmax.github.io/situationmonitor/needles/mideast/preview-'))
+        self.assertIn("Busier than any of the region's last 30 days; up on the day before.", meta['og:description'])
+        self.assertIn("analyst's escalating judgment raised it", meta['og:description'])
+        self.assertIn('judged only against its own past', meta['og:description'])
+        self.assertEqual(meta['twitter:card'], 'summary_large_image')
+        self.assertIn('<base href="../../">', text)
+        self.assertIn('<title>Middle East tension: Severe | Global Situation Monitor</title>', text)
+        image = folder / meta['og:image'].rsplit('/', 1)[1]
+        with Image.open(image) as im:
+            self.assertEqual(im.size, (1200, 630))
+
+    def test_wording_for_a_usual_day_and_no_reading(self):
+        self.build()
+        horn = Metadata((self.out / 'needles' / 'horn' / 'index.html').read_text()).values
+        self.assertIn('About a usual day for the region over its last 30 days.', horn['og:description'])
+        self.assertNotIn('analyst', horn['og:description'])
+        latam = Metadata((self.out / 'needles' / 'latam' / 'index.html').read_text()).values
+        self.assertEqual(latam['og:title'], 'Latin America: no tension reading yet')
+
+    def test_a_new_reading_gets_a_new_picture_and_no_tension_leaves_no_pages(self):
+        self.build()
+        first = Metadata((self.out / 'needles' / 'mideast' / 'index.html').read_text()).values['og:image']
+        regions = deepcopy(self.REGIONS)
+        regions[0].update(reading=0.9, level='High')
+        publish.write(self.data, {'generated_at': '2026-11-18T03:50:00Z', 'events': [],
+                                  'tension': {'computed_at': '2026-11-18T03:50:20Z', 'regions': regions}})
+        self.build()
+        second = Metadata((self.out / 'needles' / 'mideast' / 'index.html').read_text()).values['og:image']
+        self.assertNotEqual(first, second)
+        self.assertEqual(len(list((self.out / 'needles' / 'mideast').glob('preview-*.png'))), 1)
+        publish.write(self.data, {'generated_at': '2026-11-18T04:05:00Z', 'events': []})
+        self.assertEqual(self.build(), 0)
+        self.assertFalse((self.out / 'needles').exists())
+
+
 if __name__ == '__main__':
     unittest.main()

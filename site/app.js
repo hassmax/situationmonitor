@@ -15,9 +15,21 @@
   const eventIdFrom = (value) => {
     try { return decodeURIComponent(value || "").trim().replace(/,+$/, ""); } catch { return ""; }
   };
-  const INITIAL_EVENT_ID = eventIdFrom(location.hash.slice(1)) || (location.pathname.match(/\/events\/([a-f0-9]{12})\/$/) || [])[1] || "";
+  // Links to a supply route (#route=<key>) or a region's tension needle (#tension=<region id>)
+  const INITIAL_LINK = (() => {
+    const page = location.pathname.match(/\/needles\/([a-z][a-z0-9_]{1,30})\/$/);  // a needle's share page (pipeline/share.py)
+    if (page) return { kind: "tension", id: page[1] };
+    const m = /^(route|tension)=(.+)$/.exec(location.hash.slice(1));
+    if (!m) return null;
+    try { return { kind: m[1], id: decodeURIComponent(m[2]) }; } catch { return null; }
+  })();
+  const INITIAL_EVENT_ID = INITIAL_LINK ? "" : eventIdFrom(location.hash.slice(1)) || (location.pathname.match(/\/events\/([a-f0-9]{12})\/$/) || [])[1] || "";
   const eventLink = (id) => /^[a-f0-9]{12}$/.test(id) && !DEMO
     ? new URL(`events/${id}/`, APP_ROOT).href : `${APP_ROOT.href}${DEMO ? "?demo" : ""}#${encodeURIComponent(id)}`;
+  const routeLink = (key) => `${APP_ROOT.href}${DEMO ? "?demo" : ""}#route=${encodeURIComponent(key)}`;
+  // a needle's own page carries a preview picture of the dial for chat apps; the demo stays on the main page
+  const needleLink = (id) => /^[a-z][a-z0-9_]{1,30}$/.test(id) && !DEMO
+    ? new URL(`needles/${id}/`, APP_ROOT).href : `${APP_ROOT.href}${DEMO ? "?demo" : ""}#tension=${encodeURIComponent(id)}`;
   let sharedSnapshot = null;
   try { sharedSnapshot = JSON.parse(document.getElementById("sharedEvent")?.textContent || "null"); } catch { /* live data still opens */ }
   // This page's own version: the commit stamped into its script address by the update workflow
@@ -2170,7 +2182,8 @@
       // Opens on the last 24 hours; if that's empty, widen to 3 days so the first view isn't blank.
       if (!data.events.some((e) => onMap(e) && e._t >= Date.now() - 24 * HOUR)) { setWindow(72); render(); }
       const hash = INITIAL_EVENT_ID;
-      if (hash && data.events.some((e) => e.id === hash)) select(hash, true);
+      if (INITIAL_LINK && openSharedLink(INITIAL_LINK)) { /* a shared route or needle */ }
+      else if (hash && data.events.some((e) => e.id === hash)) select(hash, true);
       else if (/^CVN-\d{2}$/.test(hash) && S.fleet.some((c) => c.hull === hash)) selectCarrier(hash, true);
       else focusHotspot();
       if (params.has("alert")) {  // preview: the newest serious event in the window
@@ -3050,12 +3063,17 @@
     });
     if (tnCardFor) { const r = rows.find((x) => x.theater === tnCardFor); if (r) fillTensionCard(r); else hideTensionCard(true); }
   }
+  // How the day compares with the region's month (the same words as pipeline/share.py compare_words)
+  const tnCompare = (pct, days) => pct >= 100 ? `Busier than any of the region's last ${days} days`
+    : pct <= 0 ? `Quieter than any of the region's last ${days} days`
+    : pct >= 45 && pct <= 55 ? `About a usual day for the region over its last ${days} days`
+    : pct > 55 ? `Busier than ${pct}% of the region's last ${days} days` : `Quieter than ${100 - pct}% of the region's last ${days} days`;
   function tensionCardHtml(r) {
     const byId = new Map(S.data.events.map((e) => [e.id, e]));
     const days = r.days || 30;
     if (!r.level) return `<p class="intel-kicker">Tension</p><h3>${esc(r.name || r.theater)}</h3><p class="tc-line">No reading yet: a needle needs at least 10 days of this region's history to compare with (${days} so far).</p>`;
     const pct = Math.round((r.raw != null ? r.raw : r.reading) * 100);
-    const lead = pct >= 50 ? `Busier than ${pct}% of the region's last ${days} days` : `Quieter than ${100 - pct}% of the region's last ${days} days`;
+    const lead = tnCompare(pct, days);
     const move = tnMove(r);
     const sign = (x) => (x > 0 ? `+${x.toFixed(1)}` : `−${Math.abs(x).toFixed(1)}`);
     const rows = (r.reasons || []).map((x) => {
@@ -3067,6 +3085,8 @@
     return `<p class="intel-kicker">Tension · last ${esc(String(S.data.tension.window_hours || 24))} hours</p>
       <h3>${esc(r.name || r.theater)} <span class="tc-level lv-${esc(r.level.toLowerCase())}">${esc(r.level)}</span></h3>
       <p class="tc-line">${esc(lead)}${move ? `; ${move === "up" ? "up" : "down"} on the day before` : ""}. ${r.events} ${r.events === 1 ? "event" : "events"} in the last day, scoring ${esc(String(r.score))} against a usual ${esc(String(r.usual))}.</p>
+      <p class="tc-share"><button class="linkish" type="button" data-tn-copy="${esc(r.theater)}">Copy link to this needle</button>
+        <a class="linkish" href="${esc(needleLink(r.theater))}" data-tn-link hidden>Open share link</a></p>
       ${canHover() ? "" : `<button type="button" class="tc-focus" data-tn-focus="${esc(r.theater)}">${S.region === r.theater ? "Show worldwide" : "Focus the map on this region"}</button>`}
       ${rows || judged ? `<p class="tc-h">What moved it</p><ul class="tc-rows">${rows}${judged}</ul>` : ""}
       <p class="tc-how">Attacks and fighting count most, buildups, incursions and threats less; ceasefires, talks and pullbacks count against. Weighted by severity and confidence. Compared only with this region's own past, not with other regions.</p>`;
@@ -3125,6 +3145,8 @@
       selectRegion(S.region === id ? "world" : id);
     });
     card.addEventListener("click", (ev) => {
+      const c = ev.target.closest("[data-tn-copy]");
+      if (c) { copyLink(needleLink(c.dataset.tnCopy), c, card.querySelector("[data-tn-link]"), "Needle link copied"); return; }
       const f = ev.target.closest("[data-tn-focus]");
       if (f) { hideTensionCard(true); selectRegion(S.region === f.dataset.tnFocus ? "world" : f.dataset.tnFocus); return; }
       const b = ev.target.closest("[data-id]");
@@ -3838,11 +3860,11 @@
   }
 
   function selectFlow(key, pledge = false) {
-    history.replaceState(null, "", APP_ROOT.pathname + location.search);
     document.title = "Global Situation Monitor";
     const s = S.supply;
     const f = (pledge ? s.pledges : s.flows).find((x) => x.key === key) || s.flows.find((x) => x.key === key) || s.pledges.find((x) => x.key === key);
     if (!f) return;
+    history.replaceState(null, "", APP_ROOT.pathname + location.search + "#route=" + encodeURIComponent(f.key));  // the address is the share link
     const isPledge = s.pledges.includes(f);
     const fresh = S.selectedFlow !== key;
     stopLaunches();
@@ -3861,6 +3883,8 @@
       <div class="detail-type">${flowBadge(f)}${f.money ? (isPledge ? "Financial aid pledged" : `Financial aid, ${windowText()}`) : isPledge ? "Pledged aid" : `Supply route, ${windowText()}`}</div>
       <h3>${esc(flowFrom(f))} → ${esc(flowTo(f))}</h3>
       <p class="detail-where">${isPledge ? `${f.events.length} ${f.events.length === 1 ? "announcement" : "announcements"}` : `${f.deliveries} ${f.deliveries === 1 ? "delivery" : "deliveries"} reported`}, last ${esc(ago(f.last))}</p>
+      <p><button class="linkish" type="button" id="copyRouteLink">Copy route link</button>
+        <a class="linkish" href="${esc(routeLink(f.key))}" id="routeShareLink" hidden>Open share link</a></p>
       <div class="verdict"><span class="conf-swatch conf-${STATUS[f.status].conf}" aria-hidden="true"></span><div><strong>${esc(STATUS[f.status].label)}</strong><p>Best confidence among the reports below. On the map, broader moving dashes are corroborated; finer dashes show uncorroborated reports. Blue is supply, green is financial aid.</p></div></div>
       <div class="facts">
         ${f.modes.length ? `<span>Mode <b>${esc(f.modes.map((m) => MODE[m]).join(", "))}</b></span>` : ""}
@@ -3872,8 +3896,49 @@
       <h2 class="reports-title">${isPledge ? "Announcements" : "Reported deliveries"} (${f.events.length})</h2>
       <ul class="targets">${f.events.map((e) => `<li><button class="target" type="button" data-event="${esc(e.id)}"><span>${esc(e.summary)}</span><span class="target-meta">${esc(agoShort(e._t))}</span></button></li>`).join("")}</ul>
     `);
+    $("#copyRouteLink").addEventListener("click", (ev) => copyLink(routeLink(f.key), ev.currentTarget, $("#routeShareLink"), "Route link copied"));
     if (fresh && !isPledge) playRouteBurst(f, flight);
     renderSoon();
+  }
+
+  // Copies a share link; where the browser won't allow it, shows the link to open and copy by hand.
+  async function copyLink(url, button, fallback, done) {
+    try {
+      await navigator.clipboard.writeText(url);
+      announce(done);
+      if (button) {
+        const was = button.textContent;
+        button.textContent = "Link copied";
+        setTimeout(() => { if (button.isConnected) button.textContent = was; }, 1800);
+      }
+    } catch {
+      if (fallback) fallback.hidden = false;
+      announce("Open the share link and copy its address");
+    }
+  }
+
+  // A shared link to a supply route or a region's needle, opened on arrival. A route outside the
+  // default 24 hours is looked for over 7 days (the window widens to show it); one gone from the
+  // data, or a region with no needle, says so instead of opening something else.
+  function openSharedLink(link) {
+    if (link.kind === "route") {
+      const find = () => [...S.supply.flows, ...S.supply.pledges].find((f) => f.key === link.id);
+      S.supply = buildSupply();
+      if (!find() && S.windowH < 168) { setWindow(168); S.supply = buildSupply(); }
+      const f = find();
+      if (!f) { announce("That supply route is no longer on the map: it was last reported more than 7 days ago"); return false; }
+      selectFlow(f.key, !S.supply.flows.includes(f));
+      return true;
+    }
+    if (link.kind === "tension") {
+      const r = tnRows().find((x) => x.theater === link.id);
+      if (!r) { announce("That region has no tension needle right now"); return false; }
+      selectRegion(r.theater);
+      render();
+      setTimeout(() => showTensionCard(r.theater), reduceMotion ? 50 : 700);  // once the strip has drawn and the camera set off
+      return true;
+    }
+    return false;
   }
 
   function selectCarrier(hull, fly) {

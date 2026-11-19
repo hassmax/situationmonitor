@@ -10,6 +10,7 @@ from functools import lru_cache
 import hashlib
 import html
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -171,6 +172,161 @@ def build(data_dir: Path, archive_dir: Path, out_dir: Path, cache_dir: Path, bas
     return len(events)
 
 
+# ---------------------------------------------------------------- tension needles
+# The owner, 2026-11-18: "have preview link show the needle". One page per region at
+# needles/<region id>/ (the dashboard's own page, opening on that needle), with a drawn card of
+# the dial as its preview: the region, its level, how the day compares with its own last 30 days,
+# and when the reading was made. Built from the published tension block (pipeline/tension.py).
+NEEDLE_BANDS = [(0.0, 0.25, '#2d3137'), (0.25, 0.6, '#464a51'), (0.6, 0.85, '#75787d'), (0.85, 0.97, '#a1645a'), (0.97, 1.0, '#d8483a')]
+LEVEL_INK = {'High': '#e0a397', 'Severe': '#e2574a'}
+NEEDLE_ID = re.compile(r'[a-z][a-z0-9_]{1,30}')
+MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
+
+
+def compare_words(pct: int, days: int) -> str:
+    """How the day compares with the region's month (the same words as app.js tnCompare)."""
+    if pct >= 100:
+        return f"Busier than any of the region's last {days} days"
+    if pct <= 0:
+        return f"Quieter than any of the region's last {days} days"
+    if 45 <= pct <= 55:
+        return f"About a usual day for the region over its last {days} days"
+    if pct > 55:
+        return f"Busier than {pct}% of the region's last {days} days"
+    return f"Quieter than {100 - pct}% of the region's last {days} days"
+
+
+def analyst_words(region: dict) -> str:
+    """The analyst's nudge, said in words on the card (the dashboard lists the judgments)."""
+    net = sum(1 if j.get('trend') == 'escalating' else -1 for j in region.get('analyst') or [])
+    if net > 0:
+        return " The regional analyst's escalating judgment raised it."
+    if net < 0:
+        return " The regional analyst's de-escalating judgment lowered it."
+    return ''
+
+
+def needle_lines(region: dict) -> tuple[str, str]:
+    """(title, the one-line comparison) in the dashboard's own words (app.js tensionCardHtml)."""
+    name = region.get('name') or region['theater']
+    level = region.get('level')
+    if not level:
+        return f'{name}: no tension reading yet', "Not enough of this region's history yet to compare with."
+    raw = region.get('raw') if region.get('raw') is not None else region.get('reading', 0.5)
+    pct = round(float(raw) * 100)
+    n = region.get('days') or 30
+    lead = compare_words(pct, n)
+    prev, reading = region.get('prev'), region.get('reading')
+    if prev is not None and reading is not None and abs(reading - prev) >= 0.1:
+        lead += '; up on the day before' if reading > prev else '; down on the day before'
+    return f'{name} tension: {level}', lead + '.' + analyst_words(region)
+
+
+def when(iso) -> str:
+    t = str(iso or '')
+    if len(t) < 16:
+        return ''
+    return f"{t[11:16]} UTC, {int(t[8:10])} {MONTHS[int(t[5:7]) - 1]} {t[:4]}"
+
+
+def needle_card(region: dict, computed_at, path: Path) -> None:
+    k = 2  # drawn at twice the size, then reduced, for smooth curves
+
+    def s(v):
+        return int(round(v * k))
+    image = Image.new('RGB', (1200 * k, 630 * k), '#07090c')
+    draw = ImageDraw.Draw(image)
+    draw.rectangle((s(56), s(60), s(62), s(98)), fill='#d8483a')
+    draw.text((s(80), s(56)), 'GLOBAL SITUATION MONITOR', font=font(s(26), True), fill='#efece6')
+    draw.text((s(80), s(96)), 'By Huzaifa Khan', font=font(s(19)), fill='#9a978f')
+    draw.text((s(60), s(170)), 'TENSION · LAST 24 HOURS', font=font(s(21), True), fill='#e2574a')
+    name = region.get('name') or region['theater']
+    level = region.get('level')
+    _, lead = needle_lines(region)
+    for size in range(50, 30, -2):
+        face = font(s(size), True)
+        lines = wrap(name, face, s(540))
+        if len(lines) <= 2:
+            break
+    y = 212
+    for line in lines:
+        draw.text((s(60), s(y)), line, font=face, fill='#f4f1eb')
+        y += size + 10
+    draw.text((s(60), s(y + 8)), (level or 'No reading yet').upper(), font=font(s(40), True), fill=LEVEL_INK.get(level, '#d9d6cf'))
+    lead_face = font(s(23))
+    draw.multiline_text((s(60), s(y + 70)), '\n'.join(wrap(lead, lead_face, s(540))), font=lead_face, fill='#c9c6bf', spacing=s(8))
+    stamp = when(computed_at)
+    if stamp:
+        draw.text((s(60), s(510)), f'Reading at {stamp}', font=font(s(20)), fill='#9a978f')
+    draw.text((s(60), s(552)), "Judged only against this region's own last 30 days, not other regions.", font=font(s(18)), fill='#807e7a')
+    # the dial: a half circle, low on the left, severe on the right
+    cx, cy, r, width = s(905), s(420), s(220), s(30)
+    box = (cx - r, cy - r, cx + r, cy + r)
+    for lo, hi, colour in NEEDLE_BANDS:
+        draw.arc(box, 180 + lo * 180 + (0.6 if lo > 0 else 0), 180 + hi * 180 - (0.6 if hi < 1 else 0), fill=colour, width=width)
+
+    def point(x, rad):
+        a = math.pi * (1 - min(1.0, max(0.0, float(x))))
+        return cx + rad * math.cos(a), cy - rad * math.sin(a)
+    if level and region.get('prev') is not None:
+        draw.line([point(region['prev'], r + s(6)), point(region['prev'], r + s(26))], fill='#807e7a', width=s(4))
+    if level and region.get('reading') is not None:
+        draw.line([(cx, cy), point(region['reading'], r - s(18))], fill='#f4f1eb', width=s(6))
+    draw.ellipse((cx - s(11), cy - s(11), cx + s(11), cy + s(11)), fill='#f4f1eb')
+    small = font(s(16), True)
+    for word, x in (('LOW', 0.0), ('SEVERE', 1.0)):
+        px, _ = point(x, r)
+        draw.text((px - small.getlength(word) / 2, cy + s(22)), word, font=small, fill='#807e7a')
+    image = image.resize((1200, 630), Image.LANCZOS)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    image.save(path, format='PNG')
+
+
+def needle_page(template: str, region: dict, base: str, image_name: str) -> str:
+    url = f"{base}needles/{region['theater']}/"
+    image_url = url + image_name
+    title, lead = needle_lines(region)
+    description = f"{lead} Each region is judged only against its own past. Open it on Global Situation Monitor to see what moved it."
+    esc = html.escape
+    tags = [
+        ('property', 'og:type', 'article'), ('property', 'og:site_name', 'Global Situation Monitor'),
+        ('property', 'og:title', title), ('property', 'og:description', description), ('property', 'og:url', url),
+        ('property', 'og:image', image_url), ('property', 'og:image:type', 'image/png'),
+        ('property', 'og:image:width', '1200'), ('property', 'og:image:height', '630'),
+        ('property', 'og:image:alt', f'{title}. {lead}'), ('name', 'twitter:card', 'summary_large_image'),
+        ('name', 'twitter:title', title), ('name', 'twitter:description', description), ('name', 'twitter:image', image_url),
+    ]
+    metadata = ''.join(f'\n  <meta {kind}="{key}" content="{esc(value, quote=True)}">' for kind, key, value in tags)
+    metadata += f'\n  <link rel="canonical" href="{esc(url, quote=True)}">'
+    out = template.replace('<base href="./">', '<base href="../../">', 1)
+    out = out.replace('<title>Global Situation Monitor</title>', f'<title>{esc(title)} | Global Situation Monitor</title>', 1)
+    out = re.sub(r'<meta name="description" content="[^"]*">',
+                 lambda _: f'<meta name="description" content="{esc(description, quote=True)}">', out, count=1)
+    return out.replace('</head>', metadata + '\n</head>', 1)
+
+
+def build_needles(data_dir: Path, out_dir: Path, base_url: str) -> int:
+    """needles/<region>/index.html and its preview card, for every region in the tension block.
+    Rebuilt each run (a handful of small images): the card's file name changes with the reading,
+    so apps that keep an old preview image fetch the new one."""
+    base = base_url.rstrip('/') + '/'
+    tension = load_json(data_dir / 'events.json', {}).get('tension') or {}
+    root = out_dir / 'needles'
+    if root.exists():
+        shutil.rmtree(root)
+    regions = [r for r in tension.get('regions') or [] if NEEDLE_ID.fullmatch(str(r.get('theater') or ''))]
+    if not regions:
+        return 0
+    template = (out_dir / 'index.html').read_text(encoding='utf-8')
+    for region in regions:
+        visual = [VERSION, {k: region.get(k) for k in ('name', 'level', 'reading', 'raw', 'prev', 'days')}, tension.get('computed_at')]
+        image_name = 'preview-' + hashlib.sha256(json.dumps(visual, sort_keys=True).encode()).hexdigest()[:16] + '.png'
+        folder = root / region['theater']
+        needle_card(region, tension.get('computed_at'), folder / image_name)
+        (folder / 'index.html').write_text(needle_page(template, region, base, image_name), encoding='utf-8')
+    return len(regions)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--data', type=Path, required=True)
@@ -187,6 +343,7 @@ def main():
     count = build(args.data, args.archive, args.out, args.cache, base,
                   corrections.load(config.CONFIG_DIR / 'corrections.yaml'), cfg.removed)
     print(f'[share] {count} event pages built; unchanged preview images reused')
+    print(f'[share] {build_needles(args.data, args.out, base)} needle pages built')
 
 
 if __name__ == '__main__':
